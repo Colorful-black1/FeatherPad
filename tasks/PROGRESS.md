@@ -21,7 +21,15 @@
 | 2026-11-01 / T002 | app-shell | React Shell/App/token/CSS、Web及原生测试 | typecheck/lint exit 0；Web 2 passed；真实WebView2 debug 1 passed | Web与原生范围分开，未测OS对话框 | .artifacts/T002/及docs/acceptance/M0.md | T002通过；下一T003 |
 | 2026-11-01 / T003.a–d（进行中） | F-DESK-013 | Rust models/grants/files/commands、AppManifest ACL、TS contracts/bridge、CodeMirror只读UI、测试与脚本 | typecheck/lint/TS单测3、Rust原生5、Web4、Release smoke1均exit 0；check.ps1 -Desktop exit 0；交互选择器三次超时，后次显式exit 1 | 原生Rust磁盘+junction，真实Release IPC/WebView2，Web mock独立 | docs/acceptance/M0.md；.artifacts/T003；.artifacts/T002/native-release.json | T003未完成OS选取验收，G0不勾选 |
 
-## 当前恢复点（2026-11-01 16:38，Asia/Shanghai）
+## 当前恢复点（2026-11-01 16:51，Asia/Shanghai）
+
+- T102/F-FILE-009进程终止故障新增真实证据：`src-tauri/tests/save_interruption.rs`用同一Rust集成测试exe的私有stdin屏障，在TemporaryReady或Committed后确认子进程仍活着，再通过所持Child handle强杀。替换前原件未变、临时正文与original/body blob及摘要齐全、无replacing/committed；提交后新字节与committed保持；放行同屏障的正向对照实际提交且exit 0。两个被杀worker均exit 1，无ignored测试、无生产钩子/假IO。新FileService重开核对磁盘，不自动修复或冒称会话恢复。最终3项result在`.artifacts/T102/interruptions/{3851fc2f-de45-4b2f-9c3b-04f0a8fe4c74,a52a2f3f-de91-4c24-8ddb-6e7ba1ce6e6f,743f902a-0a65-4d2e-9fa6-8848cd82975c}/result.json`。
+- 真实Tauri Release强杀：`tests/desktop/forced-exit.ts`利用现有框架debug callbacks只暂缓一次真实SaveAck交付，不改返回/磁盘/grant。实际目标/body.bin字节及唯一committed receipt验证完成，UI仍正在保存时终止本轮spawn的Tauri子进程，终止后再核对目标/body/committed正确。`.artifacts/T102/native-release.json`新增nativeForcedExitVerified=true，forcedExit记录ackDelivered=false、实际signal=SIGTERM/exitCode=null及receipt/hash；这是Windows Node Child.kill结果，不冒称重启会话恢复或物理断电。
+- 本切片检查：Rust全套46（新增3）/fmt --check/clippy --all-targets -D warnings、typecheck/lint、真实Release综合1（44.7秒）均exit 0。首编译测试时间戳误用未启用clock的Utc::now，E0599/exit101；改用现有SystemTime转换后通过，未加依赖/feature。生产代码未变，沿用9950208 bytes、SHA256 `4320A43CD7E1E04E23E610EA1B73F84C52D2D4B0C193845CEBDFD7BB9DFCE6C3`的Release；本轮未重复Web/TS单测或重建不变产品。
+- 磁盘满具体缺口：`powershell.exe -NoProfile -File scripts/Probe-FaultVolume.ps1`仅尝试在E盘独立UUID目录创建64MiB动态VHDX，exit1；New-VHD返回“没有所需权限”、errorId=Unspecified,Microsoft.Vhd.PowerShell.Cmdlets.NewVhd，HResult=-2146233088。`.artifacts/T102/fault-volumes/cf75923e-e034-4bf1-935b-7efe5737de97/probe.json`证实created/imageExists/mounted/formatted均false；没有挂载/格式化/填盘，没有安装工具或修改权限策略。该权限缺口只阻塞此真实磁盘满方案，不把整个Goal标blocked。
+- T102仍[~]，真实磁盘满待具备受控小容量卷权限后补验；T110启动扫描/预算、恢复与热退出仍未实现。接下来按目标的“先做不受影响且依赖就绪项”推进T103大文件模式（依赖T101已通过），不反复重跑同一New-VHD失败，不用mock磁盘满替代，不标G1或完整v1通过。
+
+## T102硬链接恢复点（历史，2026-11-01 16:38）
 
 - T102/F-FILE-003/009普通CtrlS硬链接确认已接真实IPC/Release：先begin_save回放已知结果，再只读检查授权目标/磁盘revision及link_count；不可Deserialize确认对象绑定完整快照摘要和canonical路径，No缓存CANCELLED且不写事务，Yes重验路径/revision/权限/身份后复用保护替换。原生确认等待不持有FileService锁，无新IPC字段/路径/权限。全部保存取消文案统一为“已取消保存”，兼容路径与硬链接确认的取消。
 - 自审补充原生DocumentId互斥：旧在途表只拒绝同requestId，等待弹窗释放锁后同文档不同requestId可能重复进入；现同文档保存/As/Copy在途均BUSY，不同文档及stat不受该文档等待阻塞。保留同ID异payload INVALID_INPUT、RAII释放与512条结果缓存。补普通保存documentVersion JS safe integer校验，不能通过非法大版本制造确认。

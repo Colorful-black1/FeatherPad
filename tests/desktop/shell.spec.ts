@@ -8,6 +8,7 @@ import { promisify } from 'node:util';
 import { verifyNativeSaveAll } from './save-all';
 import { verifyNativeOverwrite, type OverwriteAction } from './overwrite';
 import { verifyNativeHardlinks, type HardlinkAction } from './hardlinks';
+import { verifyNativeForcedExit } from './forced-exit';
 
 const runFile = promisify(execFile);
 
@@ -276,11 +277,15 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
       expect(createHash('sha256').update(await readFile(fixture)).digest('hex')).not.toBe(fixtureRecords[0]?.sha256);
       await page.screenshot({ path: path.join(evidence, `native-${profile}-documents.png`) });
     }
+    const browserVersion = browser.version();
+    const nativeUrl = page.url();
+    const forcedExit = verifyChooser && chooserAutomation === 'native-controls'
+      ? await verifyNativeForcedExit(page, child, dataDir) : null;
     await writeFile(path.join(evidence, `native-${profile}.json`), JSON.stringify({
       checkedAt: new Date().toISOString(),
       scope: 'Real Tauri/OS chooser/IPC/disk writes; test-only Ack delivery delay, no fake results/grants/IO; no IME/Windows scaling coverage',
       executable: path.relative(root, exe), sha256: hash, pid: child.pid,
-      profile, browserVersion: browser.version(), url: page.url(),
+      profile, browserVersion, url: nativeUrl,
       nativeChooserVerified: verifyChooser,
       multiOpenAndDraftVerified: verifyChooser,
       nativeSaveVerified: verifyChooser,
@@ -291,12 +296,14 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
       nativeSaveAllVerified: verifyChooser && chooserAutomation === 'native-controls',
       nativeExistingOverwriteVerified: verifyChooser && chooserAutomation === 'native-controls',
       nativeHardlinkConsentVerified: verifyChooser && chooserAutomation === 'native-controls',
+      nativeForcedExitVerified: forcedExit !== null,
+      forcedExit,
       chooserAutomation: verifyChooser ? chooserAutomation : 'disabled-explicitly',
       browserOffline: profile === 'release',
       checks: ['native-title', 'native-brand', 'tauri-ipc-present', 'light-theme', 'dark-theme', 'forged-grant-rejected', 'malformed-ref-rejected', 'forged-save-rejected', 'malformed-save-rejected', 'unknown-stat-rejected', 'ipc-destination-path-rejected', 'ungranted-plugin-rejected'],
     }, null, 2));
   } finally {
-    try { await browser?.close(); }
-    finally { child.kill(); }
+    try { if (browser?.isConnected()) await browser.close(); }
+    finally { if (child.exitCode === null && child.signalCode === null) child.kill(); }
   }
 });
