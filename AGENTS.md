@@ -9,7 +9,7 @@
 3. [任务清单](tasks/todo.md)：第一个依赖满足的未完成任务；[计划](tasks/plan.md) 给阶段关卡。
 4. 按feature ID只读 [功能矩阵](docs/FEATURE-MATRIX.md)、[能力地图](CAPABILITY-MAP.md) 和相关模块SPEC；跨进程先读 [CONTRACTS](docs/CONTRACTS.md)。UI参考 [UI-DESIGN](design/UI-DESIGN.md)。
 
-当前**M0/G0及M1/T101已通过，T102进行中**；真实Release保存/冲突/另存/副本/全部保存/已有覆盖/硬链接及保存进程终止已验证，多选授权单项失败已补正。T102真实磁盘满的64MiB VHD创建被权限策略拒绝，保留待验；按PROGRESS先推进依赖就绪的T103，不反复执行同一失败探针。恢复、G1及以后尚未完成。HTML原型不是CodeMirror/Tauri应用，演示保存不写源文件。M1不是最终完成，用户要求的完整v1必须推进M0–M5全部86项必需功能。
+当前**M0/G0及M1/T101已通过，T102待补磁盘满、T103进行中**；真实Release保存/覆盖/副本/批次/硬链接/进程终止、完整<20MiB降级编辑已验证。T102真实磁盘满的64MiB VHD创建被权限策略拒绝，保留待验；按PROGRESS继续T103.b分块只读/显式限量预览，不反复执行同一失败探针。恢复、G1及以后尚未完成。HTML原型不是CodeMirror/Tauri应用，演示保存不写源文件。M1不是最终完成，用户要求的完整v1必须推进M0–M5全部86项必需功能。
 
 ## 固定技术与环境
 

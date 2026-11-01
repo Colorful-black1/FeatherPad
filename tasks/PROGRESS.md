@@ -4,8 +4,8 @@
 
 - 产品名称：**轻羽 FeatherPad**。
 - 当前交付：完整产品方案、86项功能矩阵、模块规格、UI规范与离线交互原型、技术/本机环境文档、M0–M5实现计划、57个开发任务、agent执行入口。
-- 产品代码：**M0/G0及M1/T101通过，T102进行中**。真实Release已有文件保存、新目标首次另存/取消、保存副本、全部保存、既有目标覆盖/取消/碰撞、普通CtrlS硬链接确认、冲突与迟到Ack保护已验证；剩余故障/恢复等仍未完成，G1未通过，更不是完整v1。
-- 下一项：**T102 安全保存闭环**；M1通过后继续M2–M5。
+- 产品代码：**M0/G0及M1/T101通过，T102待补磁盘满，T103进行中**。真实Release保存/另存/副本/批次/覆盖/硬链接/进程终止及<20MiB正常/降级完整编辑已验证；分块/限量预览、恢复等仍未完成，G1未通过，更不是完整v1。
+- 下一项：**T103 大文件模式**；T102真实磁盘满保留权限缺口，M1通过后继续M2–M5。
 - 本次交付检查：详见 [DELIVERY-CHECK](../docs/DELIVERY-CHECK.md)，不代表产品关卡G0–G5通过。
 
 ## 已核查环境
@@ -21,7 +21,17 @@
 | 2026-11-01 / T002 | app-shell | React Shell/App/token/CSS、Web及原生测试 | typecheck/lint exit 0；Web 2 passed；真实WebView2 debug 1 passed | Web与原生范围分开，未测OS对话框 | .artifacts/T002/及docs/acceptance/M0.md | T002通过；下一T003 |
 | 2026-11-01 / T003.a–d（进行中） | F-DESK-013 | Rust models/grants/files/commands、AppManifest ACL、TS contracts/bridge、CodeMirror只读UI、测试与脚本 | typecheck/lint/TS单测3、Rust原生5、Web4、Release smoke1均exit 0；check.ps1 -Desktop exit 0；交互选择器三次超时，后次显式exit 1 | 原生Rust磁盘+junction，真实Release IPC/WebView2，Web mock独立 | docs/acceptance/M0.md；.artifacts/T003；.artifacts/T002/native-release.json | T003未完成OS选取验收，G0不勾选 |
 
-## 当前恢复点（2026-11-01 16:51，Asia/Shanghai）
+## 当前恢复点（2026-11-01 17:13，Asia/Shanghai）
+
+- T103.a/F-FILE-013完整可编辑降级已接真实纵向切片：`open_policy.rs`集中既定2/20/100MiB阈值，原始字节≤2MiB normal、>2且<20 degraded；≥20仅返回非可编辑策略，分块/显式预览尚待接线。初次stat后实际读取也有20MiB排他上界，读取后按真实snapshot大小重判，不截断后保存；Unicode单行>100,000字符触发degraded。FileService严格解码/二进制保护/换行映射不变；已有normal/degraded DTO不增字段。EditorDocument显示“纯文本 · 降级”与禁用能力提示；M1 UTF16/mixed只读策略保留。
+- 真实Rust：2MiB−1/2MiB/2MiB+1/20MiB−1读取完整字节，2MiB+1追加中文emoji后保护保存实际全字节正确；100,000/100,001个emoji长行按Unicode字符准确分类、不截断。纯策略另测20/100MiB±1，未把这些纯判断冒称大文件chunk/预览已实现。旧2MiB+1临时拒绝测试改为显式完整降级正例，≥20MiB完整可编辑拒绝仍保留；产品阈值/性能预算没有改动。
+- 本切片全部实际检查：typecheck/lint/TS31、全Web14（新增完整2MiB+1 mock缓冲编辑/SaveRequest）、Rust全套50、fmt --check/clippy --all-targets -D warnings、Release build、真实桌面综合1（52.3秒）均exit0。Web与原生编译分开。原生OS选择受控2MiB+1文件→显示降级/仍可编辑→插中文emoji→CtrlS→整份字节精确匹配，保存/覆盖/硬链接/强杀旧场景一起回归。helper只对新open-degraded角色准许单个恰为2097153 bytes、hash匹配的owned fixture，其余动作保原小文件限制；不添加路径IPC。
+- 补200% CSS zoom检查时定向Web1在page.goto 30s超时，尚未进功能/布局断言；trace显示main.tsx 13.8s、Vite env模块13.1s等待。尝试把webServer ready URL改入口模块后全量首批7项仍在goto超时，第二trace显示HTML 26.9s。失败trace分别保留为`.artifacts/T102/degraded-zoom-initial-trace.zip`与`degraded-zoom-entry-probe-trace.zip`。最终Web行为测试改为`pnpm build:web && pnpm exec vite preview --host 127.0.0.1 --port 1420 --strictPort`，使用与Tauri相同的构建前端，去掉开发模块转换链；typecheck/lint及全Web14 exit0（15.9秒），未改30s测试上限、retries=0或worker数。新版200%截图`degraded-web-200.png`已视觉检查，模式/保存按钮/编辑区可见且无横向溢出；不作为原生OS缩放或Release性能结论。
+- 当前Release：9961472 bytes，SHA256 `8A18D66E9589CA2EC46FEA65AA5AFA536A1F15F9C561C9B0A3E2895532FF0814`；`.artifacts/T102/native-release.json`的nativeDegradedEditingVerified及原生各项true，`native-release-degraded-editable.png`已视觉检查（测试历史root沿用T102，任务为T103）。Win11/WebView2 156.0.4314.58、浏览器offline重载；不声明目标机性能、IME/OS缩放或Win10。Vite单chunk 523.95kB/gzip168.71kB警告阈值未改，无新依赖/工具。
+- 最后文档静态检查（137文件/27 Markdown/141链接/86功能/57任务）与git diff --check均exit0；这些不算产品行为验收。最终通过后仅写入文档与提交，未再改产品/测试行为代码。
+- 下一T103.b：接既定large-readonly/chunked与head-preview/head联合类型、受限读取handle和流式revision、边界对齐/旧revision拒绝，再接只读分页UI与>100MiB显式前1MiB选择。需在后端文档lease区分完整只读与片段只读，普通保存及As/Copy都拒绝片段，不能只禁前端按钮；完整只读文件另存行为仍保留。当前≥20MiB仍安全拒绝完整编辑，不能标T103/F-FILE-013完成；动态编辑增长策略与大文件内存/首屏也待核验。T102磁盘满因New-VHD权限缺口仍[~]，不重复同一失败探针；T110恢复/预算/关闭保护待实现，G1及完整v1未通过。保存进程终止切片已提交`da0fe00`。
+
+## T102故障恢复点（历史，2026-11-01 16:51）
 
 - T102/F-FILE-009进程终止故障新增真实证据：`src-tauri/tests/save_interruption.rs`用同一Rust集成测试exe的私有stdin屏障，在TemporaryReady或Committed后确认子进程仍活着，再通过所持Child handle强杀。替换前原件未变、临时正文与original/body blob及摘要齐全、无replacing/committed；提交后新字节与committed保持；放行同屏障的正向对照实际提交且exit 0。两个被杀worker均exit 1，无ignored测试、无生产钩子/假IO。新FileService重开核对磁盘，不自动修复或冒称会话恢复。最终3项result在`.artifacts/T102/interruptions/{3851fc2f-de45-4b2f-9c3b-04f0a8fe4c74,a52a2f3f-de91-4c24-8ddb-6e7ba1ce6e6f,743f902a-0a65-4d2e-9fa6-8848cd82975c}/result.json`。
 - 真实Tauri Release强杀：`tests/desktop/forced-exit.ts`利用现有框架debug callbacks只暂缓一次真实SaveAck交付，不改返回/磁盘/grant。实际目标/body.bin字节及唯一committed receipt验证完成，UI仍正在保存时终止本轮spawn的Tauri子进程，终止后再核对目标/body/committed正确。`.artifacts/T102/native-release.json`新增nativeForcedExitVerified=true，forcedExit记录ackDelivered=false、实际signal=SIGTERM/exitCode=null及receipt/hash；这是Windows Node Child.kill结果，不冒称重启会话恢复或物理断电。

@@ -49,10 +49,79 @@ fn rejects_non_utf8_binary_and_oversize_without_lossy_decoding() {
         (vec![0xff, 0xfe, 0, 0xd8], ErrorCode::LossyEncoding),
         (vec![0xff, 0xfe, 65], ErrorCode::LossyEncoding),
         (vec![b'a', 0, b'b'], ErrorCode::IsBinary),
-        (vec![b'a'; 2 * 1024 * 1024 + 1], ErrorCode::TooLarge),
+        (vec![b'a'; 20 * 1024 * 1024], ErrorCode::TooLarge),
     ] {
         let (mut service, reference) = open_bytes(&bytes);
         assert_eq!(service.open_document(reference).unwrap_err().code, expected);
+    }
+}
+
+#[test]
+fn opens_complete_editable_text_at_the_real_two_and_twenty_mib_boundaries() {
+    use featherpad_lib::{models::SaveRequest, services::save::HardLinkPolicy};
+    let two = 2 * 1024 * 1024;
+    let twenty = 20 * 1024 * 1024;
+    for (size, mode) in [
+        (two - 1, "normal"),
+        (two, "normal"),
+        (two + 1, "degraded"),
+        (twenty - 1, "degraded"),
+    ] {
+        let mut bytes = vec![b'x'; size];
+        for index in (511..size).step_by(512) {
+            bytes[index] = b'\n';
+        }
+        let (mut service, reference) = open_bytes(&bytes);
+        let document = service.open_document(reference.clone()).unwrap();
+        assert_eq!(document.mode, mode);
+        assert_eq!(document.metadata.size_bytes as usize, size);
+        assert_eq!(
+            document.content.text.as_bytes(),
+            bytes,
+            "The editable document must never be truncated"
+        );
+        if size == two + 1 {
+            let mut text = document.content.text;
+            text.push_str("中文😀 end");
+            let (_, target) = service.grants.open_file(&reference).unwrap();
+            let journal = target.parent().unwrap().join("degraded-save");
+            let ack = service
+                .save_existing(
+                    SaveRequest {
+                        document_id: document.document_id,
+                        request_id: uuid::Uuid::new_v4().to_string(),
+                        document_version: 1,
+                        expected_disk_revision: document.metadata.disk_revision,
+                        text: text.clone(),
+                        format: document.format,
+                        newline_map: None,
+                    },
+                    &journal,
+                    HardLinkPolicy::RequireConfirmation,
+                )
+                .unwrap();
+            assert_eq!(fs::read(target).unwrap(), text.as_bytes());
+            assert_eq!(ack.size_bytes as usize, text.len());
+        }
+    }
+}
+
+#[test]
+fn unicode_long_lines_degrade_without_truncation_or_implicit_readonly() {
+    for (length, mode) in [(100_000, "normal"), (100_001, "degraded")] {
+        let text = "😀".repeat(length);
+        let (mut service, reference) = open_bytes(text.as_bytes());
+        let document = service.open_document(reference).unwrap();
+        assert_eq!(document.mode, mode);
+        assert_eq!(document.content.text, text);
+        assert!(!document.metadata.is_read_only);
+        assert_eq!(
+            document
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("100,000")),
+            mode == "degraded"
+        );
     }
 }
 

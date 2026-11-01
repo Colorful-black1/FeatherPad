@@ -7,6 +7,7 @@ pub mod services {
     pub mod files;
     pub mod grants;
     pub mod identity;
+    pub mod open_policy;
     pub mod save;
     pub mod save_as;
     pub mod save_journal;

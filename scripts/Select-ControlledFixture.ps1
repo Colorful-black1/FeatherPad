@@ -19,7 +19,7 @@ if (-not $manifestPath.StartsWith($artifactRoot + '\', [StringComparison]::Ordin
 }
 $record = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
 $action = if ($record.action) { [string]$record.action } else { 'open' }
-if ($action -notin @('open', 'save', 'cancel', 'overwrite', 'confirm-system', 'inspect-overwrite', 'confirm-overwrite', 'reject-overwrite', 'inspect-hardlink', 'confirm-hardlink', 'reject-hardlink')) { throw 'Unexpected native chooser action.' }
+if ($action -notin @('open', 'open-degraded', 'save', 'cancel', 'overwrite', 'confirm-system', 'inspect-overwrite', 'confirm-overwrite', 'reject-overwrite', 'inspect-hardlink', 'confirm-hardlink', 'reject-hardlink')) { throw 'Unexpected native chooser action.' }
 $fixtures = @($record.fixtures)
 if (($action -eq 'cancel' -and $fixtures.Count -ne 0) -or ($action -ne 'cancel' -and ($fixtures.Count -lt 1 -or $fixtures.Count -gt 8)) -or ($action -notin @('open', 'cancel') -and $fixtures.Count -ne 1)) { throw 'Unexpected chooser fixture count.' }
 $verified = @()
@@ -34,7 +34,9 @@ foreach ($fixture in $fixtures) {
         if (-not $item.PSIsContainer) { throw 'Controlled destination parent is not a directory.' }
     } else {
         $item = Get-Item -LiteralPath $fixturePath
-        if ($item.Length -gt 1024 -or $item.PSIsContainer) { throw 'Unexpected chooser fixture.' }
+        if ($action -eq 'open-degraded') {
+            if ($item.Length -ne 2097153 -or $item.PSIsContainer) { throw 'Unexpected controlled degraded fixture size/type.' }
+        } elseif ($item.Length -gt 1024 -or $item.PSIsContainer) { throw 'Unexpected chooser fixture.' }
     }
     $ancestor = $item
     while ($ancestor.FullName -ne $projectRoot) {
@@ -239,7 +241,7 @@ public static class FeatherPadChooserControls {
     }
 }
 "@
-if ($action -in @('open', 'save', 'cancel', 'overwrite')) {
+if ($action -in @('open', 'open-degraded', 'save', 'cancel', 'overwrite')) {
     [FeatherPadChooserControls]::Select([int]$record.processId, $selectionText, ($action -eq 'cancel'), ($action -in @('save', 'overwrite')), ($action -eq 'overwrite'))
 } else {
     $buttonId = if ($action -in @('inspect-overwrite', 'inspect-hardlink')) { 0 } elseif ($action -in @('reject-overwrite', 'reject-hardlink')) { 7 } else { 6 }

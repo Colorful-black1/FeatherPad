@@ -34,7 +34,7 @@ export function EditorDocument({ registry, id, autoFocus }: { registry: Document
   }, [id, registry, autoFocus, readOnlyReason]);
   if (!document) return null;
   return <section className="document-view" role="tabpanel" id={`panel-${id}`} aria-labelledby={`tab-${id}`} tabIndex={-1}>
-    <header className="document-heading"><span>{document.summary.displayPath ?? document.summary.title}</span><span>{document.summary.readOnlyReason ? '只读' : '文本'}</span></header>
+    <header className="document-heading"><span>{document.summary.displayPath ?? document.summary.title}</span><span>{document.summary.readOnlyReason ? '只读' : document.source?.mode === 'degraded' ? '纯文本 · 降级' : '文本'}</span></header>
     {document.summary.readOnlyReason && <p className="notice">{document.summary.readOnlyReason}</p>}
     {document.source?.warnings.map(warning => <p className="notice" key={warning}>{warning}</p>)}
     {error && <p className="notice" role="alert">{error}</p>}

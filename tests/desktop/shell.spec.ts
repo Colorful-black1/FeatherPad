@@ -9,6 +9,7 @@ import { verifyNativeSaveAll } from './save-all';
 import { verifyNativeOverwrite, type OverwriteAction } from './overwrite';
 import { verifyNativeHardlinks, type HardlinkAction } from './hardlinks';
 import { verifyNativeForcedExit } from './forced-exit';
+import { verifyNativeDegradedEditing } from './degraded';
 
 const runFile = promisify(execFile);
 
@@ -270,6 +271,11 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
           await writeFile(path.join(evidence, `native-${profile}-hardlink-${++hardlinkStep}-${action}.json`), result.stdout.trim());
         }
         await verifyNativeHardlinks(page, dataDir, hardlinkAction, evidence);
+        await verifyNativeDegradedEditing(page, dataDir, async target => {
+          await writeFile(manifest, JSON.stringify({ ...selectionRecord, action: 'open-degraded',
+            fixtures: [{ path: target, sha256: createHash('sha256').update(await readFile(target)).digest('hex') }] }));
+          await runFile('powershell.exe', ['-NoProfile', '-File', helper, '-Manifest', manifest], { windowsHide: true, timeout: 25_000 });
+        }, evidence);
       }
       if (chooserAutomation !== 'native-controls') {
         expect(createHash('sha256').update(await readFile(second)).digest('hex')).toBe(fixtureRecords[1]?.sha256);
@@ -297,6 +303,7 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
       nativeExistingOverwriteVerified: verifyChooser && chooserAutomation === 'native-controls',
       nativeHardlinkConsentVerified: verifyChooser && chooserAutomation === 'native-controls',
       nativeForcedExitVerified: forcedExit !== null,
+      nativeDegradedEditingVerified: verifyChooser && chooserAutomation === 'native-controls',
       forcedExit,
       chooserAutomation: verifyChooser ? chooserAutomation : 'disabled-explicitly',
       browserOffline: profile === 'release',
