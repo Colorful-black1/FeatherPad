@@ -68,6 +68,14 @@ impl PreparedCreation {
     }
 
     pub fn commit(self, service: &mut FileService) -> Result<SaveAsAck, AppError> {
+        if let Some(owner) = service.documents.owner_at(self.target.path()) {
+            if owner != self.request.document_id || self.intent == SaveIntent::Copy {
+                return Err(AppError::new(
+                    ErrorCode::Busy,
+                    "目标路径已由打开的文档占用，请选择其他路径。",
+                ));
+            }
+        }
         self.target
             .require_missing()
             .map_err(|error| self.journal.failure(error, "target-appeared"))?;

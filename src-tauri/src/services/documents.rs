@@ -16,6 +16,16 @@ pub struct DocumentRegistry {
 }
 
 impl DocumentRegistry {
+    pub fn owner_of(&self, identity: &FileIdentity) -> Option<&str> {
+        self.identities.get(identity).map(String::as_str)
+    }
+
+    pub fn owner_at(&self, path: &std::path::Path) -> Option<&str> {
+        self.documents.iter().find_map(|(id, document)| {
+            (document.path == path || document.path.canonicalize().ok().as_deref() == Some(path))
+                .then_some(id.as_str())
+        })
+    }
     pub fn register(&mut self, lease: DocumentLease) -> String {
         if let Some(id) = self.identities.get(&lease.identity) {
             return id.clone();

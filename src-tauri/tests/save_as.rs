@@ -192,3 +192,120 @@ fn kernel_move_without_replace_flag_preserves_an_existing_destination() {
     assert_eq!(fs::read(&destination).unwrap(), b"external body");
     assert_eq!(fs::read(&temporary).unwrap(), b"new body");
 }
+
+#[test]
+fn overwriting_another_open_document_or_copying_over_the_source_is_refused() {
+    use featherpad_lib::services::{grants::GrantKind, save_as::ExistingDestination};
+    let root = root();
+    let mut service = FileService::default();
+    let path = root.join("open target.txt");
+    fs::write(&path, b"opened target").unwrap();
+    let reference = service
+        .grants
+        .register_selection(&path, GrantKind::File)
+        .unwrap();
+    let opened = service.open_document(reference).unwrap();
+    assert_eq!(
+        ExistingDestination::capture(
+            &mut service,
+            &path,
+            &uuid::Uuid::new_v4().to_string(),
+            SaveIntent::SaveAs
+        )
+        .err()
+        .unwrap()
+        .code,
+        ErrorCode::Busy
+    );
+    assert_eq!(
+        ExistingDestination::capture(&mut service, &path, &opened.document_id, SaveIntent::Copy)
+            .err()
+            .unwrap()
+            .code,
+        ErrorCode::InvalidInput
+    );
+    assert_eq!(fs::read(path).unwrap(), b"opened target");
+}
+
+#[test]
+fn overwrite_confirmation_is_bound_to_the_captured_revision() {
+    use featherpad_lib::services::{save::HardLinkPolicy, save_as::ExistingDestination};
+    let root = root();
+    let mut service = FileService::default();
+    let path = root.join("overwrite.txt");
+    fs::write(&path, b"old target").unwrap();
+    let request = request(SaveIntent::SaveAs);
+    let destination =
+        ExistingDestination::capture(&mut service, &path, &request.document_id, request.intent)
+            .unwrap();
+    fs::write(&path, b"changed while asking confirmation").unwrap();
+    assert_eq!(
+        destination
+            .commit_confirmed(
+                &mut service,
+                request,
+                &root.join("journal"),
+                HardLinkPolicy::RequireConfirmation
+            )
+            .unwrap_err()
+            .code,
+        ErrorCode::Conflict
+    );
+    assert_eq!(
+        fs::read(path).unwrap(),
+        b"changed while asking confirmation"
+    );
+}
+
+#[test]
+fn successful_overwrite_switches_source_only_for_save_as_and_copy_keeps_source() {
+    use featherpad_lib::services::{
+        grants::GrantKind, save::HardLinkPolicy, save_as::ExistingDestination,
+    };
+    for intent in [SaveIntent::SaveAs, SaveIntent::Copy] {
+        let root = root();
+        let mut service = FileService::default();
+        let source = root.join("source.txt");
+        let target = root.join("target.txt");
+        fs::write(&source, b"source unchanged").unwrap();
+        fs::write(&target, b"old target").unwrap();
+        let reference = service
+            .grants
+            .register_selection(&source, GrantKind::File)
+            .unwrap();
+        let opened = service.open_document(reference).unwrap();
+        let mut request = request(intent);
+        request.document_id = opened.document_id.clone();
+        let destination =
+            ExistingDestination::capture(&mut service, &target, &request.document_id, intent)
+                .unwrap();
+        let result = destination
+            .commit_confirmed(
+                &mut service,
+                request,
+                &root.join("journal"),
+                HardLinkPolicy::RequireConfirmation,
+            )
+            .unwrap();
+        assert_eq!(fs::read(&source).unwrap(), b"source unchanged");
+        assert_eq!(fs::read(&target).unwrap(), "新正文😀\r\n末行".as_bytes());
+        let active = service.stat_document(&opened.document_id).unwrap();
+        assert_eq!(
+            PathBuf::from(&active.display_path),
+            if intent == SaveIntent::SaveAs {
+                target
+            } else {
+                source
+            }
+        );
+        assert_eq!(
+            active.disk_revision,
+            if intent == SaveIntent::SaveAs {
+                result.ack.disk_revision.clone()
+            } else {
+                opened.metadata.disk_revision
+            }
+        );
+        assert_eq!(result.document_id, opened.document_id);
+    }
+}
