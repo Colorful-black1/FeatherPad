@@ -1,0 +1,32 @@
+# Build and dependency outputs
+node_modules/
+dist/
+src-tauri/target/
+.artifacts/
+.cache/
+coverage/
+playwright-report/
+test-results/
+
+# Local settings and user data
+.env
+.env.*
+!.env.example
+*.local.json
+portable.flag
+data/
+*.log
+
+# Secrets / signing material
+*.pem
+*.key
+*.pfx
+*.p12
+
+# OS / editor caches
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/

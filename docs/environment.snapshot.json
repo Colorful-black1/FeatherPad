@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-11-01T01:12:00+08:00",
+  "timeNote": "会话检查日期；非精确采样时间。具体命令输出见 ENVIRONMENT.md。",
+  "projectRoot": "E:\\Codeing\\ai-workspace\\featherpad",
+  "os": {"name": "Microsoft Windows 11 Pro", "version": "10.0.26100", "architecture": "64-bit"},
+  "hardware": {"cpu": "12th Gen Intel(R) Core(TM) i5-12600KF", "physicalMemoryBytes": 34164097024, "driveEFreeBytesAtProbe": 193143844864},
+  "tools": {
+    "powershell": {"path": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe", "version": "5.1.26100.2161", "verified": true, "pwshOnPath": false},
+    "nodeSelected": {"path": "E:\\Codeing\\nvm\\v22.13.0\\node.exe", "version": "22.13.0", "verified": true},
+    "nodeOnPath": {"path": "E:\\Codeing\\nvm\\v25.1.0\\node.exe", "version": "25.1.0", "verified": true, "use": false},
+    "pnpm": {"nodeScript": "E:\\Codeing\\node\\node_global\\node_modules\\pnpm\\bin\\pnpm.cjs", "version": "10.32.1", "verified": true},
+    "git": {"path": "C:\\Program Files\\Git\\cmd\\git.exe", "version": "2.45.1.windows.1", "verified": true},
+    "rustc": {"path": "C:\\Users\\abcd\\.cargo\\bin\\rustc.exe", "version": "1.99.1", "commit": "58cf8f9c3 2026-10-13", "verified": true},
+    "cargo": {"path": "C:\\Users\\abcd\\.cargo\\bin\\cargo.exe", "version": "1.99.1", "verified": true},
+    "rustToolchain": {"name": "stable-x86_64-pc-windows-msvc", "home": "C:\\Users\\abcd\\.rustup", "verified": true},
+    "msvc": {"installationPath": "E:\\Codeing\\sdks\\vs2022", "buildToolsVersion": "17.14.37614.0", "toolsetVersion": "14.44.35207", "vcvars64": "E:\\Codeing\\sdks\\vs2022\\VC\\Auxiliary\\Build\\vcvars64.bat", "componentConfirmedByVswhere": true},
+    "windowsSdk": {"path": "C:\\Program Files (x86)\\Windows Kits\\10", "includeVersion": "10.0.26100.0", "verifiedDirectory": true},
+    "webview2": {"path": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\156.0.4314.50", "version": "156.0.4314.50", "verifiedDirectory": true},
+    "chrome": {"path": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe", "verifiedDirectory": true},
+    "edge": {"path": "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe", "verifiedDirectory": true},
+    "python": {"path": "E:\\Codeing\\python\\python.exe", "version": null, "requiredForProduct": false}
+  },
+  "policy": {
+    "preferExisting": true,
+    "newToolInstallRoot": "E:\\Codeing\\featherpad-dev",
+    "newCacheRoot": "E:\\Codeing\\featherpad-dev\\cache",
+    "newToolsInstalledThisSession": [],
+    "noMachinePathChanges": true,
+    "nativeTauriCompilationVerified": false
+  }
+}

@@ -1,0 +1,73 @@
+/* 轻羽 FeatherPad · semantic design tokens · 4px spacing foundation */
+:root {
+  color-scheme: light;
+  --bg-app: #f5f4f0;
+  --bg-title: #eae9e3;
+  --bg-sidebar: #efeee8;
+  --bg-editor: #faf9f6;
+  --bg-surface: #ffffff;
+  --bg-hover: #e5e6dd;
+  --bg-selected: #dfe7d9;
+  --bg-code: #eeefe8;
+  --text-primary: #292d27;
+  --text-secondary: #62675e;
+  --text-muted: #636b5e;
+  --accent: #45643b;
+  --accent-hover: #354f2d;
+  --accent-soft: #e5ecdf;
+  --border: #d7d9cf;
+  --border-strong: #a3aa99;
+  --warning: #795315;
+  --warning-bg: #faf0d7;
+  --danger: #a33c33;
+  --focus: #45643b;
+  --syntax-blue: #346477;
+  --syntax-brown: #8a592e;
+  --shadow: 0 12px 40px #202b2326;
+  --font-ui: "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif;
+  --font-mono: "Cascadia Code", "Cascadia Mono", Consolas, "SFMono-Regular", "Microsoft YaHei UI", monospace;
+  --font-size: 13px;
+  --editor-size: 14px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --row-height: 32px;
+  --tab-height: 40px;
+  --sidebar-width: 232px;
+  --rail-width: 48px;
+  --motion: 100ms;
+}
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg-app: #222620;
+  --bg-title: #252a23;
+  --bg-sidebar: #282d25;
+  --bg-editor: #20251f;
+  --bg-surface: #2c3229;
+  --bg-hover: #353d30;
+  --bg-selected: #3b4c33;
+  --bg-code: #2c3328;
+  --text-primary: #e0e5d9;
+  --text-secondary: #b5bdac;
+  --text-muted: #a1ad97;
+  --accent: #b0ca98;
+  --accent-hover: #c7dfb1;
+  --accent-soft: #35442d;
+  --border: #3d4537;
+  --border-strong: #78886d;
+  --warning: #ecd095;
+  --warning-bg: #403720;
+  --danger: #efaa9f;
+  --focus: #b0ca98;
+  --syntax-blue: #a4c8d6;
+  --syntax-brown: #d9b78b;
+  --shadow: 0 12px 40px #00000050;
+}
+[data-density="compact"] { --row-height: 28px; --tab-height: 32px; }
+@media (prefers-reduced-motion: reduce) { :root { --motion: 0ms; } }
