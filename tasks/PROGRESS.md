@@ -4,8 +4,8 @@
 
 - 产品名称：**轻羽 FeatherPad**。
 - 当前交付：完整产品方案、86项功能矩阵、模块规格、UI规范与离线交互原型、技术/本机环境文档、M0–M5实现计划、57个开发任务、agent执行入口。
-- 产品代码：**M0/G0、M1/T101、T103及T104通过；T102仅真实磁盘满待权限补验**。真实Release保存/另存/副本/批次/覆盖/硬链接/进程终止、<20MiB正常/降级编辑、20MiB分块只读、>100MiB显式预览，以及单根懒加载目录树均已验证；恢复和其余M1项仍未完成，G1未通过，更不是完整v1。
-- 下一项：**T106 真实编辑内核**；T102真实磁盘满保留权限缺口，并使T105暂不满足依赖。M1通过后继续M2–M5。
+- 产品代码：**M0/G0、M1/T101、T103、T104及T106通过；T102仅真实磁盘满待权限补验**。真实Release保存/另存/副本/批次/覆盖/硬链接/进程终止、<20MiB正常/降级编辑、20MiB分块只读、>100MiB显式预览、单根懒加载目录树，以及CodeMirror编辑、语言高亮、剪贴板和系统中文IME均已验证；恢复和其余M1项仍未完成，G1未通过，更不是完整v1。
+- 下一项：**T108 文件内搜索替换**，依赖T106已满足；T102真实磁盘满保留权限缺口，并使T105暂不满足依赖。M1通过后继续M2–M5。
 - 本次交付检查：详见 [DELIVERY-CHECK](../docs/DELIVERY-CHECK.md)，不代表产品关卡G0–G5通过。
 
 ## 已核查环境
@@ -21,7 +21,16 @@
 | 2026-11-01 / T002 | app-shell | React Shell/App/token/CSS、Web及原生测试 | typecheck/lint exit 0；Web 2 passed；真实WebView2 debug 1 passed | Web与原生范围分开，未测OS对话框 | .artifacts/T002/及docs/acceptance/M0.md | T002通过；下一T003 |
 | 2026-11-01 / T003.a–d（进行中） | F-DESK-013 | Rust models/grants/files/commands、AppManifest ACL、TS contracts/bridge、CodeMirror只读UI、测试与脚本 | typecheck/lint/TS单测3、Rust原生5、Web4、Release smoke1均exit 0；check.ps1 -Desktop exit 0；交互选择器三次超时，后次显式exit 1 | 原生Rust磁盘+junction，真实Release IPC/WebView2，Web mock独立 | docs/acceptance/M0.md；.artifacts/T003；.artifacts/T002/native-release.json | T003未完成OS选取验收，G0不勾选 |
 
-## T104 单根目录树完成（最新，2026-11-01）
+## T106 真实编辑内核完成（最新，2026-11-01）
+
+- F-EDIT-001、F-EDIT-002、F-EDIT-003、F-EDIT-008、F-EDIT-018完成。文档registry继续独占CodeMirror事务与文档历史；标准编辑、两套redo快捷键、按词/行移动、全选、剪贴板、保存后保留undo、单事务多行空格缩进和2/4/8视觉列均已接真实编辑器。React只接收状态与指标通知，不在每键维护全文。
+- 状态栏按Unicode code point显示字符数和选区字符数，按tabSize计算视觉列；纯光标移动不发布正文快照。括号匹配与自动配对使用独立Compartment，可分别关闭；冒号等输入法组合内容由CodeMirror composition事务提交，不触发重复配对。
+- 本地语言包按需加载并精确锁定：纯文本、Markdown、JSON/JSONC、XML、HTML、CSS、JavaScript/TypeScript、SQL、YAML、Java、Rust、Python、Shell、TOML、INI/Properties及日志纯文本回退。扩展名检测、手动语言选择、另存为后自动重判和过期异步加载丢弃均已覆盖；语言/缩进/括号设置及选择、undo跨文档切换保持。Java只声明高亮与括号能力，不暗示formatter/LSP。
+- 实际检查：依赖用`pnpm add --save-exact --ignore-scripts`加入并审查脚本；`pnpm typecheck`、`pnpm lint` exit0，`pnpm test:unit` 63 passed，`pnpm test:integration`为Rust 66 passed且100k benchmark显式ignored，`pnpm test:e2e` 22 passed，`pnpm build` exit0，`pnpm test:desktop` 1 passed（56.0秒）。最终`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`git diff --check`均exit0。`pnpm audit --audit-level high` exit1只因既有ESLint→minimatch开发依赖moderate，未自动强制修复。
+- 原生证据：`.artifacts/T102/native-release.json`的`nativeEditorVerified:true`，`nativeEditorObservation`记录状态/选区、undo/redo、词导航、缩进、Java高亮/手动选择、括号开关、WebView2 composition和系统剪贴板粘贴均为true；`.artifacts/T106/native-release-editor.png`、`editor-web.png`已视觉检查。随后用Windows Computer Use在真实Release CodeMirror中切到微软拼音，观察到OS候选窗显示拼音`h`和候选“好”，按空格提交后正文`z好`、行1列3、2字符；该桌面观测记录在`.artifacts/T106/os-ime-observation.json`，未使用生产测试钩子。
+- 当前Release：`src-tauri/target/release/featherpad.exe`，10,359,808 bytes，SHA256 `883DEBB2CC260B5AF276FB4CB831E2F9D8E0F23527DCA050A8A9C7787A86DFA7`。构建仍有单个主JS chunk 594.21kB（gzip 191.73kB）的Vite警告，未修改阈值。此证据是Win11/WebView2真实进程与IME，不外推Win10、OS缩放或全部输入法；下一项T108，G1仍未通过。
+
+## T104 单根目录树完成（此前切片，2026-11-01）
 
 - F-WORK-001、F-WORK-003完成。`choose_folder`现在返回内存目录grant和安全根显示名；树只读取授权根的直接子项，展开目录时才按需请求下一层。替换根不清dirty文档、不重建CodeMirror；树文件点击复用真实`open_document`，工具栏和欢迎页均可打开/替换根。空根、空子目录、无权限后的行内错误与重试、刷新、当前文件逐层定位、隐藏项开关、只读/链接标记和树形键盘导航均已实现。
 - Rust `list_directory`默认200、最大1000条，文件夹优先、自然排序；cursor绑定grant根、canonical目录、目录项签名、隐藏过滤和偏移，目录变化后旧cursor返回CONFLICT。目录解析再次校验grant、相对路径和canonical边界；枚举期间以不共享删除的句柄锁住父路径链和目录本身，并对打开句柄的最终路径复核，缩小junction换名竞态。重复选择同一canonical根复用原grant，使原先打开文档仍可定位且不扩大授权。

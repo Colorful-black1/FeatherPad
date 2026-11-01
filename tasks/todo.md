@@ -1,7 +1,7 @@
 # 开发任务清单
 
 当前阶段：**M0/G0已通过，开始M1**。`[ ]` 待做，`[~]` 进行中，`[x]` 通过验收。禁止仅因代码存在就打勾；关联 [计划](plan.md)、[进度](PROGRESS.md) 与 [完整功能矩阵](../docs/FEATURE-MATRIX.md)。范围写 `F-FILE-001..005` 表示含端点的连续ID。
-执行更新（2026-11-01）：T000–T005/G0、T101、T103与T104通过；T102除真实磁盘满外已完成。T104已用真实Release验证空/无权限根恢复、懒加载、205项分页、定位、刷新、链接越界拒绝和dirty保留。下一项T106真实编辑内核；T105仍依赖未完成T102，G1尚未通过，不代表MVP或完整v1。
+执行更新（2026-11-01）：T000–T005/G0、T101、T103、T104与T106通过；T102除真实磁盘满外已完成。T106已用真实Release验证CodeMirror事务编辑、选区/字数、undo/redo、缩进、语言高亮、括号配对/匹配、剪贴板，以及Windows微软拼音候选窗提交；T105仍依赖未完成T102。下一项为依赖已满足的T108文件内搜索替换；G1尚未通过，不代表MVP或完整v1。
 
 ## 执行约定
 
@@ -38,7 +38,7 @@ Q/R/W/D/B命令已建立；具体通过范围见PROGRESS，命令存在不等于
 | [x] T103 大文件模式 | T101 | F-FILE-013 | 完整<20MiB降级/长行、≥20MiB单页分块、>100MiB显式前1MiB预览、动态增长重判、片段保存/As/Copy后端拒绝 | src-tauri/src/services/{open_policy,files,stream_snapshot}.rs、src/features/editor/{LargeFileView,EditorDocument}.tsx | TS33/Web16/Rust61/clippy/fmt/typecheck/lint/build exit0；真实Release1 exit0。原生20MiB分块前后页、100MiB+1显式预览、哈希不变；测量首屏上界1.12s/预览动作0.36s，进程树348–444MiB超M5目标，M5继续复核。见M1验收 |
 | [x] T104 单根目录树 | T101 | F-WORK-001,F-WORK-003 | 打开根、懒加载/分页/排序/刷新/当前文件定位，空和拒绝态完整 | src/features/workspace/Explorer.tsx、src/features/workspace/store.ts、src-tauri/src/services/directories.rs | typecheck/lint、TS38、Rust66（100k基准另跑）、Web17、Release build、真实桌面1（55.2秒）exit0；原生空/无权限根恢复、205项分页、刷新保展开、junction拒绝、dirty保留；100k首分页159.669ms<300ms。见M1验收 |
 | [ ] T105 树内变更 | T102,T104 | F-FILE-017,F-WORK-004..005 | 新建/重命名/回收站，dirty决策、保留名/碰撞/失败无假成功 | src/features/workspace/file-actions.ts、src/features/workspace/EntryInput.tsx、src-tauri/src/services/file_ops.rs | Q/R/D：失败不移除树项、无永久删除回退 |
-| [ ] T106 真实编辑内核 | T101 | F-EDIT-001..003,F-EDIT-008,F-EDIT-018 | CM事务/undo/缩进/括号/高亮及手动语言，IME正常 | src/features/editor/Editor.tsx、src/features/editor/extensions.ts、src/features/editor/languages.ts、src/features/editor/status.ts | Q/W/D：中文输入法、选区粘贴、undo和保存历史 |
+| [x] T106 真实编辑内核 | T101 | F-EDIT-001..003,F-EDIT-008,F-EDIT-018 | CM事务/undo/缩进/括号/高亮及手动语言，IME正常 | src/features/editor/{documents,editor-state,EditorDocument,EditorStatus,editor-metrics,editor-language,language-loader}.ts/tsx | typecheck/lint、TS63、Rust66+1 ignored、Web22、Release build、真实桌面1（56.0秒）exit0；真实WebView2/CDP composition、系统剪辑板及Windows微软拼音候选窗均验证。见M1验收 |
 | [ ] T107 标签与关闭保护 | T102,T106 | F-EDIT-013,F-FILE-018 | 每组单预览、dirty固定、关闭保存/放弃/取消不丢内容 | src/features/editor/tabs.ts、src/features/editor/TabStrip.tsx、src/features/editor/close.ts | Q/W/D：预览复用、取消、保存失败、放弃清理恢复 |
 | [ ] T108 文件内搜索替换 | T106 | F-SEARCH-001..003 | 一致正则/整词语法，选区范围、计数、替换单次undo | src/features/search-tools/FindBar.tsx、src/features/search-tools/pattern.ts、src/workers/find.worker.ts | Q/W/D：Unicode、零长度、非法式、捕获组、只读 |
 | [ ] T109 命令入口与快捷键 | T107 | F-EDIT-017 | CtrlP/CtrlShiftP/快捷键全指向同一命令注册，启用态/焦点正确 | src/shared/commands/registry.ts、src/shared/ui/CommandPalette.tsx、src/app/register-commands.ts | Q/W/D：键盘循环/冲突提示/Escape恢复焦点 |

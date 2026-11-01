@@ -1,12 +1,14 @@
 # SPEC-editor：编辑、文档视图与导航
 
-> 模块 `editor`；业务依赖仅 `file-core`。状态：待实现、待验证，未声称用户已批准。不得依赖workspace/markdown/search-tools/desktop；这些能力通过扩展/命令注入接入。
+> 模块 `editor`；业务依赖仅 `file-core`。状态：M1/T106已实现并验收F-EDIT-001/002/003/008/018；无声明的其余编辑能力仍待实现/验证。不得依赖workspace/markdown/search-tools/desktop；这些能力通过扩展/命令注入接入。
 
 ## Objective、技术与追踪
 
 以CodeMirror6提供快速可靠的文本编辑和轻量查看，维持一个文档多视图的一致性。拥有 F-EDIT-001–020，验收索引见 [矩阵](../FEATURE-MATRIX.md)。M1：001–003/008/012/013/017/018；M2：004–007/009–011/014–016；M3：019/020。文件保存/编码/冲突契约见 [file-core](SPEC-file-core.md)。
 
 前端 React+TypeScript 管理文档/视图；CodeMirror6事务是唯一正文修改入口。每次键入、光标移动、选择、普通undo不调用Rust；磁盘读取、保存、恢复快照、图片资源访问才经file-core IPC。高亮/补全采用本地模块，按语言懒加载，无网络/LSP。
+
+T106实际纵切使用`documents.ts`作为唯一document registry，CodeMirror `EditorState`持有正文、selection和undo，React只订阅元数据与派生指标。公共编辑键、`indentWithTab`、CtrlY/CtrlShiftZ、括号匹配、自动配对和语言各自通过Compartment重配；2/4/8空格Tab宽度与语言/括号设置在文档切换时保留。语言解析支持F-EDIT-018必需列表、未知扩展名纯文本回退、手动选择及另存新扩展名后的自动重判；动态import失败保留纯文本可编辑能力。过期transaction、只读修改和缺失文档仍由registry拒绝。
 
 ## Feature-ID 追踪清单
 
@@ -95,10 +97,10 @@ F-EDIT-020 还拥有HTML文件的安全静态预览：源码/预览切换使用�
 
 推荐结构 `src/features/editor/{documents,views,commands,extensions}/`、`tests/unit/editor/`、`tests/integration/editor/`、`tests/e2e/editor/`，只约定未创建。风格：命令数据与React视图分离；以显式documentId/viewId区分，不使用活动标签全局变量推断编辑目标；事务带origin，禁止直接改DOM当正文。单元测试reducer/版本/区间映射，集成用真实CodeMirror验证组合事务和扩展，e2e在Windows WebView2验证IME/拖放/快捷键/焦点；像素截图只能补充行为测试。
 
-`pnpm test:e2e`仅覆盖Web/mock bridge；Windows真实Tauri/WebView2的IME/焦点/图片隔离使用待建立的 `pnpm test:desktop -- editor`，不以mock冒充平台通过。命令约定（未搭建/未执行）：`pnpm test:unit -- editor`、`pnpm test:integration -- editor`、`pnpm test:e2e -- editor`、`pnpm test`、`pnpm lint`、`pnpm typecheck`、`pnpm build`；相关Rust桥接 `cargo test --manifest-path src-tauri/Cargo.toml editor`，通用 `cargo fmt --manifest-path src-tauri/Cargo.toml --check`、`cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings`。
+`pnpm test:e2e`仅覆盖Web/mock bridge；Windows真实Tauri/WebView2的编辑和IME已接入`pnpm test:desktop`，仍未覆盖的焦点/图片隔离不能由Web mock代替。M0已建立`pnpm test:unit`、`pnpm test:integration`、`pnpm test:e2e`、`pnpm lint`、`pnpm typecheck`、`pnpm build`和Rust fmt/clippy/test；T106实际通过typecheck/lint、63项TS单测、Rust 66项加1个显式ignored基准、22项Web E2E、Release构建及真实桌面1项。CDP composition记录只证明composition事务；另以Windows Computer Use操作真实微软拼音候选窗，提交“好”后核验正文/状态栏，证据见M1验收。
 
 ## Boundaries 与未决风险
 
 Always：事务版本检查、可撤销变更、dirty/只读准确、扩展注入保持单向依赖。Ask first（后续实施变更）：引入LSP/网络候选/第三分栏、改撤销与恢复保证、提高大文件能力阈值。Never：每键调用Rust、共享文件两份独立正文、图片脚本执行、保存成功清除后续输入。
 
-待验证：CodeMirror多视图共享undo、IME与多光标交互、列选择宽字符、分块大文件的搜索/滚动、diff worker取消、WebView2图片隔离。性能数据必须实测，不能从框架选择推导。
+T106已验：单视图CodeMirror事务/undo、选区状态、Tab多行缩进、括号开关、语言高亮/手动选择、系统剪贴板、WebView2 composition和Windows微软拼音候选窗。仍待验：多视图共享undo、IME与多光标组合、列选择宽字符、分块大文件搜索/滚动、T108文件内搜索替换、T109命令入口、T114视图设置与无障碍、diff worker取消和WebView2图片/HTML隔离。性能数据必须实测，不能从框架选择推导。

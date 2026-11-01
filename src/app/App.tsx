@@ -3,6 +3,8 @@ import type { KeyboardEvent } from 'react';
 import { Shell } from '../shared/ui/Shell';
 import { files } from '../bridge/files';
 import { EditorDocument } from '../features/editor/EditorDocument';
+import { EditorStatus } from '../features/editor/EditorStatus';
+import { languageLabel, languageOptions, type LanguageId } from '../features/editor/editor-language';
 import { documents } from '../features/editor/documents';
 import { saves } from '../features/editor/save';
 import { saveAll } from '../features/editor/save-all';
@@ -162,7 +164,7 @@ export function App() {
       onToggleSidebar={() => setSidebarOpen(open => !open)}
       onToggleTheme={() => setDark(value => !value)}
       sidebar={<Explorer currentReference={currentReference} onOpen={reference => void openTreeFile(reference)} />}
-      status={<><span>{batchBusy ? '正在全部保存…' : savingCount > 0 ? '正在保存…' : busy ? '正在打开…' : current ? current.readOnlyReason ? '只读' : current.dirty ? '未保存修改' : current.displayPath ? '未修改' : '未命名' : '就绪'}</span><span className="status-end">{current ? `${current.format.encoding.toUpperCase()}${current.format.bom === 'none' ? '' : ' BOM'} · ${current.format.lineEnding.toUpperCase()}` : '轻羽 FeatherPad'}</span></>}
+      status={<><span>{batchBusy ? '正在全部保存…' : savingCount > 0 ? '正在保存…' : busy ? '正在打开…' : current ? current.readOnlyReason ? '只读' : current.dirty ? '未保存修改' : current.displayPath ? '未修改' : '未命名' : '就绪'}</span>{current && <EditorStatus registry={documents} id={current.id} summary={current} />}<span className="status-end">{current ? `${current.format.encoding.toUpperCase()}${current.format.bom === 'none' ? '' : ' BOM'} · ${current.format.lineEnding.toUpperCase()}` : '轻羽 FeatherPad'}</span></>}
     >
       {error && <div className="notice error-notice" role="alert"><span>{error}</span><button onClick={() => setError(null)}>关闭提示</button></div>}
       {notice && <div className="notice error-notice" aria-live="polite"><span>{notice}</span><button onClick={() => setNotice(null)}>关闭提示</button></div>}
@@ -184,6 +186,25 @@ export function App() {
           <button id="save-all-button" className="plain-button" onClick={() => void saveAll.run()} disabled={savingCount > 0 || batchBusy || !snapshot.documents.some(document => document.dirty)}>全部保存</button>
           <button className="plain-button" onClick={() => void saveDestination()} disabled={!current.canSaveAs || savingCount > 0 || batchBusy} aria-keyshortcuts="Control+Shift+s">另存为</button>
           <button className="plain-button" onClick={() => void saveDestination('copy')} disabled={!current.canSaveAs || savingCount > 0 || batchBusy}>保存副本</button>
+          <label className="toolbar-field">缩进
+            <select aria-label="缩进宽度" value={current.indentWidth} onChange={event => {
+              const width = Number(event.currentTarget.value);
+              if (width === 2 || width === 4 || width === 8) documents.setIndentWidth(current.id, width);
+            }}>
+              <option value="2">2 空格</option><option value="4">4 空格</option><option value="8">8 空格</option>
+            </select>
+          </label>
+          <label className="toolbar-field">语言
+            <select aria-label="语言模式" value={current.languageSource === 'auto' ? 'auto' : current.languageId}
+              onChange={event => documents.setLanguage(current.id, event.currentTarget.value as 'auto' | LanguageId)}>
+              <option value="auto">自动（{languageLabel(current.languageId)}）</option>
+              {languageOptions.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}
+            </select>
+          </label>
+          <label className="toolbar-check"><input type="checkbox" checked={current.bracketMatching}
+            onChange={event => documents.setBracketMatching(current.id, event.currentTarget.checked)} />匹配括号</label>
+          <label className="toolbar-check"><input type="checkbox" checked={current.closeBrackets}
+            onChange={event => documents.setCloseBrackets(current.id, event.currentTarget.checked)} />自动配对</label>
         </div>
         <SaveAllResults />
         <div className="document-tabs" role="tablist" aria-label="打开的文档">

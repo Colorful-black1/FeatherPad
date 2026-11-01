@@ -12,6 +12,7 @@ import { verifyNativeForcedExit } from './forced-exit';
 import { verifyNativeDegradedEditing } from './degraded';
 import { verifyNativeLargeFiles } from './large-files';
 import { verifyNativeWorkspace } from './workspace';
+import { verifyNativeEditor } from './editor';
 
 const runFile = promisify(execFile);
 
@@ -27,11 +28,14 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
   const hash = createHash('sha256').update(await readFile(exe)).digest('hex');
   const evidence = path.join(root, '.artifacts', 'T102');
   const workspaceEvidence = path.join(root, '.artifacts', 'T104');
+  const editorEvidence = path.join(root, '.artifacts', 'T106');
   let nativeLargeFileObservation: Awaited<ReturnType<typeof verifyNativeLargeFiles>> | null = null;
   let nativeWorkspaceObservation: Awaited<ReturnType<typeof verifyNativeWorkspace>> | null = null;
+  let nativeEditorObservation: Awaited<ReturnType<typeof verifyNativeEditor>>;
   const chooserRoot = path.join(root, '.artifacts', 'T002');
   await mkdir(evidence, { recursive: true });
   await mkdir(workspaceEvidence, { recursive: true });
+  await mkdir(editorEvidence, { recursive: true });
   await mkdir(chooserRoot, { recursive: true });
   const dataDir = await mkdtemp(path.join(chooserRoot, 'webview2-'));
   const server = createServer();
@@ -302,13 +306,14 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
       expect(createHash('sha256').update(await readFile(fixture)).digest('hex')).not.toBe(fixtureRecords[0]?.sha256);
       await page.screenshot({ path: path.join(evidence, `native-${profile}-documents.png`) });
     }
+    nativeEditorObservation = await verifyNativeEditor(page, editorEvidence);
     const browserVersion = browser.version();
     const nativeUrl = page.url();
     const forcedExit = verifyChooser && chooserAutomation === 'native-controls'
       ? await verifyNativeForcedExit(page, child, dataDir) : null;
     await writeFile(path.join(evidence, `native-${profile}.json`), JSON.stringify({
       checkedAt: new Date().toISOString(),
-      scope: 'Real Tauri/OS chooser/IPC/disk writes; test-only Ack delivery delay, no fake results/grants/IO; no IME/Windows scaling coverage',
+      scope: 'Real Tauri/OS chooser/IPC/disk writes; test-only Ack delivery delay, no fake results/grants/IO; CDP composition input, no OS IME candidate window or Windows scaling coverage',
       executable: path.relative(root, exe), sha256: hash, pid: child.pid,
       profile, browserVersion, url: nativeUrl,
       nativeChooserVerified: verifyChooser,
@@ -328,6 +333,8 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
       nativeLargeFileObservation,
       nativeWorkspaceVerified: nativeWorkspaceObservation !== null,
       nativeWorkspaceObservation,
+      nativeEditorVerified: nativeEditorObservation !== null,
+      nativeEditorObservation,
       forcedExit,
       chooserAutomation: verifyChooser ? chooserAutomation : 'disabled-explicitly',
       browserOffline: profile === 'release',

@@ -52,6 +52,7 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round
 .welcome h1 { margin: 0; font-size: clamp(24px, 3vw, 36px); font-weight: 500; line-height: 1.4; }
 .welcome-description { margin: var(--space-3) 0; color: var(--text-secondary); font-size: 14px; }
 .statusbar { flex: 0 0 auto; min-height: 28px; display: flex; align-items: center; gap: var(--space-4); padding: var(--space-1) var(--space-3); font-size: 12px; background: var(--bg-app); border-top: 1px solid var(--border); flex-wrap: wrap; }
+.editor-metrics { display: flex; align-items: center; gap: var(--space-3); color: var(--text-secondary); flex-wrap: wrap; }
 .status-end { margin-left: auto; color: var(--text-secondary); }
 .welcome-actions { display: flex; gap: var(--space-3); margin-top: var(--space-6); flex-wrap: wrap; }
 .primary-button, .plain-button { min-height: 32px; padding: var(--space-1) var(--space-4); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--bg-surface); }
@@ -77,6 +78,10 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round
 .large-file-text { flex: 1; min-height: 0; margin: 0; padding: var(--space-4); overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: var(--editor-size)/1.75 var(--font-mono); tab-size: 4; color: var(--text-primary); }
 .large-file-text:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .document-toolbar { display: flex; gap: var(--space-2); padding: var(--space-1) var(--space-3); border-bottom: 1px solid var(--border); flex: 0 0 auto; flex-wrap: wrap; }
+.toolbar-field { display: inline-flex; align-items: center; gap: var(--space-1); color: var(--text-secondary); font-size: 12px; }
+.toolbar-field select { min-height: 32px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 0 var(--space-2); background: var(--bg-surface); color: var(--text-primary); }
+.toolbar-check { display: inline-flex; align-items: center; gap: var(--space-1); min-height: 32px; color: var(--text-secondary); font-size: 12px; }
+.toolbar-check input { accent-color: var(--accent); }
 .document-tabs { display: flex; overflow-x: auto; flex: 0 0 auto; border-bottom: 1px solid var(--border); background: var(--bg-sidebar); }
 .document-tabs button { display: flex; align-items: center; gap: var(--space-2); min-height: 32px; min-width: 100px; max-width: 220px; padding: var(--space-1) var(--space-3); background: transparent; border: 0; border-right: 1px solid var(--border); border-bottom: 2px solid transparent; color: var(--text-secondary); flex: 0 0 auto; }
 .document-tabs button span:first-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }

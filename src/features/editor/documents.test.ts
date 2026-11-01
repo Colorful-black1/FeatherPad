@@ -1,17 +1,17 @@
 import { expect, it } from 'vitest';
-import { isolateHistory, undo } from '@codemirror/commands';
+import { cursorMatchingBracket, indentLess, indentMore, isolateHistory, redo, undo, undoDepth } from '@codemirror/commands';
 import { EditorState } from '@codemirror/state';
 import { isOpenDocument } from '../../bridge/files';
 import { DocumentRegistry } from './documents';
 import type { DiskRevision, DocumentId, OpenDocument, SaveAck, SaveAsAck } from '../../shared/contracts/files';
-import { createEditorState, reconfigureReadOnly } from './editor-state';
+import { createEditorState, reconfigureIndentation, reconfigureReadOnly } from './editor-state';
 
 type RegularOpenDocument = Extract<OpenDocument, { mode: 'normal' | 'degraded' }>;
 
-function fixture(options: { id?: string; readOnly?: boolean; encoding?: string; lineEnding?: string } = {}): RegularOpenDocument {
+function fixture(options: { id?: string; readOnly?: boolean; encoding?: string; lineEnding?: string; displayPath?: string } = {}): RegularOpenDocument {
   const value: unknown = {
     documentId: options.id ?? 'native-document', ref: { grantId: 'fixture-grant', relativePath: '' },
-    metadata: { displayPath: 'E:\\fixtures\\中文 fixture.txt', sizeBytes: 7, modifiedAt: '2026-11-01T00:00:00Z', isReadOnly: options.readOnly ?? false, diskRevision: 'revision-1' },
+    metadata: { displayPath: options.displayPath ?? 'E:\\fixtures\\中文 fixture.txt', sizeBytes: 7, modifiedAt: '2026-11-01T00:00:00Z', isReadOnly: options.readOnly ?? false, diskRevision: 'revision-1' },
     format: { encoding: options.encoding ?? 'utf-8', bom: 'none', lineEnding: options.lineEnding ?? 'lf' },
     warnings: [], mode: 'normal',
     content: { kind: 'text', text: 'private\nbody', newlineMap: { documentVersion: 0, endings: ['lf'] } },
@@ -75,18 +75,37 @@ it('rejects an entire stale batch without committing its earlier valid transacti
   expect(registry.getDocument(id)!.state).toBe(initial);
 });
 
-it('keeps selections outside React snapshots and never publishes the body text', () => {
+it('keeps selections outside React snapshots and publishes only deferred metrics', async () => {
   const registry = new DocumentRegistry();
   const id = registry.openDocument(fixture());
   const snapshot = registry.getSnapshot();
   let emissions = 0;
+  let metricEmissions = 0;
   const unsubscribe = registry.subscribe(() => { emissions++; });
+  const unsubscribeMetrics = registry.subscribeMetrics(id, () => { metricEmissions++; });
   const state = registry.getDocument(id)!.state;
   registry.commit(id, [state.update({ selection: { anchor: 4 } })]);
   expect(registry.getSnapshot()).toBe(snapshot);
   expect(emissions).toBe(0);
+  expect(metricEmissions).toBe(0);
+  await Promise.resolve();
+  expect(metricEmissions).toBe(1);
+  expect(registry.getMetrics(id)).toMatchObject({ line: 1, column: 5, characterCount: 12, selectedCharacterCount: 0 });
   expect(JSON.stringify(snapshot)).not.toContain('private');
   unsubscribe();
+  unsubscribeMetrics();
+});
+
+it('reports Unicode characters, selections and tab-aware positions through a selection-only channel', () => {
+  const registry = new DocumentRegistry();
+  const id = registry.openDocument(fixture());
+  let state = registry.getDocument(id)!.state;
+  registry.commit(id, [state.update({ changes: { from: state.doc.length, insert: '\n中😀\tend' } })]);
+  state = registry.getDocument(id)!.state;
+  registry.commit(id, [state.update({ selection: { anchor: state.doc.length - 7, head: state.doc.length } })]);
+  expect(registry.getMetrics(id)).toEqual({
+    line: 3, column: 8, characterCount: 19, selectedCharacterCount: 6, selectionCount: 1,
+  });
 });
 
 function acknowledgement(version: number, revision = 'revision-saved'): SaveAck {
@@ -245,4 +264,79 @@ it('changing editability preserves the existing undo history and selection', () 
   expect(state.selection.main.head).toBe(2);
   expect(undo({ state, dispatch: transaction => { state = transaction.state; } })).toBe(true);
   expect(state.doc.toString()).toBe('before');
+});
+
+it('indents and unindents multiple selected lines in one undoable transaction per command', () => {
+  let state = createEditorState('first\nsecond\nthird', false, { indentWidth: 4 });
+  state = state.update({ selection: { anchor: 0, head: 12 } }).state;
+  expect(indentMore({ state, dispatch: transaction => { state = transaction.state; } })).toBe(true);
+  expect(state.doc.toString()).toBe('    first\n    second\nthird');
+  expect(undo({ state, dispatch: transaction => { state = transaction.state; } })).toBe(true);
+  expect(state.doc.toString()).toBe('first\nsecond\nthird');
+  expect(indentLess({ state, dispatch: transaction => { state = transaction.state; } })).toBe(true);
+  expect(state.doc.toString()).toBe('first\nsecond\nthird');
+});
+
+it('uses 2/4/8-space adaptive indentation without rewriting existing tabs and preserves undo history', () => {
+  let state = createEditorState('  mixed\n\tkept', false, { indentWidth: 4 });
+  state = state.update({ changes: { from: state.doc.length, insert: '\nfourth' } }).state;
+  state = state.update({ selection: { anchor: 0, head: 1 } }).state;
+  state = reconfigureIndentation(state, 8);
+  expect(state.facet(EditorState.tabSize)).toBe(8);
+  expect(state.selection.main.head).toBe(1);
+  expect(indentMore({ state, dispatch: transaction => { state = transaction.state; } })).toBe(true);
+  expect(state.doc.toString()).toBe('          mixed\n\tkept\nfourth');
+  expect(state.doc.toString()).toContain('\tkept');
+  expect(undo({ state, dispatch: transaction => { state = transaction.state; } })).toBe(true);
+  expect(state.doc.toString()).toBe('  mixed\n\tkept\nfourth');
+});
+
+it('persists automatic and manual language selection without replacing text, selection or undo history', () => {
+  const registry = new DocumentRegistry();
+  const id = registry.openDocument(fixture({ displayPath: 'E:\\fixtures\\main.ts' }));
+  const state = registry.getDocument(id)!.state;
+  registry.commit(id, [state.update({ changes: { from: state.doc.length, insert: '\nconst value = 1;' }, selection: { anchor: 3 } })]);
+  expect(registry.getDocument(id)!.summary).toMatchObject({ languageId: 'typescript', languageSource: 'auto' });
+  registry.setLanguage(id, 'java');
+  expect(registry.getDocument(id)!.summary).toMatchObject({ languageId: 'java', languageSource: 'manual' });
+  expect(registry.getDocument(id)!.state.selection.main.head).toBe(3);
+  expect(undo({ state: registry.getDocument(id)!.state, dispatch: transaction => { registry.commit(id, [transaction]); } })).toBe(true);
+  expect(registry.getDocument(id)!.state.doc.toString()).toBe('private\nbody');
+  registry.setLanguage(id, 'auto');
+  expect(registry.getDocument(id)!.summary).toMatchObject({ languageId: 'typescript', languageSource: 'auto' });
+});
+
+it('configures bracket matching and automatic pairing independently while preserving editor history', () => {
+  const registry = new DocumentRegistry();
+  const id = registry.openDocument(fixture());
+  let state = registry.getDocument(id)!.state;
+  registry.commit(id, [state.update({ changes: { from: 0, insert: 'x' }, selection: { anchor: 1 } })]);
+  registry.setBracketMatching(id, false);
+  expect(registry.getDocument(id)!.summary).toMatchObject({ bracketMatching: false, closeBrackets: true });
+  registry.setCloseBrackets(id, false);
+  expect(registry.getDocument(id)!.summary).toMatchObject({ bracketMatching: false, closeBrackets: false });
+  state = registry.getDocument(id)!.state;
+  expect(undo({ state, dispatch: transaction => { registry.commit(id, [transaction]); } })).toBe(true);
+  expect(registry.getDocument(id)!.state.doc.toString()).toBe('private\nbody');
+});
+
+it('jumps between a matching bracket pair without creating a document-version edit', () => {
+  let state = createEditorState('[value]', false);
+  state = state.update({ selection: { anchor: 1 } }).state;
+  const version = state.doc.length;
+  expect(cursorMatchingBracket({ state, dispatch: transaction => { state = transaction.state; } })).toBe(true);
+  expect(state.selection.main.head).toBe(6);
+  expect(state.doc.length).toBe(version);
+  expect(undoDepth(state)).toBe(0);
+});
+
+it('undoes and redoes deletion of the complete document selection', () => {
+  let state = createEditorState('alpha\nbeta', false);
+  state = state.update({ selection: { anchor: 0, head: state.doc.length } }).state;
+  state = state.update({ changes: { from: 0, to: state.doc.length } }).state;
+  expect(state.doc.toString()).toBe('');
+  expect(undo({ state, dispatch: transaction => { state = transaction.state; } })).toBe(true);
+  expect(state.doc.toString()).toBe('alpha\nbeta');
+  expect(redo({ state, dispatch: transaction => { state = transaction.state; } })).toBe(true);
+  expect(state.doc.toString()).toBe('');
 });
