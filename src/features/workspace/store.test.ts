@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import type {
   CreateEntryRequest, DirectoryEntry, DirectoryPage, DocumentId, FileRef, ListDirectoryRequest,
-  RenameEntryRequest, ResultEnvelope,
+  RenameEntryRequest, ResultEnvelope, TrashEntryRequest, TrashEntryResult,
 } from '../../shared/contracts/files';
 import { WorkspaceStore } from './store';
 
@@ -15,6 +15,28 @@ function entry(name: string, relativePath: string, kind: DirectoryEntry['kind'] 
 }
 
 const flush = () => new Promise(resolve => setTimeout(resolve, 0));
+
+it('keeps failed or uncertain trash entries and removes them only after a matching receipt', async () => {
+  const source = entry('source.txt', 'source.txt');
+  const items: DirectoryEntry[] = [source];
+  let outcome: ResultEnvelope<TrashEntryResult> = { ok: false,
+    error: { code: 'TRASH_UNAVAILABLE', message: 'Controlled recycle failure', retryable: false } };
+  const store = new WorkspaceStore(async () => ({ ok: true, value: { items: [...items], nextCursor: null } }),
+    undefined, undefined, async () => outcome);
+  store.setRoot({ grant, displayName: 'fixture' });
+  await flush();
+  const request: TrashEntryRequest = { ref: source.ref, expectedRevision: source.revision,
+    expectedIdentity: 'b'.repeat(64), requestId: 'operation', affectedDocumentIds: [], snapshots: [] };
+  expect((await store.trashEntry(request)).ok).toBe(false);
+  expect(store.getSnapshot().records['']?.items).toEqual([source]);
+  outcome = { ok: true, value: { trashed: true, receiptId: 'wrong-operation', missingDocumentIds: [], drafts: [] } };
+  expect((await store.trashEntry(request)).ok).toBe(false);
+  expect(store.getSnapshot().records['']?.items).toEqual([source]);
+  outcome.value.receiptId = request.requestId;
+  items.length = 0;
+  expect((await store.trashEntry(request)).ok).toBe(true);
+  expect(store.getSnapshot().records['']?.items).toEqual([]);
+});
 
 it('loads only the root then opens and pages an expanded directory lazily', async () => {
   const calls: ListDirectoryRequest[] = [];

@@ -8,6 +8,8 @@ interface ExplorerProps {
   currentReference: FileRef | undefined;
   onOpen: (reference: FileRef) => void;
   onRenamed?: ((documents: readonly RenamedDocument[]) => void) | undefined;
+  onTrash?: ((entry: DirectoryEntry) => void) | undefined;
+  mutationBlocked?: boolean;
   store?: WorkspaceStore;
 }
 
@@ -217,7 +219,7 @@ function DirectoryContents({
   </div>;
 }
 
-export function Explorer({ currentReference, onOpen, onRenamed, store = workspace }: ExplorerProps) {
+export function Explorer({ currentReference, onOpen, onRenamed, onTrash, mutationBlocked = false, store = workspace }: ExplorerProps) {
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);
   const [editing, setEditing] = useState<EditingEntry | null>(null);
   const [focusPath, setFocusPath] = useState<string | null>(null);
@@ -266,7 +268,12 @@ export function Explorer({ currentReference, onOpen, onRenamed, store = workspac
     setEditing({ mode, parent });
   }
 
-  return <section className="workspace-explorer" aria-label="文件树">
+  return <section className="workspace-explorer" aria-label="文件树" onKeyDown={event => {
+    if (event.key !== 'Delete' || editing || mutationBlocked || !onTrash || !(event.target instanceof HTMLElement)) return;
+    const key = event.target.closest<HTMLElement>('[role="treeitem"]')?.dataset.treeKey;
+    const entry = key ? findDirectoryEntry(snapshot, key) : null;
+    if (entry && !['junction', 'symlink'].includes(entry.kind)) { event.preventDefault(); onTrash(entry); }
+  }}>
     <div className="explorer-heading">
       <h2 className="sidebar-title">资源管理器</h2>
       <div className="explorer-actions">
@@ -282,6 +289,10 @@ export function Explorer({ currentReference, onOpen, onRenamed, store = workspac
           onClick={() => { if (selectedEntry) setEditing({ mode: 'rename', parent: selectedEntry.ref, entry: selectedEntry }); }}
           aria-label="重命名选中项" title="重命名（F2）">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 16-1 5 5-1L19 9l-4-4L4 16ZM13 7l4 4" /></svg>
+        </button>}
+        {root && onTrash && <button type="button" className="icon-button compact" disabled={!canRename || !!editing || mutationBlocked}
+          onClick={() => { if (selectedEntry) onTrash(selectedEntry); }} aria-label="移至回收站" title="移至回收站（Delete）">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7" /></svg>
         </button>}
         {root && <button type="button" className="icon-button compact" disabled={!!editing}
           onClick={() => store.refresh()} aria-label="刷新目录树" title="刷新">

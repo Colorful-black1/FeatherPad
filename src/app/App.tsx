@@ -12,8 +12,9 @@ import { SaveAllResults } from '../features/editor/SaveAllResults';
 import { FindBar } from '../features/search-tools/FindBar';
 import type { SearchScope } from '../features/search-tools/search-query';
 import { Explorer } from '../features/workspace/Explorer';
+import { TrashDialog } from '../features/workspace/TrashDialog';
 import { workspace } from '../features/workspace/store';
-import type { DocumentId, FileRef } from '../shared/contracts/files';
+import type { DirectoryEntry, DocumentId, FileRef } from '../shared/contracts/files';
 
 interface FindRequest {
   token: number;
@@ -38,6 +39,7 @@ export function App() {
   const [findOpen, setFindOpen] = useState(false);
   const [findRequest, setFindRequest] = useState<FindRequest | null>(null);
   const [previewCandidates, setPreviewCandidates] = useState<FileRef[]>([]);
+  const [trashEntry, setTrashEntry] = useState<DirectoryEntry | null>(null);
   const opening = useRef(false);
 
   useEffect(() => {
@@ -143,6 +145,7 @@ export function App() {
 
   useEffect(() => {
     const handleKey = (event: globalThis.KeyboardEvent) => {
+      if (window.document.querySelector('dialog[open]')) return;
       if (!event.ctrlKey || event.altKey || event.isComposing) return;
       if (event.key.toLowerCase() === 'f') {
         event.preventDefault();
@@ -195,6 +198,7 @@ export function App() {
       onToggleSidebar={() => setSidebarOpen(open => !open)}
       onToggleTheme={() => setDark(value => !value)}
       sidebar={<Explorer currentReference={currentReference} onOpen={reference => void openTreeFile(reference)}
+        onTrash={setTrashEntry} mutationBlocked={busy || savingCount > 0 || batchBusy}
         onRenamed={renamed => documents.applyRenamedPaths(renamed)} />}
       status={<><span>{batchBusy ? '正在全部保存…' : savingCount > 0 ? '正在保存…' : busy ? '正在打开…' : current ? current.readOnlyReason ? '只读' : current.dirty ? '未保存修改' : current.displayPath ? '未修改' : '未命名' : '就绪'}</span>{current && <EditorStatus registry={documents} id={current.id} summary={current} />}<span className="status-end">{current ? `${current.format.encoding.toUpperCase()}${current.format.bom === 'none' ? '' : ' BOM'} · ${current.format.lineEnding.toUpperCase()}` : '轻羽 FeatherPad'}</span></>}
     >
@@ -263,6 +267,30 @@ export function App() {
           </div>
         </div>
       </div>}
+      {trashEntry && <TrashDialog entry={trashEntry} store={workspace} documents={snapshot.documents}
+        captureSnapshots={ids => documents.captureTrashSnapshots(ids)}
+        saveDocuments={async ids => {
+          setSavingCount(count => count + 1);
+          try {
+            for (const id of ids) {
+              if (!documents.getDocument(id)?.summary.dirty) continue;
+              const result = await saves.save(id);
+              if (!result.ok) return result.error.code === 'CANCELLED' ? '保存已取消，项目尚未回收。' : result.error.message;
+              if (documents.getDocument(id)?.summary.dirty) return '保存后仍有新修改，请保留草稿或重新保存后确认。';
+            }
+            return null;
+          } finally { setSavingCount(count => count - 1); }
+        }}
+        onTrashed={result => {
+          documents.markTrashed(result);
+          setTrashEntry(null);
+          setNotice(`已移至系统回收站。${result.missingDocumentIds.length ? '已打开的内容仍保留，可另存为新文件。' : ''}`);
+          requestAnimationFrame(() => {
+            const id = documents.getSnapshot().activeId;
+            if (id) documents.focus(id);
+            else window.document.querySelector<HTMLButtonElement>('[aria-label="刷新目录树"]')?.focus();
+          });
+        }} onClose={() => setTrashEntry(null)} />}
     </Shell>
   );
 }

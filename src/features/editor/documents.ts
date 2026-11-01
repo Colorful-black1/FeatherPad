@@ -1,6 +1,6 @@
 import type { EditorState, Text, Transaction } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
-import type { DocumentId, OpenDocument, RenamedDocument, ResultEnvelope, SaveAck, SaveAsAck, TextFormat } from '../../shared/contracts/files';
+import type { DocumentId, OpenDocument, RenamedDocument, ResultEnvelope, SaveAck, SaveAsAck, SaveRequest, TextFormat, TrashEntryResult } from '../../shared/contracts/files';
 import { createEditorState, reconfigureBracketMatching, reconfigureCloseBrackets, reconfigureIndentation,
   reconfigureLanguage, setSearchHighlights, type IndentWidth } from './editor-state';
 import { countCharacters, editorMetrics, type EditorMetrics } from './editor-metrics';
@@ -16,6 +16,8 @@ export interface DocumentSummary {
   format: TextFormat;
   version: number;
   dirty: boolean;
+  missing: boolean;
+  recoveryProtected: boolean;
   readOnlyReason: string | null;
   canSaveAs: boolean;
   indentWidth: IndentWidth;
@@ -101,7 +103,7 @@ export class DocumentRegistry {
     const summary: DocumentSummary = {
       id, title: `无标题 ${++this.untitledCount}`, displayPath: null,
       format: { encoding: 'utf-8', bom: 'none', lineEnding: 'crlf' },
-      version: 0, dirty: false, readOnlyReason: null,
+      version: 0, dirty: false, missing: false, recoveryProtected: false, readOnlyReason: null,
       canSaveAs: true, indentWidth: 4, languageId: 'plaintext', languageSource: 'auto',
       languageRevision: 0, bracketMatching: true, closeBrackets: true,
     };
@@ -146,7 +148,7 @@ export class DocumentRegistry {
         summary: {
           id, title: document.metadata.displayPath.split(/[\\/]/).pop() || document.metadata.displayPath,
           displayPath: document.metadata.displayPath, format: document.format,
-          version: newlineMap.documentVersion, dirty: false, readOnlyReason: reason,
+          version: newlineMap.documentVersion, dirty: false, missing: false, recoveryProtected: false, readOnlyReason: reason,
           canSaveAs: fragment === null, indentWidth: 4, languageId, languageSource: 'auto',
           languageRevision: 0, bracketMatching: true, closeBrackets: true,
         },
@@ -318,6 +320,34 @@ export class DocumentRegistry {
     if (changed) this.publish(this.snapshot.activeId);
   }
 
+  captureTrashSnapshots(ids: readonly DocumentId[]): ResultEnvelope<SaveRequest[]> {
+    const snapshots: SaveRequest[] = [];
+    for (const id of ids) {
+      const document = this.documents.get(id);
+      if (!document?.source) return failure('NOT_FOUND', '受影响文档尚未载入，请重新打开后确认。');
+      const captured = captureDestination(document, 'copy');
+      if (!captured.ok) return captured;
+      const { request } = captured.value;
+      snapshots.push({ documentId: id, requestId: request.requestId, documentVersion: request.documentVersion,
+        text: request.text, format: request.format, ...(request.newlineMap ? { newlineMap: request.newlineMap } : {}),
+        expectedDiskRevision: document.source.metadata.diskRevision });
+    }
+    return { ok: true, value: snapshots };
+  }
+
+  markTrashed(result: TrashEntryResult) {
+    for (const id of result.missingDocumentIds) {
+      const document = this.documents.get(id);
+      if (!document) continue;
+      const draft = result.drafts.find(item => item.documentId === id);
+      if (!document.fragment) document.source = null;
+      document.summary = { ...document.summary, missing: true,
+        dirty: document.fragment ? document.summary.dirty : true,
+        recoveryProtected: draft?.documentVersion === document.summary.version };
+    }
+    this.publish(this.snapshot.activeId);
+  }
+
   commit(id: DocumentId, transactions: readonly Transaction[]): ResultEnvelope<{ version: number }> {
     const document = this.documents.get(id);
     if (!document) return failure('NOT_FOUND', '文档已关闭。');
@@ -343,7 +373,7 @@ export class DocumentRegistry {
     if (changes > 0) {
       document.summary = {
         ...document.summary, version: document.summary.version + changes,
-        dirty: !state.doc.eq(document.savedText),
+        dirty: document.summary.missing || !state.doc.eq(document.savedText), recoveryProtected: false,
       };
       this.publish(this.snapshot.activeId);
     }

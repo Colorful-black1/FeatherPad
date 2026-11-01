@@ -317,7 +317,7 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
             windowsHide: true,
             timeout: 25_000,
           });
-        }, workspaceEvidence);
+        }, workspaceEvidence, chooseDestination);
         nativeLargeFileObservation = await verifyNativeLargeFiles(page, dataDir, async (target, action) => {
           await writeFile(manifest, JSON.stringify({ ...selectionRecord, action,
             fixtures: [{ path: target, sha256: createHash('sha256').update(await readFile(target)).digest('hex') }] }));

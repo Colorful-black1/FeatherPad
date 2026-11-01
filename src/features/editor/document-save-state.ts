@@ -95,6 +95,7 @@ export function acknowledgeDestination(document: ManagedDocument | undefined, ca
     format: { ...request.format }, warnings: current?.warnings ?? [], mode: current?.mode ?? 'normal' };
   if (request.newlineMap) document.originalNewlines = { documentVersion: request.documentVersion, endings: [...request.newlineMap.endings] };
   document.summary = { ...document.summary, title: result.metadata.displayPath.split(/[\\/]/).pop() || result.metadata.displayPath,
-    displayPath: result.metadata.displayPath, readOnlyReason: reason, canSaveAs: true, dirty: !document.state.doc.eq(savedText) };
+    displayPath: result.metadata.displayPath, readOnlyReason: reason, canSaveAs: true, missing: false,
+    recoveryProtected: false, dirty: !document.state.doc.eq(savedText) };
   return { ok: true, value: { dirty: document.summary.dirty } };
 }

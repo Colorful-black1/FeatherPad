@@ -30,6 +30,32 @@ it('creates independent untitled documents with no path and UTF8/CRLF defaults',
   expect(registry.getDocument(first)?.summary).toMatchObject({ displayPath: null, dirty: false, format: { encoding: 'utf-8', bom: 'none', lineEnding: 'crlf' } });
 });
 
+it('keeps a recycled document buffer and undo, protects the captured version, and saves elsewhere', () => {
+  const registry = new DocumentRegistry();
+  const opened = fixture();
+  const id = registry.openDocument(opened);
+  const snapshots = registry.captureTrashSnapshots([id]);
+  expect(snapshots.ok).toBe(true);
+  if (!snapshots.ok) throw new Error('Snapshot capture failed');
+  expect(snapshots.value[0]?.text).toBe('private\nbody');
+  const state = registry.getDocument(id)!.state;
+  registry.markTrashed({ trashed: true, receiptId: 'operation', missingDocumentIds: [id],
+    drafts: [{ documentId: id, documentVersion: 0, receiptId: 'draft' }] });
+  expect(registry.getDocument(id)?.state).toBe(state);
+  expect(registry.getDocument(id)?.source).toBeNull();
+  expect(registry.getDocument(id)?.summary).toMatchObject({ missing: true, dirty: true, recoveryProtected: true });
+  registry.commit(id, [state.update({ changes: { from: 0, insert: 'later ' } })]);
+  expect(registry.getDocument(id)?.summary).toMatchObject({ dirty: true, recoveryProtected: false });
+  const captured = registry.captureSaveAs(id, 'save-as');
+  if (!captured.ok) throw new Error('Save as capture failed');
+  const metadata = { ...opened.metadata, displayPath: 'new-file.txt', diskRevision: 'new-revision' as DiskRevision };
+  const result = registry.acknowledgeSaveAs(captured.value, { documentId: id, ref: opened.ref, metadata,
+    ack: { documentVersion: captured.value.request.documentVersion, diskRevision: metadata.diskRevision,
+      savedAt: metadata.modifiedAt, sizeBytes: metadata.sizeBytes } });
+  expect(result.ok).toBe(true);
+  expect(registry.getDocument(id)?.summary).toMatchObject({ missing: false, dirty: false, title: 'new-file.txt' });
+});
+
 it('reopens aliases without losing unsaved input, selection, history or version', () => {
   const registry = new DocumentRegistry();
   const id = registry.openDocument(fixture());

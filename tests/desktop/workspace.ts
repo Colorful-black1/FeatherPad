@@ -3,6 +3,7 @@ import { execFile } from 'node:child_process';
 import { mkdir, readFile, readdir, rm, stat, symlink, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { verifyNativeTrash } from './trash';
 
 const runFile = promisify(execFile);
 
@@ -38,6 +39,7 @@ export async function verifyNativeWorkspace(
   dataDir: string,
   openFolder: OpenFolder,
   evidence: string,
+  chooseDestination: (action: 'save' | 'cancel', destination?: string) => Promise<void>,
 ) {
   const artifactRoot = path.resolve(process.cwd(), '.artifacts', 'T002');
   assertOwnedChild(artifactRoot, dataDir);
@@ -316,6 +318,7 @@ export async function verifyNativeWorkspace(
     expect(nestedOldPathExists).toBe(false);
 
     await page.screenshot({ path: path.join(evidence, 'native-workspace-tree.png') });
+    const trash = await verifyNativeTrash(page, dataDir, root, chooseDestination, grant);
     return {
       rootName,
       lazyNestedLoadVerified: true,
@@ -338,7 +341,8 @@ export async function verifyNativeWorkspace(
       nativeRenameSaveUsesUpdatedPath: true,
       nativeDirectoryRenameKeepsDocumentIdAndDirtyBuffer: true,
       nativeDirectoryRenameSaveUsesUpdatedPath: true,
-      scope: 'real Tauri folder dialog, IPC grants, NTFS ACL and junction; 100k direct-child performance measured separately',
+      ...trash,
+      scope: `${trash.scope}; folder dialog, NTFS ACL and junction; 100k direct-child performance measured separately`,
     };
   } finally {
     await runFile('attrib.exe', ['-R', readOnly], { windowsHide: true }).catch(() => undefined);

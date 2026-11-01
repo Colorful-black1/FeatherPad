@@ -4,8 +4,8 @@
 
 - 产品名称：**轻羽 FeatherPad**。
 - 当前交付：完整产品方案、86项功能矩阵、模块规格、UI规范与离线交互原型、技术/本机环境文档、M0–M5实现计划、57个开发任务、agent执行入口。
-- 产品代码：**M0/G0、M1/T101、T102、T103、T104、T106及T108通过**。真实Release保存/另存/副本/批次/覆盖/硬链接/进程终止、真实小容量满盘安全失败、<20MiB正常/降级编辑、20MiB分块只读、>100MiB显式预览、单根懒加载目录树、CodeMirror编辑/语言/系统中文IME，以及文件内搜索替换和只读保护均已验证；恢复和其余M1项仍未完成，G1未通过，更不是完整v1。
-- 当前：**T105进行中，T105.a新建/重命名已通过真实Release验收**，含文件及已打开dirty后代的目录改名、新路径保存。T105.b原生回收及草稿存储核心已验证，下一步连接授权/幂等、dirty前置保护和确认UI；删除入口尚未开放。T107依赖也已满足，随后继续标签关闭保护、恢复与G1。
+- 产品代码：**M0/G0、M1/T101、T102、T103、T104、T105、T106及T108通过**。真实Release保存/另存/副本/批次/覆盖/硬链接/进程终止、真实小容量满盘安全失败、<20MiB正常/降级编辑、20MiB分块只读、>100MiB显式预览、单根懒加载目录树、CodeMirror编辑/语言/系统中文IME，以及文件内搜索替换和只读保护均已验证；恢复和其余M1项仍未完成，G1未通过，更不是完整v1。
+- 下一项：**T107标签与关闭保护**。T105新建/重命名/仅回收站删除已通过真实Release验收，包含dirty快照先落盘、失败保树、目录后代缓冲及缺失后另存。恢复与热退出/G1及以后仍未完成，继续M0–M5全部86项必需功能。
 - 本次交付检查：详见 [DELIVERY-CHECK](../docs/DELIVERY-CHECK.md)，不代表产品关卡G0–G5通过。
 
 ## 已核查环境
@@ -20,6 +20,18 @@
 | 2026-11-01 / T001.a,b | F-DESK-013 | manifests/双锁、TS/Vite/ESLint、Tauri骨架与图标 | 冻结offline安装、typecheck/lint/build:web、Rust fmt/clippy/test均0；audit exit 1仅开发工具moderate | 编译级原生；当时Rust行为测试0个 | `docs/acceptance/M0.md`、`.artifacts/T001/` | T001通过；minimatch受控lint模式，2026-12-01复核 |
 | 2026-11-01 / T002 | app-shell | React Shell/App/token/CSS、Web及原生测试 | typecheck/lint exit 0；Web 2 passed；真实WebView2 debug 1 passed | Web与原生范围分开，未测OS对话框 | .artifacts/T002/及docs/acceptance/M0.md | T002通过；下一T003 |
 | 2026-11-01 / T003.a–d（进行中） | F-DESK-013 | Rust models/grants/files/commands、AppManifest ACL、TS contracts/bridge、CodeMirror只读UI、测试与脚本 | typecheck/lint/TS单测3、Rust原生5、Web4、Release smoke1均exit 0；check.ps1 -Desktop exit 0；交互选择器三次超时，后次显式exit 1 | 原生Rust磁盘+junction，真实Release IPC/WebView2，Web mock独立 | docs/acceptance/M0.md；.artifacts/T003；.artifacts/T002/native-release.json | T003未完成OS选取验收，G0不勾选 |
+
+## T105 树内变更完成（2026-11-02，M1/G1仍未完成）
+
+- F-FILE-017、F-WORK-004、F-WORK-005完成本任务M1验收。此前a切片已验排他新建/不覆盖改名/dirty后代目录改名，本轮补齐真实回收站删除的完整入口、确认、草稿保护、失败保树与缺失缓冲另存。M1按单项操作验收；多选、拖放及逐项批量编排继续由T206跟踪，没有删除后续需求。
+- 生产变更：App编排、Explorer/TrashDialog/store、editor的documents/document-save-state/EditorDocument/LargeFileView、app.css。默认焦点取消，Delete键进入确认；显示真实路径/数量/目录及dirty影响，保存修改后刷新revision/identity并重新确认，或保护草稿再回收。成功保留EditorState/undo并标记缺失，完整缓冲CtrlS真实另存；后续输入使“草稿已保护”失效，片段禁分页与保存。未知传输结果只核对冻结的原请求；错误回执或失败不移除树项，切根后迟到回执不污染新根。侧栏工具栏换行，200%缩放确认按钮可见。
+- 测试/工具：新增tests/e2e/trash.spec.ts、tests/desktop/trash.ts和仅受控fixture使用的Hold-ControlledFixture.ps1。helper只锁定T002/webview2-*内UUID小文件及对应ready/release标记，拒绝reparse，30秒自动释放，不扩生产IPC或用户路径权限。
+- 最终检查：powershell.exe -NoProfile -File scripts/check.ps1 exit0（typecheck/lint、TS84、Rust89 passed/1个100k基准ignored、Web31、fmt/clippy；.artifacts/T105-final-check.log）；pnpm build exit0（.artifacts/T105-release-build.log）；pnpm test:desktop 1 passed（1.3分钟），exit0（.artifacts/T105-native-desktop.log）。pnpm audit --audit-level high exit0，仍报告1条既有开发依赖moderate，未强制修复；.artifacts/T105-audit.log。主JS chunk 628.40kB/gzip202.36kB仍有Vite警告，未调阈值。
+- Web明确mock：取消、失败保树/dirty、未知结果同requestId同快照、保存后新revision/identity再确认、缺失后另存；.artifacts/T105/trash-web-zoom200.png已视觉检查。它不证明磁盘IO。
+- 真实Release另验：未授权grant/多余path字段/陈旧revision/junction均拒绝保源；真实无共享删除句柄使系统回收失败，源字节/树/dirty不变且恢复body摘要正确；解除锁后先真实保存，再用新identity确认回收，源消失、缓冲保留，CtrlS经真实OS选择器另存到新路径且字节正确；含dirty后代的目录，Escape取消保原件，确认后目录消失、后代缓冲保留且草稿正文/版本/SHA256正确。
+- 原生证据：.artifacts/T102/native-release.json的nativeWorkspaceObservation新增nativeRecycleSharingFailurePreservesSourceAndTree、nativeTrashDraftVerified、nativeTrashInvalidRequestsRejected、nativeSaveBeforeTrashRefreshesIdentity、nativeTrashMissingBufferCanSaveAs、nativeDirectoryTrashWithDirtyDescendant、nativeDirectoryTrashCancellationPreservesSource均true，含两个真实草稿receipt和body SHA256。T105下native-trash-sharing-failure.png、native-trash-directory-confirmation.png、native-trash-missing-buffer.png已视觉检查。系统回收API/回收项字节/还原及永久删除否决另由真实Rust测试证明；Release综合留下2个受控回收站fixture作为真实结果，原始路径列于recycledFixtures，未枚举/清空用户回收站。
+- 最新Release：src-tauri/target/release/featherpad.exe，10,786,304 bytes，SHA256 DCBB34B6D535D12FA53F457867C524115AD6CB843CA38C7DF2D24F4237269F72。Win11/WebView2开发机证据，不外推Win10、OS缩放或M5性能。没有新增依赖/工具安装。本轮变更已做正确性、授权边界、失败状态、结构及证据范围自审。
+- 下一项T107标签/关闭保护；T110仍须接启动扫描/恢复认领/热退出/冗余与保存事务统一预算。当前仅回收前快照，不宣称启动会话恢复、G1或完整v1通过。下面保留各切片当时状态，当前结论以上方为准。
 
 ## T105.b2 typed IPC已接（2026-11-01，确认UI待接）
 

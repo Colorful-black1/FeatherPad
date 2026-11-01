@@ -9,7 +9,7 @@
 3. [任务清单](tasks/todo.md)：第一个依赖满足的未完成任务；[计划](tasks/plan.md) 给阶段关卡。
 4. 按feature ID只读 [功能矩阵](docs/FEATURE-MATRIX.md)、[能力地图](CAPABILITY-MAP.md) 和相关模块SPEC；跨进程先读 [CONTRACTS](docs/CONTRACTS.md)。UI参考 [UI-DESIGN](design/UI-DESIGN.md)。
 
-当前**M0/G0及M1/T101、T102、T103、T104、T106、T108已通过**。真实Release已验收保存/覆盖/副本/批次/硬链接/进程终止、真实小容量满盘的安全失败与恢复记录、完整<20MiB降级编辑、大文件限量读取、单根懒加载目录树、CodeMirror事务编辑/缩进/括号/语言剪贴板/Windows微软拼音候选窗，以及文件内搜索替换、选区范围、只读保护、捕获组和单次undo。满盘通过受控WSL2 `tmpfs` 实现；WSL 9P把`ENOSPC`映射为Windows错误31，NTFS错误112到`DISK_FULL`映射另有Rust单测，不把它误写成原生NTFS全卷演练。T105.a树内新建/重命名已通过真实Release验收，包含已打开dirty后代文件的目录改名与新路径保存；T105仍进行中，下一项T105.b真实回收站删除。T107依赖也已满足。恢复、G1及以后尚未完成。HTML原型不是CodeMirror/Tauri应用，演示保存不写源文件。M1不是最终完成，用户要求的完整v1必须推进M0–M5全部86项必需功能。
+当前**M0/G0及M1/T101、T102、T103、T104、T105、T106、T108已通过**。真实Release已验收保存/覆盖/副本/批次/硬链接/进程终止、真实小容量满盘的安全失败与恢复记录、完整<20MiB降级编辑、大文件限量读取、单根懒加载目录树、CodeMirror事务编辑/缩进/括号/语言剪贴板/Windows微软拼音候选窗，以及文件内搜索替换、选区范围、只读保护、捕获组和单次undo。满盘通过受控WSL2 `tmpfs` 实现；WSL 9P把`ENOSPC`映射为Windows错误31，NTFS错误112到`DISK_FULL`映射另有Rust单测，不把它误写成原生NTFS全卷演练。T105树内新建/重命名/仅回收站删除已通过真实Release验收：dirty快照先落盘，真实共享锁失败保源/保树，含dirty后代目录回收、取消及缺失缓冲另存均验证。下一项T107标签与关闭保护。恢复、G1及以后尚未完成。HTML原型不是CodeMirror/Tauri应用，演示保存不写源文件。M1不是最终完成，用户要求的完整v1必须推进M0–M5全部86项必需功能。
 
 ## 固定技术与环境
 

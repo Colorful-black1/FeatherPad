@@ -1,7 +1,7 @@
 import { files } from '../../bridge/files';
 import type {
   CreateEntryRequest, DirectoryEntry, DirectoryPage, FileRef, ListDirectoryRequest,
-  RenameEntryRequest, RenameEntryResult, ResultEnvelope,
+  RenameEntryRequest, RenameEntryResult, ResultEnvelope, TrashEntryRequest, TrashEntryResult,
 } from '../../shared/contracts/files';
 
 export interface WorkspaceRoot {
@@ -29,6 +29,7 @@ export interface WorkspaceSnapshot {
 type ListDirectory = (request: ListDirectoryRequest) => Promise<ResultEnvelope<DirectoryPage>>;
 type CreateEntry = (request: CreateEntryRequest) => Promise<ResultEnvelope<DirectoryEntry>>;
 type RenameEntry = (request: RenameEntryRequest) => Promise<ResultEnvelope<RenameEntryResult>>;
+type TrashEntry = (request: TrashEntryRequest) => Promise<ResultEnvelope<TrashEntryResult>>;
 
 const nameCollator = new Intl.Collator('zh-CN', { numeric: true, sensitivity: 'base' });
 
@@ -53,6 +54,7 @@ export class WorkspaceStore {
   private readonly listDirectory: ListDirectory;
   private readonly createEntryAction: CreateEntry;
   private readonly renameEntryAction: RenameEntry;
+  private readonly trashEntryAction: TrashEntry;
   private readonly listeners = new Set<() => void>();
   private readonly records = new Map<string, DirectoryRecord>();
   private readonly expanded = new Set<string>();
@@ -68,10 +70,12 @@ export class WorkspaceStore {
     listDirectory: ListDirectory = request => files.listDirectory(request),
     createEntry: CreateEntry = request => files.createEntry(request),
     renameEntry: RenameEntry = request => files.renameEntry(request),
+    trashEntry: TrashEntry = request => files.trashEntry(request),
   ) {
     this.listDirectory = listDirectory;
     this.createEntryAction = createEntry;
     this.renameEntryAction = renameEntry;
+    this.trashEntryAction = trashEntry;
     this.records.set('', emptyRecord());
     this.snapshot = initialSnapshot();
   }
@@ -275,6 +279,11 @@ export class WorkspaceStore {
     if (this.root?.grant.grantId !== directory.grantId) return;
     await this.load(directory, false);
     await this.findEntry(directory, changedName);
+    await this.refreshParentEntry(directory);
+  }
+
+  private async refreshParentEntry(directory: FileRef) {
+    if (this.root?.grant.grantId !== directory.grantId) return;
     if (!directory.relativePath) return;
     const segments = directory.relativePath.split('/').filter(Boolean);
     const ancestor = {
@@ -284,6 +293,49 @@ export class WorkspaceStore {
     await this.load(ancestor, false);
     const directoryName = segments.at(-1);
     if (directoryName) await this.findEntry(ancestor, directoryName);
+  }
+
+  async reloadEntry(reference: FileRef): Promise<DirectoryEntry | null> {
+    const generation = this.generation;
+    const segments = reference.relativePath.split('/');
+    const name = segments.pop();
+    if (!name || this.root?.grant.grantId !== reference.grantId) return null;
+    const parent = { grantId: reference.grantId, relativePath: segments.join('/') };
+    this.refresh(parent);
+    await this.ensureDirectory(parent);
+    if (generation !== this.generation) return null;
+    return await this.findEntry(parent, name) ?? null;
+  }
+
+  async trashEntry(request: TrashEntryRequest): Promise<ResultEnvelope<TrashEntryResult>> {
+    const generation = this.generation;
+    const result = await this.trashEntryAction(request);
+    if (!result.ok) return result;
+    const missing = result.value.missingDocumentIds;
+    if (result.value.receiptId !== request.requestId || missing.length !== request.affectedDocumentIds.length
+      || missing.some(id => !request.affectedDocumentIds.includes(id))
+      || result.value.drafts.length !== request.snapshots.length
+      || result.value.drafts.some(draft => !request.snapshots.some(snapshot =>
+        snapshot.documentId === draft.documentId && snapshot.documentVersion === draft.documentVersion))) {
+      return { ok: false, error: { code: 'IPC_UNAVAILABLE', message: '回收回执与原请求不匹配，结果尚未确认；请核对原请求。', retryable: false } };
+    }
+    if (generation !== this.generation || this.root?.grant.grantId !== request.ref.grantId) return result;
+    const path = request.ref.relativePath;
+    const parentPath = path.split('/').slice(0, -1).join('/');
+    for (const key of this.records.keys()) if (isAtOrBelow(key, path)) this.records.delete(key);
+    for (const key of this.expanded) if (isAtOrBelow(key, path)) this.expanded.delete(key);
+    for (const key of this.requestVersions.keys()) if (key === parentPath || isAtOrBelow(key, path)) {
+      this.requestVersions.set(key, (this.requestVersions.get(key) ?? 0) + 1);
+    }
+    const parent = this.records.get(parentPath);
+    if (parent) this.records.set(parentPath, { ...parent, items: parent.items.filter(item => item.ref.relativePath !== path),
+      loading: false, nextCursor: null });
+    if (this.selectedPath && isAtOrBelow(this.selectedPath, path)) this.selectedPath = parentPath || null;
+    this.publish();
+    const reference = { grantId: request.ref.grantId, relativePath: parentPath };
+    await this.load(reference, false);
+    await this.refreshParentEntry(reference);
+    return result;
   }
 
   async locate(reference: FileRef): Promise<boolean> {

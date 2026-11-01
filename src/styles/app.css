@@ -21,9 +21,9 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round
 .sidebar-title { margin: 0; padding: var(--space-3) var(--space-4); font-size: 12px; font-weight: 600; }
 .sidebar-empty { padding: 0 var(--space-4); color: var(--text-secondary); }
 .workspace-explorer { display: flex; min-height: 100%; flex-direction: column; }
-.explorer-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding-right: var(--space-2); }
-.explorer-heading .sidebar-title { flex: 1; }
-.explorer-actions { display: flex; gap: 2px; }
+.explorer-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-1); padding: 0 var(--space-2) var(--space-1); }
+.explorer-heading .sidebar-title { flex: 1 0 100%; padding: var(--space-2) var(--space-2) var(--space-1); }
+.explorer-actions { display: flex; flex-wrap: wrap; gap: 2px; }
 .icon-button.compact { width: 28px; height: 28px; }
 .icon-button.compact svg { width: 16px; height: 16px; }
 .explorer-filter { display: flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-4) var(--space-2); color: var(--text-secondary); font-size: 11px; }
@@ -121,6 +121,22 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round
 .document-tabs button:hover { background: var(--bg-hover); }
 .document-tabs button:focus-visible { outline-offset: -3px; }
 .dirty-marker { font-size: 10px; color: var(--accent); }
+.trash-dialog { width: min(560px, calc(100% - 32px)); max-height: calc(100% - 32px); padding: 0; border: 1px solid var(--border-strong); border-radius: var(--radius-md); background: var(--bg-surface); color: var(--text-primary); box-shadow: var(--shadow); }
+.trash-dialog[open] { display: flex; flex-direction: column; }
+.trash-dialog::backdrop { background: #18201a66; }
+.trash-dialog header { padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border); }
+.trash-dialog h2 { margin: 0; font-size: 16px; }
+.trash-body { min-height: 0; overflow: auto; padding: var(--space-3) var(--space-4); }
+.trash-body p { margin: 0 0 var(--space-3); }
+.trash-path { font-family: var(--font-mono); overflow-wrap: anywhere; }
+.trash-documents { margin: 0 0 var(--space-3); padding: 0; list-style: none; }
+.trash-documents li { display: flex; gap: var(--space-2); justify-content: space-between; border-top: 1px solid var(--border); padding: var(--space-2) 0; }
+.trash-documents li span { min-width: 0; overflow-wrap: anywhere; }
+.trash-documents strong { flex: 0 0 auto; font-size: 12px; color: var(--warning); }
+.trash-hint { color: var(--text-secondary); font-size: 12px; }
+.trash-error, .trash-primary { color: var(--danger); }
+.trash-dialog footer { flex: 0 0 auto; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border); }
+.trash-dialog .trash-primary { border-color: var(--danger); }
 .save-all-results { flex: 0 1 auto; max-height: 40%; overflow: auto; padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border); background: var(--bg-surface); }
 .save-all-heading { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; background: var(--bg-surface); }
 .save-all-heading h2 { margin: 0; font-size: 14px; font-weight: 600; }
