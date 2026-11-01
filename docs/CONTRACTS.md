@@ -1,12 +1,14 @@
 # 进程接口与数据契约
 
-状态：设计契约，尚无产品代码。模块责任见 [能力地图](../CAPABILITY-MAP.md)，功能 ID 见 [功能矩阵](FEATURE-MATRIX.md)。本文件定义跨进程边界；模块内部可以演进，但不得静默改变保存、取消和错误语义。v1 使用单一 schemaVersion=1，不维护平行版本 API。
+状态：跨进程设计与实现契约；已实现范围与实际证据见 [PROGRESS](../tasks/PROGRESS.md)。模块责任见 [能力地图](../CAPABILITY-MAP.md)，功能 ID 见 [功能矩阵](FEATURE-MATRIX.md)。本文件定义跨进程边界；模块内部可以演进，但不得静默改变保存、取消和错误语义。v1 使用单一 schemaVersion=1，不维护平行版本 API。
 
 M0实施决策（T003，2026-11-01）：按既有协议先落地choose_files/choose_folder/open_document，不添加任意路径授权或测试专用IPC。授权仅保存在Rust内存；每次读取同时校验路径组件、canonical目标和已打开句柄的Windows最终路径，阻止junction换向逃逸。首个切片只提供有界UTF8只读查看，其他编码/大文件返回明确错误，完整打开策略/文档身份/保存由T101之后扩展；不得提前标记相应功能完成。AppManifest为这三个命令生成精确ACL，仅main本地窗口获权。
 
 M1/T101实施决策（2026-11-01）：Windows身份使用volume serial+128-bit file ID，打开文档持有共享删除的只读句柄作为身份租约，避免已打开文档期间ID复用；不支持该API时显式提示并退化canonical路径。revision纳入身份、原始字节、大小与mtime，不仅比较内容。UTF16 BOM先严格解码再判断binary，非法代理项/奇数字节拒绝有损读取。前端registry在React之外持有唯一CodeMirror状态和版本，React仅订阅标签/dirty等元数据；重复打开同DocumentId只聚焦，不替换已有缓冲。M1对未实现逐行编辑映射的混合换行保持只读，完整编码/换行编辑仍由T201验收。所有线协议字段不变。
 
 M1/T102.a实施决策（2026-11-01）：保存时才冻结正文字符串与CM Text基线、format/newlineMap/version及固定requestId；每键不做字符串快照。Ack必须匹配捕获版本及当前基准diskRevision，更新已保存Text与磁盘元数据，使用当前Text对已保存Text判dirty，不重建EditorState或清undo。过期/错配Ack拒绝；后续队列同文档串行，等待中的保存须在前一个Ack后重新捕获expectedRevision。普通LF/CRLF映射在保存快照时生成，mixed/孤立CR仍只读，未命名文档交给另存选择器，不伪造已有路径。
+
+M1/T102.b1实施决策（2026-11-01）：Rust SaveRequest与既有camelCase协议一致，拒绝未知字段；TextFormat改为owned字符串以便Deserialize，输出线协议不变。编码器先验证版本、归一化LF、逐换行数量/版本及encoding/BOM配对，支持严格UTF8/UTF16与显式mixed逐行映射，不支持的编码拒绝。此切片只生成字节，不提供IPC或写盘；前端仍将UTF16/mixed设为只读，不能以编码器测试代替T201编辑映射验收。
 
 ## 1. 一致规则
 

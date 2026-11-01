@@ -85,7 +85,7 @@ pub struct FileMetadata {
     pub disk_revision: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Newline {
     Lf,
@@ -93,19 +93,40 @@ pub enum Newline {
     Cr,
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NewlineMap {
     pub document_version: u64,
     pub endings: Vec<Newline>,
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TextFormat {
-    pub encoding: &'static str,
-    pub bom: &'static str,
-    pub line_ending: &'static str,
+    pub encoding: String,
+    pub bom: String,
+    pub line_ending: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SaveRequest {
+    pub document_id: String,
+    pub request_id: String,
+    pub document_version: u64,
+    pub expected_disk_revision: String,
+    pub text: String,
+    pub format: TextFormat,
+    pub newline_map: Option<NewlineMap>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveAck {
+    pub document_version: u64,
+    pub disk_revision: String,
+    pub saved_at: String,
+    pub size_bytes: u64,
 }
 
 #[derive(Debug, Serialize)]

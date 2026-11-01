@@ -110,9 +110,9 @@ impl FileService {
                 disk_revision: format!("{:x}", revision.finalize()),
             },
             format: TextFormat {
-                encoding: decoded.encoding,
-                bom: decoded.bom,
-                line_ending,
+                encoding: decoded.encoding.into(),
+                bom: decoded.bom.into(),
+                line_ending: line_ending.into(),
             },
             warnings,
             mode: "normal",
