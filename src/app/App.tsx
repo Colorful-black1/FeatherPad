@@ -4,6 +4,7 @@ import { Shell } from '../shared/ui/Shell';
 import { files } from '../bridge/files';
 import { EditorDocument } from '../features/editor/EditorDocument';
 import { documents } from '../features/editor/documents';
+import { saves } from '../features/editor/save';
 import type { DocumentId } from '../shared/contracts/files';
 
 export function App() {
@@ -14,6 +15,7 @@ export function App() {
   const [autoFocus, setAutoFocus] = useState(true);
   const [folderChosen, setFolderChosen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [savingCount, setSavingCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const opening = useRef(false);
 
@@ -42,15 +44,27 @@ export function App() {
 
   const newFile = useCallback(() => { setAutoFocus(true); documents.createUntitled(); }, [setAutoFocus]);
 
+  const saveCurrent = useCallback(async () => {
+    const id = documents.getSnapshot().activeId;
+    if (!id) return;
+    setError(null);
+    setSavingCount(count => count + 1);
+    try {
+      const result = await saves.save(id);
+      if (!result.ok) setError(result.error.message);
+    } finally { setSavingCount(count => count - 1); }
+  }, [setError, setSavingCount]);
+
   useEffect(() => {
     const handleKey = (event: globalThis.KeyboardEvent) => {
       if (!event.ctrlKey || event.altKey || event.shiftKey || event.isComposing) return;
       if (event.key.toLowerCase() === 'n') { event.preventDefault(); newFile(); }
       if (event.key.toLowerCase() === 'o') { event.preventDefault(); void openFile(); }
+      if (event.key.toLowerCase() === 's') { event.preventDefault(); void saveCurrent(); }
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [newFile, openFile]);
+  }, [newFile, openFile, saveCurrent]);
 
   async function openFolder() {
     if (opening.current) return;
@@ -85,13 +99,14 @@ export function App() {
       onToggleSidebar={() => setSidebarOpen(open => !open)}
       onToggleTheme={() => setDark(value => !value)}
       sidebar={<><h2 className="sidebar-title">资源管理器</h2><p className="sidebar-empty">{folderChosen ? '文件夹已授权' : '尚未打开文件夹'}</p></>}
-      status={<><span>{busy ? '正在打开…' : current ? current.readOnlyReason ? '只读' : current.dirty ? '未保存修改' : current.displayPath ? '未修改' : '未命名' : '就绪'}</span><span className="status-end">{current ? `${current.format.encoding.toUpperCase()}${current.format.bom === 'none' ? '' : ' BOM'} · ${current.format.lineEnding.toUpperCase()}` : '轻羽 FeatherPad'}</span></>}
+      status={<><span>{savingCount > 0 ? '正在保存…' : busy ? '正在打开…' : current ? current.readOnlyReason ? '只读' : current.dirty ? '未保存修改' : current.displayPath ? '未修改' : '未命名' : '就绪'}</span><span className="status-end">{current ? `${current.format.encoding.toUpperCase()}${current.format.bom === 'none' ? '' : ' BOM'} · ${current.format.lineEnding.toUpperCase()}` : '轻羽 FeatherPad'}</span></>}
     >
       {error && <div className="notice error-notice" role="alert"><span>{error}</span><button onClick={() => setError(null)}>关闭提示</button></div>}
       {current && snapshot.activeId ? <>
         <div className="document-toolbar" aria-label="文件操作">
           <button className="plain-button" onClick={newFile} aria-keyshortcuts="Control+n">新建文本</button>
           <button className="plain-button" onClick={() => void openFile()} disabled={busy} aria-keyshortcuts="Control+o">打开文件</button>
+          <button className="plain-button" onClick={() => void saveCurrent()} disabled={!!current.readOnlyReason || savingCount > 0} aria-keyshortcuts="Control+s">保存</button>
         </div>
         <div className="document-tabs" role="tablist" aria-label="打开的文档">
           {snapshot.documents.map((document, index) => <button

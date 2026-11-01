@@ -18,7 +18,7 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
   const root = process.cwd();
   const exe = path.join(root, 'src-tauri', 'target', profile, 'featherpad.exe');
   const hash = createHash('sha256').update(await readFile(exe)).digest('hex');
-  const evidence = path.join(root, '.artifacts', 'T101');
+  const evidence = path.join(root, '.artifacts', 'T102');
   const chooserRoot = path.join(root, '.artifacts', 'T002');
   await mkdir(evidence, { recursive: true });
   await mkdir(chooserRoot, { recursive: true });
@@ -40,6 +40,7 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
     env: {
       ...process.env,
       WEBVIEW2_USER_DATA_FOLDER: dataDir,
+      FEATHERPAD_USER_DATA_DIR: path.join(dataDir, 'featherpad-state'),
       WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port} --remote-debugging-address=127.0.0.1`,
     },
   });
@@ -66,13 +67,23 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
       const native = Reflect.get(window, '__TAURI_INTERNALS__') as { invoke: (command: string, args: Record<string, unknown>) => Promise<unknown> };
       const forged = await native.invoke('open_document', { ref: { grantId: 'not-issued', relativePath: 'secret.txt' } });
       const malformed = await native.invoke('open_document', { ref: { grantId: null, relativePath: 7 } });
+      const forgedSave = await native.invoke('save_document', {
+        documentId: '00000000-0000-4000-8000-000000000000', requestId: crypto.randomUUID(), documentVersion: 1,
+        expectedDiskRevision: '0'.repeat(64), text: 'controlled denied snapshot',
+        format: { encoding: 'utf-8', bom: 'none', lineEnding: 'lf' },
+      });
+      const malformedSave = await native.invoke('save_document', { documentId: null, unexpected: true });
+      const unknownStat = await native.invoke('stat_document', { documentId: 'unknown-document' });
       let ungrantedPluginRejected = false;
       try { await native.invoke('plugin:fs|read_text_file', { path: 'ungranted-fixture.txt', options: {} }); }
       catch { ungrantedPluginRejected = true; }
-      return { forged, malformed, ungrantedPluginRejected };
+      return { forged, malformed, forgedSave, malformedSave, unknownStat, ungrantedPluginRejected };
     });
     expect(rejected.forged).toMatchObject({ ok: false, error: { code: 'OUT_OF_SCOPE' } });
     expect(rejected.malformed).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
+    expect(rejected.forgedSave).toMatchObject({ ok: false, error: { code: 'NOT_FOUND' } });
+    expect(rejected.malformedSave).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
+    expect(rejected.unknownStat).toMatchObject({ ok: false, error: { code: 'NOT_FOUND' } });
     expect(rejected.ungrantedPluginRejected).toBe(true);
     if (profile === 'release') {
       expect(page.url()).toMatch(/^https?:\/\/tauri\.localhost\//);
@@ -137,23 +148,86 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
         await expect(page.getByRole('tab')).toHaveCount(2);
         await expect(page.locator('.cm-content')).toContainText('中文😀未保存');
       }
+      await page.locator('.cm-content').focus();
+      await page.keyboard.press('Control+s');
+      await expect(page.getByRole('status')).toContainText('未修改');
+      expect(await readFile(fixture, 'utf8')).toBe(`原生选择器受控文件\r\n${marker} 中文😀未保存`);
+      const transactions = path.join(dataDir, 'featherpad-state', 'save-transactions');
+      const { readdir } = await import('node:fs/promises');
+      const receipts = await readdir(transactions);
+      expect(receipts).toHaveLength(1);
+      expect(await readFile(path.join(transactions, receipts[0]!, 'body.bin'), 'utf8')).toBe(await readFile(fixture, 'utf8'));
+      await page.screenshot({ path: path.join(evidence, `native-${profile}-saved.png`) });
+      // Keep the real native result intact, but delay its delivery to exercise late Ack handling.
+      await page.evaluate(() => {
+        const native = Reflect.get(window, '__TAURI_INTERNALS__') as { callbacks: Map<number, (data: unknown) => void> };
+        const callbacks = native.callbacks;
+        if (!(callbacks instanceof Map)) throw new Error('Framework debug callback table unavailable');
+        const originalSet = callbacks.set;
+        let used = false;
+        callbacks.set = function (id, callback) {
+          originalSet.call(this, id, data => {
+            const value: unknown = data && typeof data === 'object' ? Reflect.get(data, 'value') : null;
+            const isAck = data && typeof data === 'object' && Reflect.get(data, 'ok') === true
+              && value && typeof value === 'object' && typeof Reflect.get(value, 'documentVersion') === 'number'
+              && typeof Reflect.get(value, 'diskRevision') === 'string';
+            if (isAck && !used) {
+              used = true;
+              callbacks.set = originalSet;
+              Reflect.set(window, 'nativeSaveAckHeld', true);
+              Reflect.set(window, 'releaseNativeSaveAck', () => callback(data));
+            } else callback(data);
+          });
+          return this;
+        };
+      });
+      await page.keyboard.press('Control+End');
+      await page.keyboard.insertText(' 回执前版本');
+      await page.keyboard.press('Control+s');
+      await expect.poll(() => page.evaluate(() => Reflect.get(window, 'nativeSaveAckHeld') === true)).toBe(true);
+      await expect(page.getByRole('status')).toContainText('正在保存');
+      const heldBytes = await readFile(fixture, 'utf8');
+      expect(heldBytes).toContain('回执前版本');
+      await page.keyboard.insertText(' 回执等待期间新输入');
+      await page.evaluate(() => { const release = Reflect.get(window, 'releaseNativeSaveAck') as () => void; release(); });
+      await expect(page.getByRole('status')).toContainText('未保存修改');
+      await expect(page.locator('.cm-content')).toContainText('回执等待期间新输入');
+      expect(await readFile(fixture, 'utf8')).toBe(heldBytes);
+      await page.screenshot({ path: path.join(evidence, `native-${profile}-late-ack.png`) });
+      await page.keyboard.press('Control+s');
+      await expect(page.getByRole('status')).toContainText('未修改');
+      expect(await readFile(fixture, 'utf8')).toBe(`${heldBytes} 回执等待期间新输入`);
+      const external = `External native ${randomUUID()}`;
+      await writeFile(fixture, external, 'utf8');
+      await page.keyboard.press('Control+End');
+      await page.keyboard.insertText(' 冲突输入仍保留');
+      await page.keyboard.press('Control+s');
+      await expect(page.getByRole('alert')).toContainText('磁盘文件已变化');
+      await expect(page.getByRole('status')).toContainText('未保存修改');
+      await expect(page.locator('.cm-content')).toContainText('冲突输入仍保留');
+      expect(await readFile(fixture, 'utf8')).toBe(external);
+      await page.screenshot({ path: path.join(evidence, `native-${profile}-conflict.png`) });
       await page.keyboard.press('Control+n');
       await expect(page.getByRole('tab', { name: '无标题 1', exact: true })).toHaveAttribute('aria-selected', 'true');
       await page.keyboard.insertText('原生中文😀草稿');
       await expect(page.locator('.cm-content')).toHaveText('原生中文😀草稿');
-      for (const record of fixtureRecords) expect(createHash('sha256').update(await readFile(record.path)).digest('hex')).toBe(record.sha256);
+      expect(createHash('sha256').update(await readFile(second)).digest('hex')).toBe(fixtureRecords[1]?.sha256);
+      expect(createHash('sha256').update(await readFile(fixture)).digest('hex')).not.toBe(fixtureRecords[0]?.sha256);
       await page.screenshot({ path: path.join(evidence, `native-${profile}-documents.png`) });
     }
     await writeFile(path.join(evidence, `native-${profile}.json`), JSON.stringify({
       checkedAt: new Date().toISOString(),
-      scope: 'Real Tauri WebView2 and real OS chooser; no mock bridge; no IME/Windows scaling coverage',
+      scope: 'Real Tauri/OS chooser/IPC/disk writes; test-only Ack delivery delay, no fake results/grants/IO; no IME/Windows scaling coverage',
       executable: path.relative(root, exe), sha256: hash, pid: child.pid,
       profile, browserVersion: browser.version(), url: page.url(),
       nativeChooserVerified: verifyChooser,
       multiOpenAndDraftVerified: verifyChooser,
+      nativeSaveVerified: verifyChooser,
+      nativeConflictVerified: verifyChooser,
+      nativeDelayedAckVerified: verifyChooser,
       chooserAutomation: verifyChooser ? chooserAutomation : 'disabled-explicitly',
       browserOffline: profile === 'release',
-      checks: ['native-title', 'native-brand', 'tauri-ipc-present', 'light-theme', 'dark-theme', 'forged-grant-rejected', 'malformed-ref-rejected', 'ungranted-plugin-rejected'],
+      checks: ['native-title', 'native-brand', 'tauri-ipc-present', 'light-theme', 'dark-theme', 'forged-grant-rejected', 'malformed-ref-rejected', 'forged-save-rejected', 'malformed-save-rejected', 'unknown-stat-rejected', 'ungranted-plugin-rejected'],
     }, null, 2));
   } finally {
     try { await browser?.close(); }

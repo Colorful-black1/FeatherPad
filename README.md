@@ -2,7 +2,7 @@
 
 **快开文件，专心编辑。** 一个免费、离线、面向常用文档、配置和代码文本的轻量桌面编辑器。
 
-本目录是轻羽桌面编辑器的独立工程。**M0/G0及M1/T101已通过：真实系统选择器多文件打开、新建、CodeMirror独立缓冲与撤销状态、原生身份/授权拒绝及Release通路已实测；下一项安全保存。保存/恢复及M2–M5尚未完成，G1未通过。** 不把原型、mock或早期Release视为成品。最新状态和证据见 [PROGRESS](tasks/PROGRESS.md)。
+本目录是轻羽桌面编辑器的独立工程。**M0/G0及M1/T101已通过；T102已有文件CtrlS受保护保存、外部冲突拒绝、迟到回执保留新输入已在真实Release验证。另存/副本/全部保存、恢复及M2–M5尚未完成，G1未通过。** 不把原型、mock或早期Release视为成品。最新状态和证据见 [PROGRESS](tasks/PROGRESS.md)。
 
 ## 立即开始
 
@@ -55,10 +55,10 @@ powershell.exe -NoProfile -File .\scripts\Probe-Environment.ps1
 ## 环境约束与当前事实
 
 本机复用 Node22.13.0、pnpm10.32.1、Rust1.99.1、VS2022 C++工具、Windows SDK和WebView2；没有升级全局工具链。项目依赖已在E盘安装，原生编译和运行的实际证据按阶段记录。
-M0实施更新：项目依赖已精确安装并双锁，原生Rust与Tauri编译、Release WebView2离线重载、IPC越界拒绝已实际验证；详细范围见 [M0验收](docs/acceptance/M0.md)。开发使用上述会话入口后运行`pnpm dev`，质量检查使用`powershell.exe -NoProfile -File scripts/check.ps1 -Desktop`。当前早期Release不提供保存；完整v1仍需全部后续阶段。
+项目依赖已精确安装并双锁，原生Rust/Tauri、Release WebView2离线重载和IPC越界拒绝已实际验证，见 [M0验收](docs/acceptance/M0.md)。已有文件保存及其限制见 [M1验收](docs/acceptance/M1.md)。开发使用上述会话入口后运行`pnpm dev`，质量检查使用`powershell.exe -NoProfile -File scripts/check.ps1 -Desktop`。当前早期Release尚无完整另存、关闭保护和恢复；完整v1仍需全部后续阶段。
 
 优先复用 `E:\Codeing` 和默认目录的已有环境；确实缺失时，**所有新增开发工具/SDK/浏览器/安装包/缓存只能放在 `E:\Codeing` 下**，默认 `E:\Codeing\featherpad-dev`。全局Node不切换，系统PATH不修改。
 
 ## 事实源与变更
 
-用户明确要求优先，其次是产品/功能矩阵/提供方SPEC，再是接口、技术、UI与任务计划；发生冲突应同步修正文档，不能让agent随意挑一份。精确业务阈值以PRODUCT为准，跨进程字段名以CONTRACTS为准，UI的演示内容不能改变范围或默认行为。所有产品能力当前均待实现/待验证；未来执行证据统一写PROGRESS。
+用户明确要求优先，其次是产品/功能矩阵/提供方SPEC，再是接口、技术、UI与任务计划；发生冲突应同步修正文档，不能让agent随意挑一份。精确业务阈值以PRODUCT为准，跨进程字段名以CONTRACTS为准，UI的演示内容不能改变范围或默认行为。未记录通过证据的产品能力均待实现/待验证；执行证据统一写PROGRESS。

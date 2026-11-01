@@ -1,8 +1,19 @@
-import type { FileRef, OpenDocument } from '../shared/contracts/files';
+import type { DocumentId, FileRef, OpenDocument, SaveAck, SaveRequest } from '../shared/contracts/files';
 import { callCommand, isRecord } from './invoke';
 
 const nonemptyString = (value: unknown): value is string => typeof value === 'string' && value.length > 0;
 const safeCount = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+
+export function isFileMetadata(value: unknown): value is OpenDocument['metadata'] {
+  return isRecord(value) && nonemptyString(value.displayPath) && safeCount(value.sizeBytes)
+    && nonemptyString(value.modifiedAt) && Number.isFinite(Date.parse(value.modifiedAt))
+    && typeof value.isReadOnly === 'boolean' && nonemptyString(value.diskRevision);
+}
+
+export function isSaveAck(value: unknown): value is SaveAck {
+  return isRecord(value) && safeCount(value.documentVersion) && safeCount(value.sizeBytes)
+    && nonemptyString(value.diskRevision) && nonemptyString(value.savedAt) && Number.isFinite(Date.parse(value.savedAt));
+}
 
 export function isFileRef(value: unknown): value is FileRef {
   return isRecord(value) && nonemptyString(value.grantId) && value.grantId.length <= 128
@@ -14,9 +25,7 @@ export function isOpenDocument(value: unknown): value is OpenDocument {
     || !isRecord(value.metadata) || !isRecord(value.format) || !isRecord(value.content)) return false;
   const { metadata, format, content } = value;
   if (value.mode !== 'normal' && value.mode !== 'degraded') return false;
-  if (!nonemptyString(metadata.displayPath) || !safeCount(metadata.sizeBytes)
-    || !nonemptyString(metadata.modifiedAt) || !Number.isFinite(Date.parse(metadata.modifiedAt))
-    || typeof metadata.isReadOnly !== 'boolean' || !nonemptyString(metadata.diskRevision)) return false;
+  if (!isFileMetadata(metadata)) return false;
   if (!nonemptyString(format.encoding) || typeof format.bom !== 'string'
     || !['none', 'utf8', 'utf16le', 'utf16be'].includes(format.bom)
     || typeof format.lineEnding !== 'string' || !['lf', 'crlf', 'mixed'].includes(format.lineEnding)) return false;
@@ -36,4 +45,6 @@ export const files = {
   chooseFolder: () => callCommand('choose_folder', {}, (value): value is { grant: FileRef | null } =>
     isRecord(value) && (value.grant === null || isFileRef(value.grant))),
   open: (ref: FileRef) => callCommand('open_document', { ref }, isOpenDocument),
+  save: (request: SaveRequest) => callCommand('save_document', { ...request }, isSaveAck),
+  stat: (documentId: DocumentId) => callCommand('stat_document', { documentId }, isFileMetadata),
 };

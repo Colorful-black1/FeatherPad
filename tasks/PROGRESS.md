@@ -4,7 +4,7 @@
 
 - 产品名称：**轻羽 FeatherPad**。
 - 当前交付：完整产品方案、86项功能矩阵、模块规格、UI规范与离线交互原型、技术/本机环境文档、M0–M5实现计划、57个开发任务、agent执行入口。
-- 产品代码：**M0/G0及M1/T101通过**。真实Release多文件打开、新建、独立CM缓冲/undo及授权拒绝已实测；保存/恢复尚未实现，G1未通过，更不是完整v1。
+- 产品代码：**M0/G0及M1/T101通过，T102进行中**。真实Release已有文件CtrlS受保护保存、冲突拒绝、迟到Ack保留新输入已验证；另存/副本/全部保存、恢复等仍未完成，G1未通过，更不是完整v1。
 - 下一项：**T102 安全保存闭环**；M1通过后继续M2–M5。
 - 本次交付检查：详见 [DELIVERY-CHECK](../docs/DELIVERY-CHECK.md)，不代表产品关卡G0–G5通过。
 
@@ -21,7 +21,14 @@
 | 2026-11-01 / T002 | app-shell | React Shell/App/token/CSS、Web及原生测试 | typecheck/lint exit 0；Web 2 passed；真实WebView2 debug 1 passed | Web与原生范围分开，未测OS对话框 | .artifacts/T002/及docs/acceptance/M0.md | T002通过；下一T003 |
 | 2026-11-01 / T003.a–d（进行中） | F-DESK-013 | Rust models/grants/files/commands、AppManifest ACL、TS contracts/bridge、CodeMirror只读UI、测试与脚本 | typecheck/lint/TS单测3、Rust原生5、Web4、Release smoke1均exit 0；check.ps1 -Desktop exit 0；交互选择器三次超时，后次显式exit 1 | 原生Rust磁盘+junction，真实Release IPC/WebView2，Web mock独立 | docs/acceptance/M0.md；.artifacts/T003；.artifacts/T002/native-release.json | T003未完成OS选取验收，G0不勾选 |
 
-## 当前恢复点（2026-11-01 14:09，Asia/Shanghai）
+## 当前恢复点（2026-11-01 14:42，Asia/Shanghai）
+
+- T102.b2.4/c1已验证：前端`SaveCoordinator`按文档串行，前一个Ack后捕获后续快照/expectedRevision；失败停止已排队写入，IPC结果未知时重试先stat，不清除新输入dirty。App接保存按钮/CtrlS/进度/错误，bridge运行时校验SaveAck/metadata。typecheck/lint/TS单测17、Web7、Rust全套26、fmt/clippy、Release build及真实桌面1项均exit 0（各命令实际分开运行，未声称新一轮check.ps1整链）。
+- 当前Release：`src-tauri/target/release/featherpad.exe`，9814016 bytes，SHA256 `278489BBBC0B476DB04DDEA7035653B776BCA3F41C697436B347EF8FB45DFBAA`。`.artifacts/T102/native-release.json`记录chooser/multi/draft/save/conflict/delayedAck均true、WebView2 156.0.4314.58和浏览器offline重载。真实OS选取→原生授权→编辑→CtrlS→UTF8/CRLF中文emoji实际字节和journal正文一致；外部修改后CtrlS拒绝且保留内存和磁盘；伪造保存/损坏请求/未知stat拒绝。
+- 原生迟到Ack证据：测试仅利用Tauri现有debug callbacks表延迟交付真实原生返回值，没有伪造IO/结果/grant或生产延迟IPC。实际字节已写入后保持Ack待交付，输入新字后释放原回执，UI仍dirty、磁盘仍是旧快照；下一次CtrlS才写入新字并clean。这不声称是在自然慢磁盘IO期间计时，也不是IME/OS缩放/Win10证据。初次尝试覆盖invoke未生效（框架readonly定义），desktop exit 1；读已锁定Tauri脚本定位后改用debug表，exit 0。截图saved/conflict/late-ack已视觉检查，历史T101/T002证据保留。
+- 下一任务仍T102.c2：新建文档首次原生另存、取消保持正文、另存成功再切身份、同目标已打开碰撞保护、保存副本不切源、全部保存逐项进度/取消；补原生硬链接确认（当前IPC安全拒绝，Rust已测显式确认分离）、保存错误保留原始行动说明（当前journal消息可再改善）。还需实际磁盘满/强杀故障、事务启动扫描/容量预算（T110），不能标T102或G1完成。当前无恢复/关闭保护，不用早期版本编辑真实用户文档。
+
+## T102原生保存切片记录（历史，2026-11-01）
 
 - T102.b2.4 IPC编译/原生正负例通过：新增`commands/save.rs`的flat SaveRequest请求适配、save_document/stat_document精确ACL、native InFlight state。借用Request的async命令仅在Tauri适配层外包Result，实际线协议始终ResultEnvelope，真实Release已验证没有额外包装。状态目录默认local app data，环境`FEATHERPAD_USER_DATA_DIR`仅原生配置自定义本地状态目录，不授权用户文件；测试子进程E盘隔离。Rust26/fmt/clippy exit 0，原生Release保存/冲突与未知ID/损坏保存/未知stat拒绝通过；下一提交保存前端队列/UI与证据。
 
