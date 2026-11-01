@@ -1,7 +1,8 @@
 import { expect, it } from 'vitest';
-import { undo } from '@codemirror/commands';
+import { isolateHistory, undo } from '@codemirror/commands';
 import { isOpenDocument } from '../../bridge/files';
 import { DocumentRegistry } from './documents';
+import type { DiskRevision, SaveAck } from '../../shared/contracts/files';
 
 function fixture(options: { id?: string; readOnly?: boolean; encoding?: string; lineEnding?: string } = {}) {
   const value: unknown = {
@@ -82,4 +83,73 @@ it('keeps selections outside React snapshots and never publishes the body text',
   expect(emissions).toBe(0);
   expect(JSON.stringify(snapshot)).not.toContain('private');
   unsubscribe();
+});
+
+function acknowledgement(version: number, revision = 'revision-saved'): SaveAck {
+  return { documentVersion: version, diskRevision: revision as DiskRevision, sizeBytes: 24, savedAt: '2026-11-01T06:00:00Z' };
+}
+
+it('freezes a save snapshot and keeps input typed during the save dirty', () => {
+  const registry = new DocumentRegistry();
+  const id = registry.openDocument(fixture());
+  let state = registry.getDocument(id)!.state;
+  registry.commit(id, [state.update({ changes: { from: state.doc.length, insert: ' saved' }, annotations: isolateHistory.of('full') })]);
+  const capture = registry.captureSave(id);
+  if (!capture.ok) throw new Error('Expected writable fixture');
+  expect(Object.isFrozen(capture.value.request)).toBe(true);
+  expect(Object.isFrozen(capture.value.request.format)).toBe(true);
+  expect(Object.isFrozen(capture.value.request.newlineMap?.endings)).toBe(true);
+  expect(capture.value.request).toMatchObject({ documentVersion: 1, expectedDiskRevision: 'revision-1', text: 'private\nbody saved', newlineMap: { documentVersion: 1, endings: ['lf'] } });
+  state = registry.getDocument(id)!.state;
+  registry.commit(id, [state.update({ changes: { from: state.doc.length, insert: ' newer' }, annotations: isolateHistory.of('full') })]);
+  const edited = registry.getDocument(id)!.state;
+  expect(registry.acknowledgeSave(capture.value, acknowledgement(1))).toEqual({ ok: true, value: { dirty: true } });
+  expect(registry.getDocument(id)!.state).toBe(edited);
+  const next = registry.captureSave(id);
+  expect(next).toMatchObject({ ok: true, value: { request: { expectedDiskRevision: 'revision-saved', text: 'private\nbody saved newer', documentVersion: 2 } } });
+  expect(capture.value.request.text).toBe('private\nbody saved');
+  // Saving does not reset history; undoing just the newer input reaches the saved baseline.
+  expect(undo({ state: edited, dispatch: transaction => { registry.commit(id, [transaction]); } })).toBe(true);
+  expect(registry.getDocument(id)!.state.doc.toString()).toBe('private\nbody saved');
+  expect(registry.getDocument(id)!.summary.dirty).toBe(false);
+});
+
+it('clears dirty on a matching save without changing text, selection or undo state', () => {
+  const registry = new DocumentRegistry();
+  const id = registry.openDocument(fixture({ lineEnding: 'crlf' }));
+  const before = registry.getDocument(id)!.state;
+  registry.commit(id, [before.update({ changes: { from: before.doc.length, insert: '\nnew' }, selection: { anchor: 2 } })]);
+  const captured = registry.captureSave(id);
+  if (!captured.ok) throw new Error('Expected writable fixture');
+  expect(captured.value.request.newlineMap?.endings).toEqual(['crlf', 'crlf']);
+  const edited = registry.getDocument(id)!.state;
+  expect(registry.acknowledgeSave(captured.value, acknowledgement(1))).toEqual({ ok: true, value: { dirty: false } });
+  expect(registry.getDocument(id)!.state).toBe(edited);
+  expect(edited.selection.main.head).toBe(2);
+  expect(undo({ state: edited, dispatch: transaction => { registry.commit(id, [transaction]); } })).toBe(true);
+  expect(registry.getDocument(id)!.state.doc.toString()).toBe('private\nbody');
+  expect(registry.getDocument(id)!.summary.dirty).toBe(true);
+});
+
+it('rejects mismatched and replayed save acknowledgements without changing the baseline', () => {
+  const registry = new DocumentRegistry();
+  const id = registry.openDocument(fixture());
+  const state = registry.getDocument(id)!.state;
+  registry.commit(id, [state.update({ changes: { from: 0, insert: 'changed ' } })]);
+  const captured = registry.captureSave(id);
+  if (!captured.ok) throw new Error('Expected writable fixture');
+  expect(registry.acknowledgeSave(captured.value, acknowledgement(2))).toMatchObject({ ok: false, error: { code: 'CONFLICT' } });
+  expect(registry.getDocument(id)!.summary.dirty).toBe(true);
+  expect(registry.getDocument(id)!.source?.metadata.diskRevision).toBe('revision-1');
+  expect(registry.acknowledgeSave(captured.value, acknowledgement(1)).ok).toBe(true);
+  expect(registry.acknowledgeSave(captured.value, acknowledgement(1, 'old-replay'))).toMatchObject({ ok: false, error: { code: 'CONFLICT' } });
+  expect(registry.getDocument(id)!.source?.metadata.diskRevision).toBe('revision-saved');
+});
+
+it('refuses to fabricate a save destination for untitled and read-only documents', () => {
+  const registry = new DocumentRegistry();
+  expect(registry.captureSave(registry.createUntitled())).toMatchObject({ ok: false, error: { code: 'UNSUPPORTED' } });
+  for (const options of [{ id: 'readonly', readOnly: true }, { id: 'mixed', lineEnding: 'mixed' }, { id: 'utf16', encoding: 'utf-16le' }]) {
+    expect(registry.captureSave(registry.openDocument(fixture(options)))).toMatchObject({ ok: false, error: { code: 'READ_ONLY' } });
+  }
 });

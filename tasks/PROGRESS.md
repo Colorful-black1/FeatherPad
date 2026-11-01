@@ -23,6 +23,8 @@
 
 ## 当前恢复点（2026-11-01 14:01，Asia/Shanghai）
 
+- T102.a已实现并验证：`SaveRequest/SaveAck`与registry冻结快照/Ack基线更新，typecheck/lint/TS单测13均exit 0。新增4项覆盖保存中继续输入仍dirty、matching Ack clean且undo不清、错配/回放Ack拒绝、无标题/只读不伪造保存目标。当前只有前端内存契约，没有保存IPC/磁盘写入，未重建Release，不宣称能保存。后续继续T102.b原生严格编码、受保护写入和幂等，再接UI/选择器。
+
 - T101.a/b/c通过，`pnpm build`及`powershell.exe -NoProfile -File scripts/check.ps1 -Desktop`均exit 0：TS9/Rust原生10/Web6/真实Release1，含新增路径替换不复用旧ID、受权junction别名同ID。原生选择两份中文/空格/emoji fixture、各自随机UUID、编辑/切换/undo/redo/重开不覆盖dirty/CtrlN均通过，两个原文件hash不变。截图已视觉检查；未用Web mock代替原生。
 - 早期Release：`src-tauri/target/release/featherpad.exe`，9552384 bytes，SHA256 `2DEAB6411E52999843CA1D069C3C3C248494F87D52FC1EBC39E133D356850E0A`。`.artifacts/T101/native-release.json`：WebView2 156.0.4314.58，`nativeChooserVerified:true`、`multiOpenAndDraftVerified:true`、`browserOffline:true`（浏览器网络offline重载，非物理断网/目标机验收）。M0历史证据保留T002。
 - 文件：registry/editor-state/EditorDocument/App/CSS、原生identity/text/files、受控选择器helper与测试；对应F-FILE-001/002/014/015的本任务部分，详见`docs/acceptance/M1.md`。React仅订阅元数据，CM全文/undo/选区在registry；只读/混合换行/非UTF8目前安全只读。G1未通过，未提供保存或恢复；不要用此版本编辑真实用户文档。

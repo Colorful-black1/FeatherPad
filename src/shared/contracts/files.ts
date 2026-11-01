@@ -21,6 +21,21 @@ export interface TextFormat {
   bom: 'none' | 'utf8' | 'utf16le' | 'utf16be';
   lineEnding: 'lf' | 'crlf' | 'mixed';
 }
+export interface SaveRequest {
+  readonly documentId: DocumentId;
+  readonly requestId: string;
+  readonly documentVersion: number;
+  readonly expectedDiskRevision: DiskRevision;
+  readonly text: string;
+  readonly format: Readonly<TextFormat>;
+  readonly newlineMap?: { readonly documentVersion: number; readonly endings: readonly ('lf' | 'crlf' | 'cr')[] };
+}
+export interface SaveAck {
+  documentVersion: number;
+  diskRevision: DiskRevision;
+  savedAt: string;
+  sizeBytes: number;
+}
 export interface OpenDocument {
   documentId: DocumentId;
   ref: FileRef;
