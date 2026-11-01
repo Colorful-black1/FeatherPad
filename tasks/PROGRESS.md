@@ -4,7 +4,7 @@
 
 - 产品名称：**轻羽 FeatherPad**。
 - 当前交付：完整产品方案、86项功能矩阵、模块规格、UI规范与离线交互原型、技术/本机环境文档、M0–M5实现计划、57个开发任务、agent执行入口。
-- 产品代码：**M0/G0及M1/T101通过，T102进行中**。真实Release已有文件保存、新目标首次另存/取消、保存副本、全部保存、冲突与迟到Ack保护已验证；既有目标覆盖的原生交互验收、恢复等仍未完成，G1未通过，更不是完整v1。
+- 产品代码：**M0/G0及M1/T101通过，T102进行中**。真实Release已有文件保存、新目标首次另存/取消、保存副本、全部保存、既有目标覆盖/取消/碰撞、冲突与迟到Ack保护已验证；普通CtrlS硬链接确认、剩余故障/恢复等仍未完成，G1未通过，更不是完整v1。
 - 下一项：**T102 安全保存闭环**；M1通过后继续M2–M5。
 - 本次交付检查：详见 [DELIVERY-CHECK](../docs/DELIVERY-CHECK.md)，不代表产品关卡G0–G5通过。
 
@@ -21,7 +21,16 @@
 | 2026-11-01 / T002 | app-shell | React Shell/App/token/CSS、Web及原生测试 | typecheck/lint exit 0；Web 2 passed；真实WebView2 debug 1 passed | Web与原生范围分开，未测OS对话框 | .artifacts/T002/及docs/acceptance/M0.md | T002通过；下一T003 |
 | 2026-11-01 / T003.a–d（进行中） | F-DESK-013 | Rust models/grants/files/commands、AppManifest ACL、TS contracts/bridge、CodeMirror只读UI、测试与脚本 | typecheck/lint/TS单测3、Rust原生5、Web4、Release smoke1均exit 0；check.ps1 -Desktop exit 0；交互选择器三次超时，后次显式exit 1 | 原生Rust磁盘+junction，真实Release IPC/WebView2，Web mock独立 | docs/acceptance/M0.md；.artifacts/T003；.artifacts/T002/native-release.json | T003未完成OS选取验收，G0不勾选 |
 
-## 当前恢复点（2026-11-01 16:13，Asia/Shanghai）
+## 当前恢复点（2026-11-01 16:23，Asia/Shanghai）
+
+- T102/F-FILE-004原生已有目标覆盖/副本/碰撞已验收：新增`tests/desktop/overwrite.ts`，真实系统覆盖确认后另有绑定revision的应用确认；拒绝覆盖保原目标/无标题正文/dirty，inspect确认窗口后真实外部写入再Yes触发CONFLICT且不覆写；重新确认成功后同一tab/DocumentId绑定已有目标、字节正确。保存副本选源文件被拒绝，覆盖其他已有目标时副本字节更新而源路径/原字节/dirty保持；目标为另一打开文档时拒绝且双方保留。不是Web mock。
+- 原生helper扩展仅准单个已存在的受控小文件，仍检查E盘fixture根/无reparse/哈希/测试exe/PID/父worker；系统/应用确认分别限定标题、目标文本和唯一启用是/否按钮，UIAutomation只读取该owned确认框且限100个Text元素。文件选择提交用异步PostMessage避免嵌套OS确认阻塞；实际Button用BM_CLICK路由真实通知。inspect仅校验，不发送点击，JSON commandInvoked=false。没有生产IPC改动、没有新依赖/安装。
+- 排错证据：desktop先因“Expected exactly one owned, named overwrite confirmation” exit 1；追加owned控件诊断再现exit 1，确认系统对话框为“确认另存为”、DirectUIHWND/Button ID0；改为标题/按钮文字后又因WM_GETTEXT无法读DirectUI目标文本而“Overwrite confirmation is not for the controlled destination” exit 1。读取已锁rfd TaskDialog实现及微软按钮/异步消息文档后，使用已有UIAutomation系统程序集验证目标文字，定向原生综合通过；再扩展同ID/副本覆盖/同源拒绝后typecheck/lint及desktop综合1项exit 0（37.5秒），不改timeout/断言。
+- 当前Release仍为9935360 bytes、SHA256 `81349CFF6D7FE0A7CF68A4035C4596D7E6468CEEF61BA4D117FD1633A45CBF74`（本覆盖切片只改测试/helper，无需重建相同产品）；`.artifacts/T102/native-release.json`记录nativeExistingOverwriteVerified=true及既有全部保存/保存/另存/副本等回归。`native-release-overwrite-{copy,collision}.png`已视觉检查；Win11/WebView2 156.0.4314.58、浏览器offline重载，非Win10/IME/OS缩放证据。
+- 文档静态检查`node scripts/validate-docs.mjs` exit 0（129文件/27 Markdown/141链接/86功能/57任务完整覆盖），git diff --check exit 0；没有把文档检查计为产品测试。最后成功后仅追加证据文档，未继续修改被验证的代码。
+- 下一T102普通CtrlS硬链接原生确认（现仍安全拒绝，Rust确认核心已测），真实磁盘满/强杀；T110启动扫描/预算/恢复和关闭保护仍缺。不标T102/G1或完整v1通过。全部保存与F-FILE-002授权单项失败已完成，不再重做。
+
+## F-FILE-002恢复点（历史，2026-11-01 16:13）
 
 - F-FILE-002授权单项失败补正已接完整UI/bridge：choose_files返回成功grant与零基选择序号/安全AppError，guard拒绝坏索引/重复索引/坏错误；App先收集授权失败再逐项open其余成功项，失败不清已有正文。Rust真实授权有效/缺失/有效仍读出两份，转换/类型失败逐项反馈，取消两个空数组；Web混合授权/open失败仍打开两份，全部授权失败保已有dirty草稿、随后取消清提示。没有路径IPC/测试后门，没有回传系统原始路径。
 - 本修复检查：typecheck/lint/TS31 exit 0；全Web12 exit 0，新增全部失败场景后定向documents3 exit 0（共13个独立Web场景，未声称该命令一次全量13）；Rust全套39、fmt --check、clippy --all-targets -D warnings exit 0；pnpm build、真实Release桌面综合1 exit 0。原生GUI验证正常选择器→新DTO→真实打开/保存/全部保存回归；授权失败分支由Rust真实文件测试+Web UI分别证明，没有声称OS对话框精确注入了缺失项。

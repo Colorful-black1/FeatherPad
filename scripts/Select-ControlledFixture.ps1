@@ -19,9 +19,9 @@ if (-not $manifestPath.StartsWith($artifactRoot + '\', [StringComparison]::Ordin
 }
 $record = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
 $action = if ($record.action) { [string]$record.action } else { 'open' }
-if ($action -notin @('open', 'save', 'cancel')) { throw 'Unexpected native chooser action.' }
+if ($action -notin @('open', 'save', 'cancel', 'overwrite', 'confirm-system', 'inspect-overwrite', 'confirm-overwrite', 'reject-overwrite')) { throw 'Unexpected native chooser action.' }
 $fixtures = @($record.fixtures)
-if (($action -eq 'cancel' -and $fixtures.Count -ne 0) -or ($action -ne 'cancel' -and ($fixtures.Count -lt 1 -or $fixtures.Count -gt 8)) -or ($action -eq 'save' -and $fixtures.Count -ne 1)) { throw 'Unexpected chooser fixture count.' }
+if (($action -eq 'cancel' -and $fixtures.Count -ne 0) -or ($action -ne 'cancel' -and ($fixtures.Count -lt 1 -or $fixtures.Count -gt 8)) -or ($action -notin @('open', 'cancel') -and $fixtures.Count -ne 1)) { throw 'Unexpected chooser fixture count.' }
 $verified = @()
 foreach ($fixture in $fixtures) {
     $fixturePath = [IO.Path]::GetFullPath([string]$fixture.path)
@@ -42,14 +42,14 @@ foreach ($fixture in $fixtures) {
         $ancestor = Get-Item -LiteralPath (Split-Path -Parent $ancestor.FullName)
     }
     $fixtureHash = $null
-    if ($action -eq 'open') {
+    if ($action -notin @('save', 'cancel')) {
         $fixtureHash = Get-ControlledHash $fixturePath
         if ($fixtureHash -ne $fixture.sha256) { throw 'Fixture hash mismatch.' }
     }
     $verified += [pscustomobject]@{ path=$fixturePath; sha256=$fixtureHash }
 }
 $selectionText = ($verified | ForEach-Object { '"' + $_.path + '"' }) -join ' '
-if ($action -eq 'save') { $selectionText = $verified[0].path }
+if ($action -in @('save', 'overwrite')) { $selectionText = $verified[0].path }
 if ($selectionText.Length -gt 32000) { throw 'Combined fixture paths exceed the controlled limit.' }
 $expectedExe = [IO.Path]::GetFullPath([string]$record.executable)
 if ($expectedExe -ne (Join-Path $projectRoot 'src-tauri\target\release\featherpad.exe') -and
@@ -59,12 +59,17 @@ if (-not $target -or $target.ExecutablePath -ne $expectedExe -or
     $target.ParentProcessId -ne [int]$record.workerProcessId) { throw 'Test process identity mismatch.' }
 if ((Get-ControlledHash $expectedExe) -ne $record.executableSha256) { throw 'Test executable hash mismatch.' }
 
-Add-Type -TypeDefinition @"
+Add-Type -AssemblyName UIAutomationClient
+Add-Type -AssemblyName UIAutomationTypes
+Add-Type -AssemblyName WindowsBase
+$uiaReferences = @('System.dll', [System.Windows.Automation.AutomationElement].Assembly.Location, [System.Windows.Automation.ControlType].Assembly.Location, [System.Windows.Threading.Dispatcher].Assembly.Location)
+Add-Type -ReferencedAssemblies $uiaReferences -TypeDefinition @"
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
+using System.Windows.Automation;
 public static class FeatherPadChooserControls {
     private delegate bool Enumerate(IntPtr window, IntPtr data);
     [DllImport("user32.dll")] private static extern bool EnumWindows(Enumerate callback, IntPtr data);
@@ -76,6 +81,8 @@ public static class FeatherPadChooserControls {
     [DllImport("user32.dll")] private static extern IntPtr GetDlgItem(IntPtr dialog, int id);
     [DllImport("user32.dll")] private static extern bool IsWindowEnabled(IntPtr window);
     [DllImport("user32.dll")] private static extern int GetWindowLong(IntPtr window, int index);
+    [DllImport("user32.dll", EntryPoint="PostMessageW", SetLastError=true)]
+    private static extern bool PostCommand(IntPtr window, uint message, IntPtr parameter, IntPtr value);
     [DllImport("user32.dll", EntryPoint="SendMessageTimeoutW", CharSet=CharSet.Unicode, SetLastError=true)]
     private static extern IntPtr SetText(IntPtr window, uint message, IntPtr parameter, string value, uint flags, uint timeout, out IntPtr result);
     [DllImport("user32.dll", EntryPoint="SendMessageTimeoutW", CharSet=CharSet.Unicode, SetLastError=true)]
@@ -89,7 +96,7 @@ public static class FeatherPadChooserControls {
         uint actual; if (window == IntPtr.Zero || GetWindowThreadProcessId(window, out actual) == 0 || actual != expected)
             throw new InvalidOperationException("Native chooser process identity changed.");
     }
-    public static void Select(int processId, string fixture, bool cancel, bool saving) {
+    public static void Select(int processId, string fixture, bool cancel, bool saving, bool asynchronous) {
         var dialogs = new List<IntPtr>();
         var deadline = DateTime.UtcNow.AddSeconds(15);
         do {
@@ -150,10 +157,89 @@ public static class FeatherPadChooserControls {
             throw new InvalidOperationException("Native filename readback mismatch.");
         RequireOwned(dialog, processId); RequireOwned(open, processId);
         // The same IDOK/BN_CLICKED command produced by the enabled Open button.
+        // Existing destinations may open a nested OS confirmation; do not synchronously wait on it.
+        if (asynchronous) {
+            if (!PostCommand(dialog, 0x0111, (IntPtr)1, open)) throw new InvalidOperationException("Native Save command could not be posted.");
+            return;
+        }
         if (Command(dialog, 0x0111, (IntPtr)1, open, 2, 5000, out result) == IntPtr.Zero)
             throw new InvalidOperationException("Native Open command timed out.");
     }
+    private static string Text(IntPtr window) {
+        var text = new StringBuilder(32768); IntPtr result;
+        if (ReadText(window, 0x000d, (IntPtr)text.Capacity, text, 2, 5000, out result) == IntPtr.Zero)
+            throw new InvalidOperationException("Owned confirmation text could not be verified.");
+        return text.ToString();
+    }
+    public static void Confirm(int processId, string fixture, bool system, int buttonId) {
+        var dialogs = new List<IntPtr>();
+        var deadline = DateTime.UtcNow.AddSeconds(15);
+        do {
+            dialogs.Clear();
+            EnumWindows(delegate(IntPtr window, IntPtr unused) {
+                uint actual; GetWindowThreadProcessId(window, out actual);
+                if (actual != processId || Class(window) != "#32770" || !IsWindowEnabled(window)) return true;
+                var title = Text(window);
+                var matches = system ? title == "Confirm Save As" || title == "\u786e\u8ba4\u53e6\u5b58\u4e3a"
+                    : title == "\u786e\u8ba4\u8986\u76d6\u6587\u4ef6";
+                if (matches) dialogs.Add(window);
+                return true;
+            }, IntPtr.Zero);
+            if (dialogs.Count == 0) Thread.Sleep(100);
+        } while (dialogs.Count == 0 && DateTime.UtcNow < deadline);
+        if (dialogs.Count != 1) {
+            var observed = new List<string>();
+            EnumWindows(delegate(IntPtr window, IntPtr unused) {
+                uint actual; GetWindowThreadProcessId(window, out actual);
+                if (actual != processId || Class(window) != "#32770") return true;
+                var controls = new List<string>();
+                EnumChildWindows(window, delegate(IntPtr control, IntPtr ignored) {
+                    if (controls.Count < 50) controls.Add(Class(control) + ":" + GetDlgCtrlID(control));
+                    return true;
+                }, IntPtr.Zero);
+                observed.Add(Text(window) + "/enabled=" + IsWindowEnabled(window) + "/" + String.Join("|", controls));
+                return true;
+            }, IntPtr.Zero);
+            throw new InvalidOperationException("Expected exactly one owned, named overwrite confirmation. Owned dialogs: " + String.Join(";", observed));
+        }
+        var dialog = dialogs[0]; RequireOwned(dialog, processId);
+        var parts = new List<string>();
+        var yes = new List<IntPtr>(); var no = new List<IntPtr>();
+        EnumChildWindows(dialog, delegate(IntPtr window, IntPtr unused) {
+            var kind = Class(window);
+            if (kind == "Static" || kind == "SysLink") { RequireOwned(window, processId); parts.Add(Text(window)); }
+            if (kind == "Button" && IsWindowEnabled(window)) {
+                RequireOwned(window, processId);
+                var label = Text(window).Replace("&", "");
+                if (label == "Yes" || label == "\u662f(Y)" || label == "\u662f") yes.Add(window);
+                if (label == "No" || label == "\u5426(N)" || label == "\u5426") no.Add(window);
+            }
+            return true;
+        }, IntPtr.Zero);
+        // DirectUI content is exposed through UI Automation rather than WM_GETTEXT.
+        var automation = AutomationElement.FromHandle(dialog);
+        if (automation.Current.ProcessId != processId) throw new InvalidOperationException("Confirmation accessibility owner changed.");
+        var content = automation.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text));
+        if (content.Count > 100) throw new InvalidOperationException("Unexpected confirmation content size.");
+        for (var index = 0; index < content.Count; index++) {
+            if (content[index].Current.ProcessId != processId) throw new InvalidOperationException("Confirmation content owner changed.");
+            parts.Add(content[index].Current.Name);
+        }
+        var expected = system ? System.IO.Path.GetFileName(fixture) : fixture;
+        if (!String.Join("\n", parts).Contains(expected)) throw new InvalidOperationException("Overwrite confirmation is not for the controlled destination.");
+        if (yes.Count != 1 || no.Count != 1) throw new InvalidOperationException("Expected one enabled Yes and one No button in the owned confirmation.");
+        if (buttonId == 0) return; // Inspect only, to place a real external write after revision capture.
+        if (buttonId != 6 && buttonId != 7) throw new InvalidOperationException("Unexpected confirmation choice.");
+        var button = buttonId == 6 ? yes[0] : no[0]; RequireOwned(button, processId);
+        // DirectUI buttons have ID zero; BM_CLICK lets their real parent route the actual choice.
+        if (!PostCommand(button, 0x00f5, IntPtr.Zero, IntPtr.Zero)) throw new InvalidOperationException("Native confirmation click could not be posted.");
+    }
 }
 "@
-[FeatherPadChooserControls]::Select([int]$record.processId, $selectionText, ($action -eq 'cancel'), ($action -eq 'save'))
-[ordered]@{ scope='owned native chooser Win32 controls'; processId=[int]$record.processId; action=$action; fixtureHashes=@($verified | ForEach-Object { $_.sha256 }); valueVerified=($action -ne 'cancel'); commandInvoked=$true } | ConvertTo-Json -Compress
+if ($action -in @('open', 'save', 'cancel', 'overwrite')) {
+    [FeatherPadChooserControls]::Select([int]$record.processId, $selectionText, ($action -eq 'cancel'), ($action -in @('save', 'overwrite')), ($action -eq 'overwrite'))
+} else {
+    $buttonId = if ($action -eq 'inspect-overwrite') { 0 } elseif ($action -eq 'reject-overwrite') { 7 } else { 6 }
+    [FeatherPadChooserControls]::Confirm([int]$record.processId, $verified[0].path, ($action -eq 'confirm-system'), $buttonId)
+}
+[ordered]@{ scope='owned native chooser Win32 controls and bounded confirmation accessibility'; processId=[int]$record.processId; action=$action; fixtureHashes=@($verified | ForEach-Object { $_.sha256 }); valueVerified=($action -ne 'cancel'); commandInvoked=($action -ne 'inspect-overwrite') } | ConvertTo-Json -Compress

@@ -6,6 +6,7 @@ import { createServer } from 'node:net';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { verifyNativeSaveAll } from './save-all';
+import { verifyNativeOverwrite, type OverwriteAction } from './overwrite';
 
 const runFile = promisify(execFile);
 
@@ -251,6 +252,14 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
         expect(await readFile(firstSave, 'utf8')).toBe('原生中文😀草稿\r\n第二行 副本输入');
         expect(createHash('sha256').update(await readFile(second)).digest('hex')).toBe(fixtureRecords[1]?.sha256);
         await verifyNativeSaveAll(page, dataDir, second, firstSave, chooseDestination, evidence);
+        let overwriteStep = 0;
+        async function overwriteAction(action: OverwriteAction, destination: string) {
+          await writeFile(manifest, JSON.stringify({ ...selectionRecord, action,
+            fixtures: [{ path: destination, sha256: createHash('sha256').update(await readFile(destination)).digest('hex') }] }));
+          const result = await runFile('powershell.exe', ['-NoProfile', '-File', helper, '-Manifest', manifest], { windowsHide: true, timeout: 25_000 });
+          await writeFile(path.join(evidence, `native-${profile}-overwrite-${++overwriteStep}-${action}.json`), result.stdout.trim());
+        }
+        await verifyNativeOverwrite(page, dataDir, second, overwriteAction, evidence);
       }
       if (chooserAutomation !== 'native-controls') {
         expect(createHash('sha256').update(await readFile(second)).digest('hex')).toBe(fixtureRecords[1]?.sha256);
@@ -271,6 +280,7 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
       nativeNewSaveAsAndCancelVerified: verifyChooser && chooserAutomation === 'native-controls',
       nativeCopyVerified: verifyChooser && chooserAutomation === 'native-controls',
       nativeSaveAllVerified: verifyChooser && chooserAutomation === 'native-controls',
+      nativeExistingOverwriteVerified: verifyChooser && chooserAutomation === 'native-controls',
       chooserAutomation: verifyChooser ? chooserAutomation : 'disabled-explicitly',
       browserOffline: profile === 'release',
       checks: ['native-title', 'native-brand', 'tauri-ipc-present', 'light-theme', 'dark-theme', 'forged-grant-rejected', 'malformed-ref-rejected', 'forged-save-rejected', 'malformed-save-rejected', 'unknown-stat-rejected', 'ipc-destination-path-rejected', 'ungranted-plugin-rejected'],
