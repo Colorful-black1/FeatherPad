@@ -4,8 +4,8 @@
 
 - 产品名称：**轻羽 FeatherPad**。
 - 当前交付：完整产品方案、86项功能矩阵、模块规格、UI规范与离线交互原型、技术/本机环境文档、M0–M5实现计划、57个开发任务、agent执行入口。
-- 产品代码：**M0/G0及M1/T101通过，T102待补磁盘满，T103进行中**。真实Release保存/另存/副本/批次/覆盖/硬链接/进程终止及<20MiB正常/降级完整编辑已验证；分块/限量预览、恢复等仍未完成，G1未通过，更不是完整v1。
-- 下一项：**T103 大文件模式**；T102真实磁盘满保留权限缺口，M1通过后继续M2–M5。
+- 产品代码：**M0/G0、M1/T101及T103通过；T102仅真实磁盘满待权限补验**。真实Release保存/另存/副本/批次/覆盖/硬链接/进程终止、<20MiB正常/降级编辑、20MiB分块只读和>100MiB显式预览均已验证；恢复、目录树等M1后续项仍未完成，G1未通过，更不是完整v1。
+- 下一项：**T104 单根目录树**；T102真实磁盘满保留权限缺口。M1通过后继续M2–M5。
 - 本次交付检查：详见 [DELIVERY-CHECK](../docs/DELIVERY-CHECK.md)，不代表产品关卡G0–G5通过。
 
 ## 已核查环境
@@ -21,15 +21,19 @@
 | 2026-11-01 / T002 | app-shell | React Shell/App/token/CSS、Web及原生测试 | typecheck/lint exit 0；Web 2 passed；真实WebView2 debug 1 passed | Web与原生范围分开，未测OS对话框 | .artifacts/T002/及docs/acceptance/M0.md | T002通过；下一T003 |
 | 2026-11-01 / T003.a–d（进行中） | F-DESK-013 | Rust models/grants/files/commands、AppManifest ACL、TS contracts/bridge、CodeMirror只读UI、测试与脚本 | typecheck/lint/TS单测3、Rust原生5、Web4、Release smoke1均exit 0；check.ps1 -Desktop exit 0；交互选择器三次超时，后次显式exit 1 | 原生Rust磁盘+junction，真实Release IPC/WebView2，Web mock独立 | docs/acceptance/M0.md；.artifacts/T003；.artifacts/T002/native-release.json | T003未完成OS选取验收，G0不勾选 |
 
-## 当前恢复点（2026-11-01 17:13，Asia/Shanghai）
+## T103 大文件模式完成（最新，2026-11-01）
 
-- T103.a/F-FILE-013完整可编辑降级已接真实纵向切片：`open_policy.rs`集中既定2/20/100MiB阈值，原始字节≤2MiB normal、>2且<20 degraded；≥20仅返回非可编辑策略，分块/显式预览尚待接线。初次stat后实际读取也有20MiB排他上界，读取后按真实snapshot大小重判，不截断后保存；Unicode单行>100,000字符触发degraded。FileService严格解码/二进制保护/换行映射不变；已有normal/degraded DTO不增字段。EditorDocument显示“纯文本 · 降级”与禁用能力提示；M1 UTF16/mixed只读策略保留。
-- 真实Rust：2MiB−1/2MiB/2MiB+1/20MiB−1读取完整字节，2MiB+1追加中文emoji后保护保存实际全字节正确；100,000/100,001个emoji长行按Unicode字符准确分类、不截断。纯策略另测20/100MiB±1，未把这些纯判断冒称大文件chunk/预览已实现。旧2MiB+1临时拒绝测试改为显式完整降级正例，≥20MiB完整可编辑拒绝仍保留；产品阈值/性能预算没有改动。
-- 本切片全部实际检查：typecheck/lint/TS31、全Web14（新增完整2MiB+1 mock缓冲编辑/SaveRequest）、Rust全套50、fmt --check/clippy --all-targets -D warnings、Release build、真实桌面综合1（52.3秒）均exit0。Web与原生编译分开。原生OS选择受控2MiB+1文件→显示降级/仍可编辑→插中文emoji→CtrlS→整份字节精确匹配，保存/覆盖/硬链接/强杀旧场景一起回归。helper只对新open-degraded角色准许单个恰为2097153 bytes、hash匹配的owned fixture，其余动作保原小文件限制；不添加路径IPC。
-- 补200% CSS zoom检查时定向Web1在page.goto 30s超时，尚未进功能/布局断言；trace显示main.tsx 13.8s、Vite env模块13.1s等待。尝试把webServer ready URL改入口模块后全量首批7项仍在goto超时，第二trace显示HTML 26.9s。失败trace分别保留为`.artifacts/T102/degraded-zoom-initial-trace.zip`与`degraded-zoom-entry-probe-trace.zip`。最终Web行为测试改为`pnpm build:web && pnpm exec vite preview --host 127.0.0.1 --port 1420 --strictPort`，使用与Tauri相同的构建前端，去掉开发模块转换链；typecheck/lint及全Web14 exit0（15.9秒），未改30s测试上限、retries=0或worker数。新版200%截图`degraded-web-200.png`已视觉检查，模式/保存按钮/编辑区可见且无横向溢出；不作为原生OS缩放或Release性能结论。
-- 当前Release：9961472 bytes，SHA256 `8A18D66E9589CA2EC46FEA65AA5AFA536A1F15F9C561C9B0A3E2895532FF0814`；`.artifacts/T102/native-release.json`的nativeDegradedEditingVerified及原生各项true，`native-release-degraded-editable.png`已视觉检查（测试历史root沿用T102，任务为T103）。Win11/WebView2 156.0.4314.58、浏览器offline重载；不声明目标机性能、IME/OS缩放或Win10。Vite单chunk 523.95kB/gzip168.71kB警告阈值未改，无新依赖/工具。
-- 最后文档静态检查（137文件/27 Markdown/141链接/86功能/57任务）与git diff --check均exit0；这些不算产品行为验收。最终通过后仅写入文档与提交，未再改产品/测试行为代码。
-- 下一T103.b：接既定large-readonly/chunked与head-preview/head联合类型、受限读取handle和流式revision、边界对齐/旧revision拒绝，再接只读分页UI与>100MiB显式前1MiB选择。需在后端文档lease区分完整只读与片段只读，普通保存及As/Copy都拒绝片段，不能只禁前端按钮；完整只读文件另存行为仍保留。当前≥20MiB仍安全拒绝完整编辑，不能标T103/F-FILE-013完成；动态编辑增长策略与大文件内存/首屏也待核验。T102磁盘满因New-VHD权限缺口仍[~]，不重复同一失败探针；T110恢复/预算/关闭保护待实现，G1及完整v1未通过。保存进程终止切片已提交`da0fe00`。
+- F-FILE-013完成。`open_policy.rs`继续作为2/20/100MiB原始字节阈值的唯一入口：≤2MiB normal、>2且<20MiB完整降级、20–100MiB只读分块、>100MiB自动打开拒绝且仅由用户显式选择前1MiB预览。`stream_snapshot.rs`用固定64KiB缓冲完成全文件摘要、UTF-8/UTF-16流式校验、换行统计和受控窗口；初始/后续块默认64KiB，后续请求上限1MiB并校验DocumentId、片段handle、磁盘revision及编码边界。旧revision返回CONFLICT。完整只读普通文件仍可另存；大文件片段由Rust文档lease标记，保存、另存和副本均在服务层返回READ_ONLY。
+- 动态增长已收紧：文件在可编辑读取时跨过20MiB会重新打开并按真实大小进入分块；跨过100MiB只返回可选择前1MiB预览的TOO_LARGE；未越上限但读取期间变化的文件返回CONFLICT，不返回截断正文。`LargeFileView`只持有当前64KiB页及页起点历史；上一块从已读精确起点重新请求，不在React中累加正文。>100MiB流程先关闭自动读取，用户明确点击后才调用head-preview。
+- 真实边界证据：Rust实际文件覆盖2MiB−1/2MiB/2MiB+1、20MiB−1/20MiB/20MiB+1、100MiB/100MiB+1；并发真实写入使读取跨过20MiB和100MiB上限均得到TOO_LARGE，未越限增长得到CONFLICT；另用“初次观察为可编辑大小、实际文件已增长”的路径验证自动分块重判。流式20MiB摘要与既有全文件快照一致且只保留小窗口；100MiB扫描保留零正文窗口，末尾UTF-8窗口精确。原生Release打开受控20MiB文件后可前/后分页，单页<64KiB+16字符，源文件SHA256不变；100MiB+1文件自动打开被拒，用户明确选择后显示前1MiB预览且保存/另存禁用，源文件SHA256不变。
+- 本切片实际检查：typecheck/lint、TS33、全Web16（分块下一页只显示新页、上一页恢复且保存入口禁用；Web mock与原生证据独立）、Rust全套61、`cargo fmt --check`、`cargo clippy --all-targets -D warnings`、Release build及真实桌面综合1（43.0秒）均exit0。没有新增依赖/工具。原生截图`native-release-large-chunk.png`显示第1页65,536字节/20,971,520字节及上一/下一按钮，`native-release-head-preview.png`显示截断前1MiB；均已视觉检查。`native-release.json`记录nativeLargeChunkReadonlyVerified=true、nativeHeadPreviewVerified=true。
+- 当前Release：10,088,960 bytes，SHA256 `1472127164a831ac654bd3985b757b6da14ef02ed5fc1cd936ce5b8747257633`。Win11/WebView2 156.0.4314.58、浏览器offline重载。单次开发机观测：20MiB分块首屏上界1,116.8ms（含受控原生选择器自动化），100MiB打开到预览选项上界1,596.4ms，用户预览动作361.2ms；该长流程进程树私有工作集约348–444MiB。计时不是10次p95/目标机结论，内存也高于SPEC的180MiB目标，故不标M5性能通过，后续bench:app与常驻预算继续复核。
+- 下一项T104单根目录树。T102真实磁盘满仍因New-VHD权限缺口[~]，不重复同一探针；T110恢复/关闭保护和G1仍待完成。
+
+## T103.a 完整降级编辑（历史切片）
+
+- 完整可编辑降级已接真实纵向切片：原始字节≤2MiB normal、>2且<20MiB degraded；初次stat与实际读取均有20MiB排他上界。Unicode单行>100,000字符触发degraded；UTF-16/换行/二进制保护不变。真实Rust覆盖2MiB±1、20MiB−1和100,000/100,001 emoji长行，2MiB+1编辑后保存全字节正确；原生受控OS选择器打开2,097,153 bytes文件，中文emoji编辑保存后整份字节匹配。
+- 当时TS31/Web14/Rust50/Release/真实桌面1均exit0，Release为9,961,472 bytes、SHA256 `8A18D66E9589CA2EC46FEA65AA5AFA536A1F15F9C561C9B0A3E2895532FF0814`；截图模式和200% CSS检查见M1验收。该历史切片不包含分块/预览，已由上方T103完成项补齐。
 
 ## T102故障恢复点（历史，2026-11-01 16:51）
 

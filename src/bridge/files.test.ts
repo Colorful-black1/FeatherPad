@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { isChosenFiles, isFileRef, isOpenDocument, isSaveAck, isSaveAsAck } from './files';
+import { isChosenFiles, isFileRef, isOpenDocument, isSaveAck, isSaveAsAck, isTextChunk } from './files';
 
 const valid = {
   documentId: 'document-fixture', ref: { grantId: 'fixture-grant', relativePath: '' },
@@ -27,6 +27,25 @@ it('accepts complete native text records and rejects damaged newline/metadata co
   expect(isOpenDocument({ ...valid, format: { ...valid.format, bom: ['none'] } })).toBe(false);
   expect(isFileRef({ grantId: '', relativePath: '' })).toBe(false);
   expect(isFileRef({ grantId: 'opaque', relativePath: null })).toBe(false);
+});
+
+it('validates bounded chunk and explicitly truncated head-preview records', () => {
+  const chunk = { byteStart: 0, byteEnd: 4, firstLine: 1, text: 'head', hasMore: true };
+  const chunked = {
+    ...valid, mode: 'large-readonly',
+    content: { kind: 'chunked', handleId: 'chunk-handle', initialChunk: chunk, totalBytes: valid.metadata.sizeBytes },
+  };
+  const head = {
+    ...valid, mode: 'head-preview',
+    content: { kind: 'head', text: 'a\nb', previewBytes: 3, totalBytes: valid.metadata.sizeBytes, truncated: true },
+  };
+  expect(isTextChunk(chunk)).toBe(true);
+  expect(isOpenDocument(chunked)).toBe(true);
+  expect(isOpenDocument(head)).toBe(true);
+  expect(isTextChunk({ ...chunk, byteEnd: -1 })).toBe(false);
+  expect(isOpenDocument({ ...chunked, content: { ...chunked.content, totalBytes: 99 } })).toBe(false);
+  expect(isOpenDocument({ ...head, content: { ...head.content, previewBytes: 99 } })).toBe(false);
+  expect(isOpenDocument({ ...head, content: { ...head.content, truncated: false } })).toBe(false);
 });
 
 it('rejects damaged save acknowledgements instead of declaring a buffer saved', () => {

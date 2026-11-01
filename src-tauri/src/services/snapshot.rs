@@ -5,9 +5,9 @@ use super::{
 use crate::models::{io_error, AppError, ErrorCode, FileMetadata};
 use sha2::{Digest, Sha256};
 use std::{
-    fs::File,
+    fs::{File, Metadata},
     io::{Read, Seek, SeekFrom},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 pub struct DiskSnapshot {
@@ -45,11 +45,26 @@ pub fn read_snapshot(mut file: File, limit: u64) -> Result<DiskSnapshot, AppErro
         ));
     }
     let identity = identify(&file, &path);
-    let modified_at = chrono::DateTime::<chrono::Utc>::from(modified)
-        .to_rfc3339_opts(chrono::SecondsFormat::Nanos, true);
     let mut hash = Sha256::new();
     hash.update(identity.revision_tag());
     hash.update(&bytes);
+    let metadata = finish_metadata(&path, &before, hash)?;
+    Ok(DiskSnapshot {
+        file,
+        path,
+        identity,
+        metadata,
+        bytes,
+    })
+}
+
+pub(super) fn finish_metadata(
+    path: &Path,
+    before: &Metadata,
+    mut hash: Sha256,
+) -> Result<FileMetadata, AppError> {
+    let modified_at = chrono::DateTime::<chrono::Utc>::from(before.modified().map_err(io_error)?)
+        .to_rfc3339_opts(chrono::SecondsFormat::Nanos, true);
     hash.update(before.len().to_le_bytes());
     hash.update(&modified_at);
     let display = path.to_string_lossy();
@@ -61,18 +76,12 @@ pub fn read_snapshot(mut file: File, limit: u64) -> Result<DiskSnapshot, AppErro
             .unwrap_or(&display)
             .to_owned()
     };
-    Ok(DiskSnapshot {
-        file,
-        path,
-        identity,
-        metadata: FileMetadata {
-            display_path,
-            size_bytes: bytes.len() as u64,
-            modified_at,
-            is_read_only: before.permissions().readonly(),
-            disk_revision: format!("{:x}", hash.finalize()),
-        },
-        bytes,
+    Ok(FileMetadata {
+        display_path,
+        size_bytes: before.len(),
+        modified_at,
+        is_read_only: before.permissions().readonly(),
+        disk_revision: format!("{:x}", hash.finalize()),
     })
 }
 

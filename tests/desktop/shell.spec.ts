@@ -10,6 +10,7 @@ import { verifyNativeOverwrite, type OverwriteAction } from './overwrite';
 import { verifyNativeHardlinks, type HardlinkAction } from './hardlinks';
 import { verifyNativeForcedExit } from './forced-exit';
 import { verifyNativeDegradedEditing } from './degraded';
+import { verifyNativeLargeFiles } from './large-files';
 
 const runFile = promisify(execFile);
 
@@ -17,13 +18,14 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
   const verifyChooser = process.env.FEATHERPAD_VERIFY_CHOOSER !== '0';
   const chooserAutomation = process.env.FEATHERPAD_CHOOSER_AUTOMATION ?? 'native-controls';
   if (chooserAutomation !== 'native-controls' && chooserAutomation !== 'manual') throw new Error('Invalid chooser automation mode');
-  if (verifyChooser) test.setTimeout(120_000);
+  if (verifyChooser) test.setTimeout(240_000);
   const profile = process.env.FEATHERPAD_DESKTOP_PROFILE ?? 'release';
   if (profile !== 'release' && profile !== 'debug') throw new Error('Invalid desktop build profile');
   const root = process.cwd();
   const exe = path.join(root, 'src-tauri', 'target', profile, 'featherpad.exe');
   const hash = createHash('sha256').update(await readFile(exe)).digest('hex');
   const evidence = path.join(root, '.artifacts', 'T102');
+  let nativeLargeFileObservation: Awaited<ReturnType<typeof verifyNativeLargeFiles>> | null = null;
   const chooserRoot = path.join(root, '.artifacts', 'T002');
   await mkdir(evidence, { recursive: true });
   await mkdir(chooserRoot, { recursive: true });
@@ -276,6 +278,11 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
             fixtures: [{ path: target, sha256: createHash('sha256').update(await readFile(target)).digest('hex') }] }));
           await runFile('powershell.exe', ['-NoProfile', '-File', helper, '-Manifest', manifest], { windowsHide: true, timeout: 25_000 });
         }, evidence);
+        nativeLargeFileObservation = await verifyNativeLargeFiles(page, dataDir, async (target, action) => {
+          await writeFile(manifest, JSON.stringify({ ...selectionRecord, action,
+            fixtures: [{ path: target, sha256: createHash('sha256').update(await readFile(target)).digest('hex') }] }));
+          await runFile('powershell.exe', ['-NoProfile', '-File', helper, '-Manifest', manifest], { windowsHide: true, timeout: 45_000 });
+        }, evidence, child.pid!);
       }
       if (chooserAutomation !== 'native-controls') {
         expect(createHash('sha256').update(await readFile(second)).digest('hex')).toBe(fixtureRecords[1]?.sha256);
@@ -304,6 +311,9 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
       nativeHardlinkConsentVerified: verifyChooser && chooserAutomation === 'native-controls',
       nativeForcedExitVerified: forcedExit !== null,
       nativeDegradedEditingVerified: verifyChooser && chooserAutomation === 'native-controls',
+      nativeLargeChunkReadonlyVerified: verifyChooser && chooserAutomation === 'native-controls',
+      nativeHeadPreviewVerified: verifyChooser && chooserAutomation === 'native-controls',
+      nativeLargeFileObservation,
       forcedExit,
       chooserAutomation: verifyChooser ? chooserAutomation : 'disabled-explicitly',
       browserOffline: profile === 'release',

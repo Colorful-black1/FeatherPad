@@ -195,10 +195,45 @@ pub struct SaveAsAck {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TextContent {
-    pub kind: &'static str,
+pub struct TextChunk {
+    pub byte_start: u64,
+    pub byte_end: u64,
+    pub first_line: u64,
     pub text: String,
-    pub newline_map: NewlineMap,
+    pub has_more: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "lowercase",
+    rename_all_fields = "camelCase"
+)]
+pub enum OpenDocumentContent {
+    Text {
+        text: String,
+        newline_map: NewlineMap,
+    },
+    Chunked {
+        handle_id: String,
+        initial_chunk: TextChunk,
+        total_bytes: u64,
+    },
+    Head {
+        text: String,
+        preview_bytes: u64,
+        total_bytes: u64,
+        truncated: bool,
+    },
+}
+
+impl OpenDocumentContent {
+    pub fn text(&self) -> Option<&str> {
+        match self {
+            Self::Text { text, .. } | Self::Head { text, .. } => Some(text),
+            Self::Chunked { initial_chunk, .. } => Some(&initial_chunk.text),
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -211,5 +246,15 @@ pub struct OpenDocument {
     pub format: TextFormat,
     pub warnings: Vec<String>,
     pub mode: &'static str,
-    pub content: TextContent,
+    pub content: OpenDocumentContent,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReadChunkRequest {
+    pub document_id: String,
+    pub handle_id: String,
+    pub expected_disk_revision: String,
+    pub byte_offset: u64,
+    pub max_bytes: u64,
 }

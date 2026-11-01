@@ -3,10 +3,12 @@ import { isolateHistory, undo } from '@codemirror/commands';
 import { EditorState } from '@codemirror/state';
 import { isOpenDocument } from '../../bridge/files';
 import { DocumentRegistry } from './documents';
-import type { DiskRevision, DocumentId, SaveAck, SaveAsAck } from '../../shared/contracts/files';
+import type { DiskRevision, DocumentId, OpenDocument, SaveAck, SaveAsAck } from '../../shared/contracts/files';
 import { createEditorState, reconfigureReadOnly } from './editor-state';
 
-function fixture(options: { id?: string; readOnly?: boolean; encoding?: string; lineEnding?: string } = {}) {
+type RegularOpenDocument = Extract<OpenDocument, { mode: 'normal' | 'degraded' }>;
+
+function fixture(options: { id?: string; readOnly?: boolean; encoding?: string; lineEnding?: string } = {}): RegularOpenDocument {
   const value: unknown = {
     documentId: options.id ?? 'native-document', ref: { grantId: 'fixture-grant', relativePath: '' },
     metadata: { displayPath: 'E:\\fixtures\\中文 fixture.txt', sizeBytes: 7, modifiedAt: '2026-11-01T00:00:00Z', isReadOnly: options.readOnly ?? false, diskRevision: 'revision-1' },
@@ -15,7 +17,7 @@ function fixture(options: { id?: string; readOnly?: boolean; encoding?: string; 
     content: { kind: 'text', text: 'private\nbody', newlineMap: { documentVersion: 0, endings: ['lf'] } },
   };
   if (!isOpenDocument(value)) throw new Error('Invalid test fixture');
-  return value;
+  return value as RegularOpenDocument;
 }
 
 it('creates independent untitled documents with no path and UTF8/CRLF defaults', () => {
@@ -154,6 +156,24 @@ it('refuses to fabricate a save destination for untitled and read-only documents
   for (const options of [{ id: 'readonly', readOnly: true }, { id: 'mixed', lineEnding: 'mixed' }, { id: 'utf16', encoding: 'utf-16le' }]) {
     expect(registry.captureSave(registry.openDocument(fixture(options)))).toMatchObject({ ok: false, error: { code: 'READ_ONLY' } });
   }
+});
+
+it('keeps large-file chunks read-only and refuses save plus save-as at the registry boundary', () => {
+  const registry = new DocumentRegistry();
+  const value = {
+    documentId: 'large-document', ref: { grantId: 'large-grant', relativePath: '' },
+    metadata: { displayPath: 'large.txt', sizeBytes: 20 * 1024 * 1024, modifiedAt: '2026-11-01T00:00:00Z', isReadOnly: false, diskRevision: 'large-revision' },
+    format: { encoding: 'utf-8', bom: 'none', lineEnding: 'lf' }, warnings: ['只读分块'],
+    mode: 'large-readonly',
+    content: { kind: 'chunked', handleId: 'handle', initialChunk: { byteStart: 0, byteEnd: 6, firstLine: 1, text: 'first\n', hasMore: true }, totalBytes: 20 * 1024 * 1024 },
+  } as Extract<OpenDocument, { mode: 'large-readonly' }>;
+  const id = registry.openDocument(value);
+  const document = registry.getDocument(id)!;
+  expect(document.fragment).toEqual(value.content);
+  expect(document.summary.readOnlyReason).toContain('无法保存完整文件');
+  expect(document.state.doc.toString()).toBe('first\n');
+  expect(registry.captureSave(id)).toMatchObject({ ok: false, error: { code: 'READ_ONLY' } });
+  expect(registry.captureSaveAs(id)).toMatchObject({ ok: false, error: { code: 'READ_ONLY' } });
 });
 
 function destinationAck(id: DocumentId, version: number): SaveAsAck {

@@ -13,6 +13,7 @@ export interface DocumentSummary {
   version: number;
   dirty: boolean;
   readOnlyReason: string | null;
+  canSaveAs: boolean;
 }
 
 export interface ManagedDocument {
@@ -21,7 +22,8 @@ export interface ManagedDocument {
   savedText: Text;
   savedVersion: number;
   source: Omit<OpenDocument, 'content'> | null;
-  originalNewlines: OpenDocument['content']['newlineMap'];
+  originalNewlines: Extract<OpenDocument['content'], { kind: 'text' }>['newlineMap'];
+  fragment: Exclude<OpenDocument['content'], { kind: 'text' }> | null;
   scroll: { top: number; left: number };
 }
 
@@ -58,10 +60,11 @@ export class DocumentRegistry {
       id, title: `无标题 ${++this.untitledCount}`, displayPath: null,
       format: { encoding: 'utf-8', bom: 'none', lineEnding: 'crlf' },
       version: 0, dirty: false, readOnlyReason: null,
+      canSaveAs: true,
     };
     this.documents.set(id, {
       summary, state, savedText: state.doc, savedVersion: 0, source: null,
-      originalNewlines: { documentVersion: 0, endings: [] }, scroll: { top: 0, left: 0 },
+      originalNewlines: { documentVersion: 0, endings: [] }, fragment: null, scroll: { top: 0, left: 0 },
     });
     this.publish(id);
     return id;
@@ -70,17 +73,38 @@ export class DocumentRegistry {
   openDocument(document: OpenDocument): DocumentId {
     const id = document.documentId;
     if (!this.documents.has(id)) {
-      const reason = readOnlyReason(document.metadata, document.format);
-      const state = createEditorState(document.content.text, reason !== null);
-      const { content, ...source } = document;
+      const fragment = document.content.kind === 'text' ? null : document.content;
+      const reason = fragment
+        ? document.content.kind === 'chunked'
+          ? '大文件以只读分块方式打开，无法保存完整文件'
+          : '内容为前1MiB截断预览，无法保存'
+        : readOnlyReason(document.metadata, document.format);
+      const initialText = document.content.kind === 'text'
+        ? document.content.text
+        : document.content.kind === 'chunked'
+          ? document.content.initialChunk.text
+          : document.content.text;
+      const state = createEditorState(initialText, reason !== null);
+      const newlineMap = document.content.kind === 'text'
+        ? document.content.newlineMap
+        : { documentVersion: 0 as const, endings: [] as ('lf' | 'crlf' | 'cr')[] };
+      const source = {
+        documentId: document.documentId,
+        ref: document.ref,
+        metadata: document.metadata,
+        format: document.format,
+        warnings: document.warnings,
+        mode: document.mode,
+      };
       this.documents.set(id, {
         summary: {
           id, title: document.metadata.displayPath.split(/[\\/]/).pop() || document.metadata.displayPath,
           displayPath: document.metadata.displayPath, format: document.format,
-          version: content.newlineMap.documentVersion, dirty: false, readOnlyReason: reason,
+          version: newlineMap.documentVersion, dirty: false, readOnlyReason: reason,
+          canSaveAs: fragment === null,
         },
-        state, savedText: state.doc, savedVersion: content.newlineMap.documentVersion, source, originalNewlines: content.newlineMap,
-        scroll: { top: 0, left: 0 },
+        state, savedText: state.doc, savedVersion: newlineMap.documentVersion, source,
+        originalNewlines: newlineMap, fragment, scroll: { top: 0, left: 0 },
       });
     }
     // An alias/reopen only focuses. Incoming disk text never overwrites an existing buffer.

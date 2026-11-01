@@ -7,7 +7,7 @@ import { documents } from '../features/editor/documents';
 import { saves } from '../features/editor/save';
 import { saveAll } from '../features/editor/save-all';
 import { SaveAllResults } from '../features/editor/SaveAllResults';
-import type { DocumentId } from '../shared/contracts/files';
+import type { DocumentId, FileRef } from '../shared/contracts/files';
 
 export function App() {
   const [dark, setDark] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches);
@@ -22,6 +22,7 @@ export function App() {
   const [savingCount, setSavingCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [previewCandidates, setPreviewCandidates] = useState<FileRef[]>([]);
   const opening = useRef(false);
 
   useEffect(() => {
@@ -33,6 +34,7 @@ export function App() {
     opening.current = true;
     setBusy(true);
     setError(null);
+    setPreviewCandidates([]);
     try {
       const selection = await files.chooseFiles(true);
       if (!selection.ok) { setError(selection.error.message); return; }
@@ -41,11 +43,26 @@ export function App() {
       for (const reference of selection.value.grants) {
         const result = await files.open(reference);
         if (result.ok) documents.openDocument(result.value);
-        else failures.push(result.error.message);
+        else {
+          failures.push(result.error.message);
+          if (result.error.code === 'TOO_LARGE') setPreviewCandidates(candidates => [...candidates, reference]);
+        }
       }
       if (failures.length) setError(failures.join('；'));
     } finally { opening.current = false; setBusy(false); }
   }, [setError, setBusy, setAutoFocus]);
+
+  const openHeadPreview = useCallback(async (reference: FileRef) => {
+    setError(null);
+    setBusy(true);
+    try {
+      const result = await files.open(reference, 'head-preview');
+      if (result.ok) {
+        documents.openDocument(result.value);
+        setPreviewCandidates(candidates => candidates.filter(candidate => candidate !== reference));
+      } else setError(result.error.message);
+    } finally { setBusy(false); }
+  }, [setBusy, setError]);
 
   const newFile = useCallback(() => { setAutoFocus(true); documents.createUntitled(); }, [setAutoFocus]);
 
@@ -125,14 +142,23 @@ export function App() {
     >
       {error && <div className="notice error-notice" role="alert"><span>{error}</span><button onClick={() => setError(null)}>关闭提示</button></div>}
       {notice && <div className="notice error-notice" aria-live="polite"><span>{notice}</span><button onClick={() => setNotice(null)}>关闭提示</button></div>}
+      {previewCandidates.length > 0 && <div className="notice preview-choice" aria-live="polite">
+        <span>超过100MiB的文件不会自动加载完整内容。请选择是否只读预览前1MiB。</span>
+        <span className="preview-choice-actions">
+          {previewCandidates.map((reference, index) => <button key={reference.grantId} className="plain-button" disabled={busy} onClick={() => void openHeadPreview(reference)}>
+            预览所选文件 {index + 1} 的前1MiB
+          </button>)}
+          <button className="plain-button" onClick={() => setPreviewCandidates([])}>取消预览</button>
+        </span>
+      </div>}
       {current && snapshot.activeId ? <>
         <div className="document-toolbar" aria-label="文件操作">
           <button className="plain-button" onClick={newFile} aria-keyshortcuts="Control+n">新建文本</button>
           <button className="plain-button" onClick={() => void openFile()} disabled={busy} aria-keyshortcuts="Control+o">打开文件</button>
           <button className="plain-button" onClick={() => void saveCurrent()} disabled={!!current.readOnlyReason || savingCount > 0 || batchBusy} aria-keyshortcuts="Control+s">保存</button>
           <button id="save-all-button" className="plain-button" onClick={() => void saveAll.run()} disabled={savingCount > 0 || batchBusy || !snapshot.documents.some(document => document.dirty)}>全部保存</button>
-          <button className="plain-button" onClick={() => void saveDestination()} disabled={savingCount > 0 || batchBusy} aria-keyshortcuts="Control+Shift+s">另存为</button>
-          <button className="plain-button" onClick={() => void saveDestination('copy')} disabled={savingCount > 0 || batchBusy}>保存副本</button>
+          <button className="plain-button" onClick={() => void saveDestination()} disabled={!current.canSaveAs || savingCount > 0 || batchBusy} aria-keyshortcuts="Control+Shift+s">另存为</button>
+          <button className="plain-button" onClick={() => void saveDestination('copy')} disabled={!current.canSaveAs || savingCount > 0 || batchBusy}>保存副本</button>
         </div>
         <SaveAllResults />
         <div className="document-tabs" role="tablist" aria-label="打开的文档">

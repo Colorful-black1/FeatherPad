@@ -125,7 +125,7 @@ fn worker(config: &WorkerConfig) {
         .unwrap();
     let opened = service.open_document(reference).unwrap();
     assert_eq!(
-        opened.content.text,
+        opened.content.text().unwrap(),
         original(&config.nonce).replace("\r\n", "\n")
     );
     let request = SaveRequest {
@@ -291,7 +291,12 @@ fn scenario(test: &str, phase: &str, terminate: bool) {
         .register_selection(&config.root.join("source.txt"), GrantKind::File)
         .unwrap();
     assert_eq!(
-        reopened.open_document(reference).unwrap().content.text,
+        reopened
+            .open_document(reference)
+            .unwrap()
+            .content
+            .text()
+            .unwrap(),
         expected.replace("\r\n", "\n")
     );
     write_new(&config.root.join("result.json"), &serde_json::to_vec_pretty(&serde_json::json!({

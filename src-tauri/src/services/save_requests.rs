@@ -1,7 +1,7 @@
 use super::{
     files::FileService,
     save::{HardLinkPolicy, PreparedSave, MAX_SNAPSHOT_BYTES},
-    snapshot::read_snapshot,
+    stream_snapshot::read_stream_snapshot,
 };
 use crate::models::{
     AppError, ErrorCode, FileMetadata, SaveAck, SaveAsAck, SaveAsRequest, SaveRequest,
@@ -117,6 +117,7 @@ impl FileService {
     }
 
     pub fn begin_save(&self, request: &SaveRequest) -> Result<SaveStart, AppError> {
+        self.require_saveable(&request.document_id)?;
         let hash = payload_hash(request)?;
         let key = (request.document_id.clone(), request.request_id.clone());
         if let Some((previous, result)) = self.saves.results.get(&key) {
@@ -142,6 +143,7 @@ impl FileService {
     }
 
     pub fn begin_save_as(&self, request: &SaveAsRequest) -> Result<SaveAsStart, AppError> {
+        self.require_saveable(&request.document_id)?;
         let hash = as_hash(request)?;
         let key = (request.document_id.clone(), request.request_id.clone());
         if let Some((previous, result)) = self.saves.results.get(&key) {
@@ -173,7 +175,17 @@ impl FileService {
             .get(id)
             .ok_or_else(|| AppError::new(ErrorCode::NotFound, "此文档未打开。"))?;
         let (file, _) = self.grants.open_file(&document.reference)?;
-        Ok(read_snapshot(file, super::save::MAX_FILE_BYTES)?.metadata)
+        Ok(read_stream_snapshot(file, super::save::MAX_FILE_BYTES, 0..0)?.metadata)
+    }
+
+    fn require_saveable(&self, document_id: &str) -> Result<(), AppError> {
+        if self.documents.is_fragment(document_id) {
+            return Err(AppError::new(
+                ErrorCode::ReadOnly,
+                "大文件分页或限量预览没有完整编辑正文，不能保存或另存。",
+            ));
+        }
+        Ok(())
     }
 }
 

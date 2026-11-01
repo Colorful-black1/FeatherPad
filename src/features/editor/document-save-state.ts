@@ -49,6 +49,7 @@ export function captureExisting(document: ManagedDocument | undefined): ResultEn
 
 export function captureDestination(document: ManagedDocument | undefined, intent: 'save-as' | 'copy'): ResultEnvelope<CapturedSaveAs> {
   if (!document) return failure('NOT_FOUND', '文档已关闭。');
+  if (document.fragment) return failure('READ_ONLY', document.summary.readOnlyReason ?? '大文件片段不能另存。');
   const captured = snapshot(document);
   if (!captured.ok) return captured;
   return { ok: true, value: Object.freeze({ savedText: captured.value.savedText,
@@ -94,6 +95,6 @@ export function acknowledgeDestination(document: ManagedDocument | undefined, ca
     format: { ...request.format }, warnings: current?.warnings ?? [], mode: current?.mode ?? 'normal' };
   if (request.newlineMap) document.originalNewlines = { documentVersion: request.documentVersion, endings: [...request.newlineMap.endings] };
   document.summary = { ...document.summary, title: result.metadata.displayPath.split(/[\\/]/).pop() || result.metadata.displayPath,
-    displayPath: result.metadata.displayPath, readOnlyReason: reason, dirty: !document.state.doc.eq(savedText) };
+    displayPath: result.metadata.displayPath, readOnlyReason: reason, canSaveAs: true, dirty: !document.state.doc.eq(savedText) };
   return { ok: true, value: { dirty: document.summary.dirty } };
 }

@@ -39,11 +39,19 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round
 .error-notice { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
 .error-notice button { border: 1px solid currentColor; border-radius: var(--radius-sm); background: transparent; flex: 0 0 auto; }
 .error-notice > span { min-width: 0; overflow-wrap: anywhere; }
+.preview-choice { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; }
+.preview-choice-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 .document-view { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .document-heading { display: flex; gap: var(--space-4); padding: var(--space-2) var(--space-4); border-bottom: 1px solid var(--border); color: var(--text-secondary); }
 .document-heading span:first-child { flex: 1; overflow-wrap: anywhere; }
 .document-heading span:last-child { flex: 0 0 auto; }
 .codemirror-host { flex: 1; min-height: 0; }
+.large-file-view { display: flex; flex: 1; min-height: 0; flex-direction: column; background: var(--bg-editor); }
+.large-file-toolbar { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-4); border-bottom: 1px solid var(--border); color: var(--text-secondary); font-size: 12px; flex-wrap: wrap; }
+.large-file-toolbar strong { color: var(--text-primary); font-weight: 600; }
+.large-file-navigation { display: flex; gap: var(--space-2); margin-left: auto; }
+.large-file-text { flex: 1; min-height: 0; margin: 0; padding: var(--space-4); overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: var(--editor-size)/1.75 var(--font-mono); tab-size: 4; color: var(--text-primary); }
+.large-file-text:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .document-toolbar { display: flex; gap: var(--space-2); padding: var(--space-1) var(--space-3); border-bottom: 1px solid var(--border); flex: 0 0 auto; flex-wrap: wrap; }
 .document-tabs { display: flex; overflow-x: auto; flex: 0 0 auto; border-bottom: 1px solid var(--border); background: var(--bg-sidebar); }
 .document-tabs button { display: flex; align-items: center; gap: var(--space-2); min-height: 32px; min-width: 100px; max-width: 220px; padding: var(--space-1) var(--space-3); background: transparent; border: 0; border-right: 1px solid var(--border); border-bottom: 2px solid transparent; color: var(--text-secondary); flex: 0 0 auto; }

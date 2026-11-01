@@ -49,22 +49,60 @@ export interface SaveAsAck {
   metadata: OpenDocument['metadata'];
   ack: SaveAck;
 }
-export interface OpenDocument {
+export interface FileMetadata {
+  displayPath: string;
+  sizeBytes: number;
+  modifiedAt: string;
+  isReadOnly: boolean;
+  diskRevision: DiskRevision;
+}
+export interface TextChunk {
+  byteStart: number;
+  byteEnd: number;
+  firstLine: number;
+  text: string;
+  hasMore: boolean;
+}
+export interface OpenDocumentBase {
   documentId: DocumentId;
   ref: FileRef;
-  metadata: {
-    displayPath: string;
-    sizeBytes: number;
-    modifiedAt: string;
-    isReadOnly: boolean;
-    diskRevision: DiskRevision;
-  };
+  metadata: FileMetadata;
   format: TextFormat;
   warnings: string[];
-  mode: 'normal' | 'degraded';
-  content: {
-    kind: 'text';
-    text: string;
-    newlineMap: { documentVersion: number; endings: ('lf' | 'crlf' | 'cr')[] };
-  };
+}
+export type OpenDocument = OpenDocumentBase & (
+  | {
+    mode: 'normal' | 'degraded';
+    content: {
+      kind: 'text';
+      text: string;
+      newlineMap: { documentVersion: number; endings: ('lf' | 'crlf' | 'cr')[] };
+    };
+  }
+  | {
+    mode: 'large-readonly';
+    content: {
+      kind: 'chunked';
+      handleId: string;
+      initialChunk: TextChunk;
+      totalBytes: number;
+    };
+  }
+  | {
+    mode: 'head-preview';
+    content: {
+      kind: 'head';
+      text: string;
+      previewBytes: number;
+      totalBytes: number;
+      truncated: true;
+    };
+  }
+);
+export interface ReadChunkRequest {
+  documentId: DocumentId;
+  handleId: string;
+  expectedDiskRevision: DiskRevision;
+  byteOffset: number;
+  maxBytes: number;
 }

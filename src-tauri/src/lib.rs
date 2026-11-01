@@ -13,6 +13,7 @@ pub mod services {
     pub mod save_journal;
     pub mod save_requests;
     pub mod snapshot;
+    pub mod stream_snapshot;
     pub mod targets;
     pub mod text;
     pub mod windows_file;
@@ -31,6 +32,7 @@ pub fn run() {
             commands::choose_files,
             commands::choose_folder,
             commands::open_document,
+            commands::read_document_chunk,
             commands::save::save_document,
             commands::save_as::save_document_as,
             commands::save::stat_document

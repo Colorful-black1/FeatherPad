@@ -241,6 +241,12 @@ fn current_snapshot(
         .documents
         .get(&request.document_id)
         .ok_or_else(not_open)?;
+    if service.documents.is_fragment(&request.document_id) {
+        return Err(AppError::new(
+            ErrorCode::ReadOnly,
+            "大文件分页或限量预览没有完整编辑正文，不能保存。",
+        ));
+    }
     let (file, _) = service.grants.open_file(reference)?;
     let snapshot = read_snapshot(file, MAX_FILE_BYTES)?;
     if snapshot.identity != document.identity

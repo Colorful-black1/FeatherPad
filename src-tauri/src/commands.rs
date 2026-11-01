@@ -1,10 +1,19 @@
 use crate::{
-    models::{AppError, ChosenFiles, ErrorCode, FileRef, OpenDocument, ResultEnvelope},
-    services::{files::FileService, grants::GrantKind},
+    models::{
+        AppError, ChosenFiles, ErrorCode, FileRef, OpenDocument, ReadChunkRequest, ResultEnvelope,
+        TextChunk,
+    },
+    services::{
+        files::{FileService, OpenRequestMode},
+        grants::GrantKind,
+    },
 };
 use serde::Serialize;
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Manager};
+use tauri::{
+    ipc::{InvokeBody, Request},
+    AppHandle, Manager,
+};
 use tauri_plugin_dialog::DialogExt;
 pub mod save;
 pub mod save_as;
@@ -96,22 +105,57 @@ pub async fn open_document(
         if encoding_override
             .as_deref()
             .is_some_and(|encoding| encoding != "utf-8")
-            || mode.as_deref().is_some_and(|mode| mode != "normal")
         {
-            return Err(AppError::new(
-                ErrorCode::Unsupported,
-                "所选打开模式暂不可用。",
-            ));
+            return Err(AppError::new(ErrorCode::Unsupported, "所选编码暂不可用。"));
         }
+        let open_mode = match mode.as_deref() {
+            None | Some("normal") => OpenRequestMode::Auto,
+            Some("head-preview") => OpenRequestMode::HeadPreview,
+            Some(_) => {
+                return Err(AppError::new(
+                    ErrorCode::Unsupported,
+                    "所选打开模式暂不可用。",
+                ))
+            }
+        };
         let reference = serde_json::from_value(r#ref)
             .map_err(|_| AppError::new(ErrorCode::InvalidInput, "文件引用格式无效。"))?;
         let result = service
             .lock()
             .map_err(|_| internal_error())?
-            .open_document(reference);
+            .open_document_with_mode(reference, open_mode);
         result
     })
     .await
     .unwrap_or_else(|_| Err(internal_error()))
     .into()
+}
+
+#[tauri::command]
+pub async fn read_document_chunk(
+    app: AppHandle,
+    request: Request<'_>,
+) -> Result<ResultEnvelope<TextChunk>, ()> {
+    let value = match request.body() {
+        InvokeBody::Json(value) => value.clone(),
+        _ => {
+            return Ok(Err(AppError::new(
+                ErrorCode::InvalidInput,
+                "分块读取请求必须为JSON对象。",
+            ))
+            .into())
+        }
+    };
+    let service = app.state::<SharedFiles>().inner().clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let request: ReadChunkRequest = serde_json::from_value(value)
+            .map_err(|_| AppError::new(ErrorCode::InvalidInput, "分块读取请求格式无效。"))?;
+        service
+            .lock()
+            .map_err(|_| internal_error())?
+            .read_document_chunk(request)
+    })
+    .await
+    .unwrap_or_else(|_| Err(internal_error()));
+    Ok(result.into())
 }
