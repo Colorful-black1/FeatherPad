@@ -108,7 +108,7 @@ fn out_of_scope() -> AppError {
 }
 
 #[cfg(windows)]
-fn opened_file_path(file: &File) -> Result<PathBuf, AppError> {
+pub(crate) fn opened_file_path(file: &File) -> Result<PathBuf, AppError> {
     use std::ffi::OsString;
     use std::os::windows::{ffi::OsStringExt, io::AsRawHandle};
     use windows_sys::Win32::Storage::FileSystem::GetFinalPathNameByHandleW;
@@ -134,7 +134,7 @@ fn opened_file_path(file: &File) -> Result<PathBuf, AppError> {
 }
 
 #[cfg(not(windows))]
-fn opened_file_path(_file: &File) -> Result<PathBuf, AppError> {
+pub(crate) fn opened_file_path(_file: &File) -> Result<PathBuf, AppError> {
     Err(AppError::new(
         ErrorCode::Unsupported,
         "当前仅支持Windows原生文件访问。",

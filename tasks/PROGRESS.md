@@ -23,6 +23,8 @@
 
 ## 当前恢复点（2026-11-01 14:09，Asia/Shanghai）
 
+- T102.b2.1：拆出`services/documents.rs`（身份索引与DocumentLease）和`snapshot.rs`（受控有界读取/revision），读取侧复用同一算法，grant已打开句柄路径查询保持crate内部。Rust14与fmt/clippy exit 0；尚无保存IPC。下一切片接阶段清单/备份/替换，再重绑身份，避免保存后同一路径另开重复文档。
+
 - T102.b1严格编码已验证：新增Rust `services/encode.rs`、SaveRequest/SaveAck models（deny未知字段）、TextFormat改owned字符串与读取侧转换；wire不变。Rust测试14 passed（原生磁盘10+纯编码/schema4）、fmt/clippy均exit 0。UTF8/UTF16、BOM、逐行混合换行字节往返及不一致/缺失/过期映射拒绝。没有新增依赖，没有写盘或保存IPC；Release仍是T101。源码提交后继续T102.b2，不重建现有工程。
 - 下一步具体风险已核查微软官方ReplaceFileW/FlushFileBuffers：1176/1177部分失败可能移动原件，不能失败后盲删tmp；先持久化阶段清单并指定同卷backup，成功校验后清理。WRITE_THROUGH标志不受支持；sync_all不等于断电零丢失。替换后更新file ID索引/租约，明确硬链接别名分离行为。保存正文临时文件写前校验实际句柄范围。详见SPEC-file-core新增实施约束；尚无原生保存通过证据。T102.b2完成后再做IPC/串行队列/另存副本全部保存及原生故障闭环。
 

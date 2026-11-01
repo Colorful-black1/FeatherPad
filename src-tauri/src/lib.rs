@@ -1,10 +1,12 @@
 mod commands;
 pub mod models;
 pub mod services {
+    pub mod documents;
     pub mod encode;
     pub mod files;
     pub mod grants;
     pub mod identity;
+    pub mod snapshot;
     pub mod text;
 }
 
