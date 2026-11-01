@@ -12,6 +12,8 @@ M1/T102.b1实施决策（2026-11-01）：Rust SaveRequest与既有camelCase协�
 
 T102.b2写入实现约定：原件与目标字节先分别flush到应用私有保存事务目录，唯一receipt manifest记录目标、临时文件、同卷backup、摘要和阶段；记录不写日志、不上传。之后才在目标同目录创建唯一临时文件，核对其实际句柄路径后写正文/flush，替换前重验grant、身份和revision。ReplaceFileW始终指定唯一backup并使用flags=0，失败保留候选；成功读回核对字节/身份再Ack、更新身份索引。硬链接多于1需显式确认只替换当前路径，不能静默断开别名；该确认来自原生交互或可信Rust调用，不由任意路径IPC授权。IPC快照UTF8正文硬上限64MiB、编码后硬上限100MiB，超限明确拒绝且保留内存，不改变打开模式的2/20/100MiB阈值。保存事务/恢复清单的启动扫描与预算由T110完成前不得标G1通过。
 
+T102.b2.3–4适配：进程内保存结果缓存512个请求，整个请求流式计算摘要；相同ID/相同载荷回放已知结果（包括失败），不同载荷拒绝。在途请求另有RAII登记，相同载荷BUSY、不同载荷INVALID_INPUT。源文件始终从已打开DocumentId反查Rust grant，不接受保存路径IPC。桌面状态目录默认应用local data，提供原生进程环境`FEATHERPAD_USER_DATA_DIR`绝对路径覆盖，用于受控运行/自定义本地状态目录；它仅改变应用私有事务/恢复目录，不授权读取或保存用户文件路径，不通过IPC/预览内容配置。测试给子进程指定独立E盘fixture状态目录。便携marker、迁移、启动扫描和容量策略仍在M4/T110验收，不因目录覆盖而声称完成。
+
 ## 1. 一致规则
 
 - TS 字段 camelCase，Rust serde rename_all="camelCase"；命令使用 snake_case。字节数/版本为 JS safe integer；超出范围拒绝。时间为 ISO 8601 UTC 字符串。

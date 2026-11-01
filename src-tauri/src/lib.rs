@@ -20,10 +20,15 @@ pub fn run() {
         .manage(std::sync::Arc::new(std::sync::Mutex::new(
             services::files::FileService::default(),
         )))
+        .manage(std::sync::Arc::new(
+            services::save_requests::InFlightSaves::default(),
+        ))
         .invoke_handler(tauri::generate_handler![
             commands::choose_files,
             commands::choose_folder,
-            commands::open_document
+            commands::open_document,
+            commands::save::save_document,
+            commands::save::stat_document
         ])
         .run(tauri::generate_context!())
         .expect("FeatherPad could not start");

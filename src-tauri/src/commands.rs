@@ -6,6 +6,7 @@ use serde::Serialize;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Manager};
 use tauri_plugin_dialog::DialogExt;
+pub mod save;
 
 type SharedFiles = Arc<Mutex<FileService>>;
 
