@@ -1,5 +1,5 @@
 use crate::{
-    models::{AppError, ErrorCode, FileRef, OpenDocument, ResultEnvelope},
+    models::{AppError, ChosenFiles, ErrorCode, FileRef, OpenDocument, ResultEnvelope},
     services::{files::FileService, grants::GrantKind},
 };
 use serde::Serialize;
@@ -10,11 +10,6 @@ pub mod save;
 pub mod save_as;
 
 type SharedFiles = Arc<Mutex<FileService>>;
-
-#[derive(Serialize)]
-pub struct ChosenFiles {
-    grants: Vec<FileRef>,
-}
 
 #[derive(Serialize)]
 pub struct ChosenFolder {
@@ -43,16 +38,12 @@ pub async fn choose_files(app: AppHandle, multiple: bool) -> ResultEnvelope<Chos
             dialog.blocking_pick_file().into_iter().collect()
         };
         let mut service = service.lock().map_err(|_| internal_error())?;
-        let grants = paths
-            .into_iter()
-            .map(|selection| {
-                let path = selection
-                    .into_path()
-                    .map_err(|_| AppError::new(ErrorCode::Unsupported, "请选择本地文件。"))?;
-                service.grants.register_selection(&path, GrantKind::File)
-            })
-            .collect::<Result<Vec<_>, AppError>>()?;
-        Ok(ChosenFiles { grants })
+        let paths = paths.into_iter().map(|selection| {
+            selection
+                .into_path()
+                .map_err(|_| AppError::new(ErrorCode::Unsupported, "请选择本地文件。"))
+        });
+        Ok(service.grants.register_file_selections(paths))
     })
     .await
     .unwrap_or_else(|_| Err(internal_error()))

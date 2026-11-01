@@ -23,6 +23,7 @@
 
 ## 当前恢复点（2026-11-01 16:05，Asia/Shanghai）
 
+- F-FILE-002补正第一切片：先更新CONTRACTS，再把choose_files的collect整批失败改为GrantRegistry逐项收集成功grant及`{selectionIndex,error}`；取消两个空列表，不回传原始失败路径。受控Windows授权测试5 passed（新增2：有效/缺失/有效仍可读两份，转换/类型失败与取消），clippy --all-targets -D warnings exit 0，cargo fmt已执行。此时前端尚未显示failures，继续桥接guard/UI与回归，不提前记完整修复或新Release。
 - T102.c3/F-FILE-005全部保存已实现：`save-all.ts`固定开始时dirty文档列表，复用SaveCoordinator逐项保存，不预复制全部正文；单项失败继续其他独立项，原生路径取消/停止后续保存则等当前真实结果后停止。`SaveAllResults.tsx`逐项列成功/失败/取消/未处理与总体进度，支持点击定位文档、关闭回焦；实时显示保存后仍有的新输入及全部当前dirty计数，不伪报全局已保存。App接真实入口并阻止批次期间其他手动保存快捷键；CSS让200%结果列表可滚动且关闭按钮固定可见。规格先记录了批次/取消语义，无新增IPC/依赖。
 - 本切片已执行：Probe-Environment、typecheck/lint、TS30（新增4）、全Web12（新增3）、Release build、原生桌面综合1项均exit 0；200%滚动结果头部小调整后定向Web3 exit 0。Rust生产未改，本切片没有冒称重跑Rust全套；此前37项记录仍保留。真实Release五文档：前两份UTF8/CRLF中文emoji字节保存正确，第三份外部变化CONFLICT且外部字节不变，第四份原生Cancel，第五份未处理；第三/四/五正文和dirty都正确。证据`.artifacts/T102/native-release.json`与`native-release-save-all.png`，以及`save-all-failure-web.png`（Web mock，200% CSS zoom）；截图已视觉检查。
 - 最后CSS调整后Release build/原生桌面综合1项复验exit 0；当前exe为9955840 bytes、SHA256 `41DF8AB018AC8A5821657EE7F381A3D721CCCAB275DED370FBBDA2C4B4372026`。`node scripts/validate-docs.mjs` exit 0，128 files/27 Markdown/141 links/86 features/57 tasks覆盖，无失败；仅文档静态检查，不是产品行为验收。

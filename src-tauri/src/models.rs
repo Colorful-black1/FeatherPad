@@ -81,6 +81,19 @@ pub struct FileRef {
     pub relative_path: String,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SelectionFailure {
+    pub selection_index: usize,
+    pub error: AppError,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ChosenFiles {
+    pub grants: Vec<FileRef>,
+    pub failures: Vec<SelectionFailure>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileMetadata {

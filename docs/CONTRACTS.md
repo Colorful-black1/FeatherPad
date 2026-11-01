@@ -18,6 +18,8 @@ T102.b2.3–4适配：进程内保存结果缓存512个请求，整个请求流�
 
 T102.c2另存实施决策：SaveAsRequest复用快照字段但不接受目标路径/revision，增加可选intent（默认save-as，另值copy）；目标仅原生选择器授权。返回增加documentId与metadata，便于在成功Ack后更新展示路径/原生FileRef，逻辑DocumentId保持同一缓冲。取消返回CANCELLED，不绑定路径、不清dirty。新目标先规范父目录/验证Windows名称，以禁止覆盖的同卷移动提交，目标在期间出现则CONFLICT。已存在目标先取revision，再由原生明确确认并在提交前重验；其他已打开文档占用的路径/文件ID拒绝，副本目标与源同一物理文件也拒绝。save-as成功才更新源绑定/已保存基线；copy只返回结果，不更新源绑定、dirty或undo。选择器等待期间的输入仍属于更高bufferVersion，旧Ack不清新dirty。分新目标核心、现有目标/碰撞、IPC、前端和原生验收切片完成，不以部分切片标T102通过。
 
+F-FILE-002授权阶段补正：choose_files返回`{grants:FileRef[],failures:{selectionIndex:number,error:AppError}[]}`。selectionIndex是原生选择列表的零基序号，单项路径转换/授权注册失败不能丢弃其他成功grant；取消为两个空列表。全部失败仍返回逐项failure，服务锁/worker等全局故障才是外层失败。失败不回传原始路径/系统错误字符串，UI以所选项序号和安全错误信息反馈。成功项随后open_document失败也逐项反馈，不将Web open阶段mock当作原生授权阶段证据。
+
 - TS 字段 camelCase，Rust serde rename_all="camelCase"；命令使用 snake_case。字节数/版本为 JS safe integer；超出范围拒绝。时间为 ISO 8601 UTC 字符串。
 - 普通输入用 discriminated unions，枚举值统一小写短横线；错误码统一 UPPER_SNAKE。ID 为 opaque string，不能由路径自行猜测。
 - 所有 invoke 返回 `ResultEnvelope<T>`；异常的传输失败由 TS bridge 统一转成 `IPC_UNAVAILABLE`。事件携带 schemaVersion、operationId 与序号，不与 invoke 错误混用。
@@ -116,7 +118,7 @@ export interface SaveAck {
 
 | 命令 | 输入 | 输出 value | 规则 |
 |---|---|---|---|
-| `choose_files` | `{multiple:boolean}` | `{grants: FileRef[]}` | 系统选择器取消返回空列表，不报错 |
+| `choose_files` | `{multiple:boolean}` | `{grants:FileRef[],failures:{selectionIndex:number,error:AppError}[]}` | 系统选择器取消返回两个空列表；单项失败不影响其他成功授权 |
 | `choose_folder` | `{}` | `{grant: FileRef|null}` | 明确选中后建立 root grant |
 | `open_document` | `{ref,encodingOverride?,mode?}` | `OpenDocument` | 先大小/二进制检查；同一文件复用 DocumentId |
 | `save_document` | `SaveRequest` | `SaveAck` | 同一文档串行，冲突不覆盖；超时结果可能未知 |

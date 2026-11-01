@@ -1,6 +1,6 @@
 #![cfg(windows)]
 
-use featherpad_lib::models::{ErrorCode, FileRef};
+use featherpad_lib::models::{AppError, ErrorCode, FileRef};
 use featherpad_lib::services::grants::{GrantKind, GrantRegistry};
 use std::{fs, io::Read, path::PathBuf, process::Command};
 
@@ -105,4 +105,53 @@ fn directory_grant_rejects_real_junction_escape() {
     );
     reference.relative_path = "中文 fixture.txt".into();
     assert!(registry.open_file(&reference).is_ok());
+}
+
+#[test]
+fn native_selection_registration_keeps_successes_on_both_sides_of_a_missing_file() {
+    let (root, _) = fixture();
+    let second = root.join("第二份 emoji😀.txt");
+    fs::write(&second, "第二份真实文件😀").unwrap();
+    let mut registry = GrantRegistry::default();
+    let chosen = registry.register_file_selections([
+        Ok(root.join("中文 fixture.txt")),
+        Ok(root.join("missing-controlled.txt")),
+        Ok(second),
+    ]);
+    assert_eq!(chosen.grants.len(), 2);
+    assert_eq!(chosen.failures.len(), 1);
+    assert_eq!(chosen.failures[0].selection_index, 1);
+    assert_eq!(chosen.failures[0].error.code, ErrorCode::NotFound);
+    for (reference, expected) in chosen
+        .grants
+        .iter()
+        .zip(["受控测试\r\nFeatherPad", "第二份真实文件😀"])
+    {
+        let (mut file, _) = registry.open_file(reference).unwrap();
+        let mut text = String::new();
+        file.read_to_string(&mut text).unwrap();
+        assert_eq!(text, expected);
+    }
+    let wire = serde_json::to_value(&chosen).unwrap();
+    assert_eq!(wire["failures"][0]["selectionIndex"], 1);
+    assert!(!wire.to_string().contains("missing-controlled.txt"));
+}
+
+#[test]
+fn native_selection_reports_each_conversion_or_type_failure_and_cancel_is_empty() {
+    let (root, _) = fixture();
+    let mut registry = GrantRegistry::default();
+    let chosen = registry.register_file_selections([
+        Err(AppError::new(ErrorCode::Unsupported, "请选择本地文件。")),
+        Ok(root), // A directory cannot become a file grant.
+    ]);
+    assert!(chosen.grants.is_empty());
+    assert_eq!(chosen.failures.len(), 2);
+    assert_eq!(chosen.failures[0].selection_index, 0);
+    assert_eq!(chosen.failures[0].error.code, ErrorCode::Unsupported);
+    assert_eq!(chosen.failures[1].selection_index, 1);
+    assert_eq!(chosen.failures[1].error.code, ErrorCode::InvalidInput);
+    let cancelled = registry.register_file_selections([]);
+    assert!(cancelled.grants.is_empty());
+    assert!(cancelled.failures.is_empty());
 }

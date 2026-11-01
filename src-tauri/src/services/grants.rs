@@ -1,4 +1,4 @@
-use crate::models::{io_error, AppError, ErrorCode, FileRef};
+use crate::models::{io_error, AppError, ChosenFiles, ErrorCode, FileRef, SelectionFailure};
 use std::collections::HashMap;
 use std::fs::File;
 use std::path::{Component, Path, PathBuf};
@@ -20,6 +20,27 @@ pub struct GrantRegistry {
 }
 
 impl GrantRegistry {
+    // Results must originate in a native selector/validated OS entry, never an IPC path list.
+    pub fn register_file_selections(
+        &mut self,
+        paths: impl IntoIterator<Item = Result<PathBuf, AppError>>,
+    ) -> ChosenFiles {
+        let mut chosen = ChosenFiles {
+            grants: Vec::new(),
+            failures: Vec::new(),
+        };
+        for (selection_index, path) in paths.into_iter().enumerate() {
+            match path.and_then(|path| self.register_selection(&path, GrantKind::File)) {
+                Ok(reference) => chosen.grants.push(reference),
+                Err(error) => chosen.failures.push(SelectionFailure {
+                    selection_index,
+                    error,
+                }),
+            }
+        }
+        chosen
+    }
+
     // Native save-selector result only; never accept a path through IPC.
     pub fn authorize_new_target(
         &self,
