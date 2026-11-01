@@ -23,6 +23,7 @@
 
 ## 当前恢复点（2026-11-01 16:23，Asia/Shanghai）
 
+- T102硬链接确认第一切片：`save.rs`新增原生不可Deserialize的确认对象，绑定完整请求摘要/canonical路径；只读检查多链接，不创建journal，确认后重验快照/revision再准备写入。`save_requests.rs`拆出begin_save/finish_save，在弹窗前回放已知结果，取消也可缓存；既有save_existing复用相同缓存。受控protected_save 15 passed（新增3：未确认零写入与别名字节保留、改快照/确认期间外改拒绝、取消缓存回放），clippy --all-targets -D warnings exit 0、cargo fmt执行成功。当前尚未接原生CtrlS弹窗，不声称新Release或硬链接GUI完成；继续IPC适配/原生验收。
 - T102/F-FILE-004原生已有目标覆盖/副本/碰撞已验收：新增`tests/desktop/overwrite.ts`，真实系统覆盖确认后另有绑定revision的应用确认；拒绝覆盖保原目标/无标题正文/dirty，inspect确认窗口后真实外部写入再Yes触发CONFLICT且不覆写；重新确认成功后同一tab/DocumentId绑定已有目标、字节正确。保存副本选源文件被拒绝，覆盖其他已有目标时副本字节更新而源路径/原字节/dirty保持；目标为另一打开文档时拒绝且双方保留。不是Web mock。
 - 原生helper扩展仅准单个已存在的受控小文件，仍检查E盘fixture根/无reparse/哈希/测试exe/PID/父worker；系统/应用确认分别限定标题、目标文本和唯一启用是/否按钮，UIAutomation只读取该owned确认框且限100个Text元素。文件选择提交用异步PostMessage避免嵌套OS确认阻塞；实际Button用BM_CLICK路由真实通知。inspect仅校验，不发送点击，JSON commandInvoked=false。没有生产IPC改动、没有新依赖/安装。
 - 排错证据：desktop先因“Expected exactly one owned, named overwrite confirmation” exit 1；追加owned控件诊断再现exit 1，确认系统对话框为“确认另存为”、DirectUIHWND/Button ID0；改为标题/按钮文字后又因WM_GETTEXT无法读DirectUI目标文本而“Overwrite confirmation is not for the controlled destination” exit 1。读取已锁rfd TaskDialog实现及微软按钮/异步消息文档后，使用已有UIAutomation系统程序集验证目标文字，定向原生综合通过；再扩展同ID/副本覆盖/同源拒绝后typecheck/lint及desktop综合1项exit 0（37.5秒），不改timeout/断言。

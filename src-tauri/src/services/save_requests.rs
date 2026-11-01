@@ -46,6 +46,15 @@ pub enum SaveAsStart {
     Fresh(SaveAsTicket),
 }
 
+pub struct SaveTicket {
+    key: Key,
+    hash: String,
+}
+pub enum SaveStart {
+    Replay(Outcome),
+    Fresh(SaveTicket),
+}
+
 impl InFlightSaves {
     pub fn enter(self: &Arc<Self>, request: &SaveRequest) -> Result<SavePermit, AppError> {
         let hash = payload_hash(request)?;
@@ -92,23 +101,37 @@ impl FileService {
         journal_root: &Path,
         policy: HardLinkPolicy,
     ) -> Outcome {
-        let hash = payload_hash(&request)?;
-        let key = (request.document_id.clone(), request.request_id.clone());
-        if let Some((previous, result)) = self.saves.results.get(&key) {
-            return if *previous == hash {
-                match result.clone() {
-                    Ok(SavedValue::Existing(ack)) => Ok(ack),
-                    Err(error) => Err(error),
-                    _ => Err(reused_id()),
-                }
-            } else {
-                Err(reused_id())
-            };
-        }
+        let ticket = match self.begin_save(&request)? {
+            SaveStart::Replay(result) => return result,
+            SaveStart::Fresh(ticket) => ticket,
+        };
         let result = PreparedSave::prepare(self, request, journal_root, policy)
             .and_then(|prepared| prepared.commit(self));
-        self.saves
-            .remember(key, hash, result.clone().map(SavedValue::Existing));
+        self.finish_save(ticket, result)
+    }
+
+    pub fn begin_save(&self, request: &SaveRequest) -> Result<SaveStart, AppError> {
+        let hash = payload_hash(request)?;
+        let key = (request.document_id.clone(), request.request_id.clone());
+        if let Some((previous, result)) = self.saves.results.get(&key) {
+            if *previous != hash {
+                return Err(reused_id());
+            }
+            return Ok(SaveStart::Replay(match result.clone() {
+                Ok(SavedValue::Existing(ack)) => Ok(ack),
+                Err(error) => Err(error),
+                _ => Err(reused_id()),
+            }));
+        }
+        Ok(SaveStart::Fresh(SaveTicket { key, hash }))
+    }
+
+    pub fn finish_save(&mut self, ticket: SaveTicket, result: Outcome) -> Outcome {
+        self.saves.remember(
+            ticket.key,
+            ticket.hash,
+            result.clone().map(SavedValue::Existing),
+        );
         result
     }
 
@@ -188,7 +211,7 @@ fn as_hash(request: &SaveAsRequest) -> Result<String, AppError> {
     fingerprint(request)
 }
 
-fn payload_hash(request: &SaveRequest) -> Result<String, AppError> {
+pub(super) fn payload_hash(request: &SaveRequest) -> Result<String, AppError> {
     if request.document_id.is_empty()
         || request.document_id.len() > 128
         || uuid::Uuid::parse_str(&request.request_id).is_err()

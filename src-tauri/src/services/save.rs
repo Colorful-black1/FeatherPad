@@ -7,7 +7,10 @@ use super::{
     windows_file,
 };
 use crate::models::{AppError, ErrorCode, FileRef, SaveAck, SaveRequest};
-use std::{fs::File, path::Path};
+use std::{
+    fs::File,
+    path::{Path, PathBuf},
+};
 
 pub const MAX_SNAPSHOT_BYTES: usize = 64 * 1024 * 1024;
 pub const MAX_FILE_BYTES: u64 = 100 * 1024 * 1024;
@@ -16,6 +19,79 @@ pub const MAX_FILE_BYTES: u64 = 100 * 1024 * 1024;
 pub enum HardLinkPolicy {
     RequireConfirmation,
     ReplaceSelectedPathConfirmed,
+}
+
+// Native-only consent: an IPC boolean or a different save snapshot cannot manufacture it.
+pub struct HardLinkConfirmation {
+    path: PathBuf,
+    display_path: String,
+    request_hash: String,
+    link_count: u32,
+}
+
+impl FileService {
+    pub fn inspect_hard_links(
+        &self,
+        request: &SaveRequest,
+    ) -> Result<Option<HardLinkConfirmation>, AppError> {
+        let request_hash = super::save_requests::payload_hash(request)?;
+        let reference = &self
+            .documents
+            .get(&request.document_id)
+            .ok_or_else(not_open)?
+            .reference;
+        let before = current_snapshot(
+            self,
+            request,
+            reference,
+            HardLinkPolicy::ReplaceSelectedPathConfirmed,
+        )?;
+        let link_count = windows_file::link_count(&before.file)?;
+        Ok((link_count > 1).then_some(HardLinkConfirmation {
+            path: before.path,
+            display_path: before.metadata.display_path,
+            request_hash,
+            link_count,
+        }))
+    }
+}
+
+impl HardLinkConfirmation {
+    pub fn display_path(&self) -> &str {
+        &self.display_path
+    }
+    pub fn link_count(&self) -> u32 {
+        self.link_count
+    }
+
+    pub fn prepare_confirmed(
+        self,
+        service: &FileService,
+        request: SaveRequest,
+        root: &Path,
+    ) -> Result<PreparedSave, AppError> {
+        if super::save_requests::payload_hash(&request)? != self.request_hash {
+            return Err(AppError::new(
+                ErrorCode::InvalidInput,
+                "硬链接确认与保存快照不匹配。",
+            ));
+        }
+        if service
+            .documents
+            .get(&request.document_id)
+            .ok_or_else(not_open)?
+            .path
+            != self.path
+        {
+            return Err(conflict());
+        }
+        PreparedSave::prepare(
+            service,
+            request,
+            root,
+            HardLinkPolicy::ReplaceSelectedPathConfirmed,
+        )
+    }
 }
 
 pub struct PreparedSave {

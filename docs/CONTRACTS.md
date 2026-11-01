@@ -14,6 +14,8 @@ T102.b2写入实现约定：原件与目标字节先分别flush到应用私有�
 
 T102.b2.3–4适配：进程内保存结果缓存512个请求，整个请求流式计算摘要；相同ID/相同载荷回放已知结果（包括失败），不同载荷拒绝。在途请求另有RAII登记，相同载荷BUSY、不同载荷INVALID_INPUT。源文件始终从已打开DocumentId反查Rust grant，不接受保存路径IPC。桌面状态目录默认应用local data，提供原生进程环境`FEATHERPAD_USER_DATA_DIR`绝对路径覆盖，用于受控运行/自定义本地状态目录；它仅改变应用私有事务/恢复目录，不授权读取或保存用户文件路径，不通过IPC/预览内容配置。测试给子进程指定独立E盘fixture状态目录。便携marker、迁移、启动扫描和容量策略仍在M4/T110验收，不因目录覆盖而声称完成。
 
+T102硬链接确认实施决策：普通save_document在原生确认前先查询同一请求的结果缓存；新请求只读检查当前授权目标/revision及硬链接数。多链接时创建不可Deserialize的确认对象，绑定完整请求摘要与canonical目标；原生YesNo说明仅替换所选路径、其他硬链接保留旧内容。等待确认不持有文件服务锁、不创建事务/临时正文；No返回CANCELLED且缓存，同请求回放不重复弹窗。Yes后检查源绑定仍指向捕获路径，重验revision、权限和身份，再走现有同目录保护替换。无确认时继续RequireConfirmation策略，检查后新出现的多链接仍安全拒绝并可重新发起确认。前端不能传hardLinkConfirmed或目标路径，旧Ack不清新输入的规则不变。
+
 ## 1. 一致规则
 
 T102.c2另存实施决策：SaveAsRequest复用快照字段但不接受目标路径/revision，增加可选intent（默认save-as，另值copy）；目标仅原生选择器授权。返回增加documentId与metadata，便于在成功Ack后更新展示路径/原生FileRef，逻辑DocumentId保持同一缓冲。取消返回CANCELLED，不绑定路径、不清dirty。新目标先规范父目录/验证Windows名称，以禁止覆盖的同卷移动提交，目标在期间出现则CONFLICT。已存在目标先取revision，再由原生明确确认并在提交前重验；其他已打开文档占用的路径/文件ID拒绝，副本目标与源同一物理文件也拒绝。save-as成功才更新源绑定/已保存基线；copy只返回结果，不更新源绑定、dirty或undo。选择器等待期间的输入仍属于更高bufferVersion，旧Ack不清新dirty。分新目标核心、现有目标/碰撞、IPC、前端和原生验收切片完成，不以部分切片标T102通过。

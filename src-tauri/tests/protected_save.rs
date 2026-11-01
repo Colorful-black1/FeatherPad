@@ -480,3 +480,111 @@ fn in_flight_identical_request_is_busy_and_changed_payload_is_invalid() {
     drop(permit);
     assert!(active.enter(&request).is_ok());
 }
+
+#[test]
+fn native_hardlink_inspection_does_not_write_until_confirmed_and_keeps_alias_bytes() {
+    let mut fixture = fixture();
+    let snapshot = request(&fixture.opened);
+    assert!(fixture
+        .service
+        .inspect_hard_links(&snapshot)
+        .unwrap()
+        .is_none());
+    let alias = fixture.path.with_file_name("inspection alias😀.txt");
+    fs::hard_link(&fixture.path, &alias).unwrap();
+    let confirmation = fixture
+        .service
+        .inspect_hard_links(&snapshot)
+        .unwrap()
+        .unwrap();
+    assert_eq!(confirmation.link_count(), 2);
+    assert_eq!(PathBuf::from(confirmation.display_path()), fixture.path);
+    assert!(!fixture.journal.exists());
+    assert_eq!(fs::read(&fixture.path).unwrap(), fs::read(&alias).unwrap());
+    let prepared = confirmation
+        .prepare_confirmed(&fixture.service, snapshot, &fixture.journal)
+        .unwrap();
+    prepared.commit(&mut fixture.service).unwrap();
+    assert_eq!(
+        fs::read(&fixture.path).unwrap(),
+        "changed\r\n中文😀".as_bytes()
+    );
+    assert_eq!(fs::read(&alias).unwrap(), "original\r\n中文😀".as_bytes());
+}
+
+#[test]
+fn hardlink_confirmation_is_bound_to_the_full_request_and_original_disk_revision() {
+    let fixture = fixture();
+    let alias = fixture.path.with_file_name("revision alias.txt");
+    fs::hard_link(&fixture.path, &alias).unwrap();
+    let snapshot = request(&fixture.opened);
+    let confirmation = fixture
+        .service
+        .inspect_hard_links(&snapshot)
+        .unwrap()
+        .unwrap();
+    let mut changed = snapshot.clone();
+    changed.text.push_str(" later input");
+    assert_eq!(
+        confirmation
+            .prepare_confirmed(&fixture.service, changed, &fixture.journal)
+            .err()
+            .unwrap()
+            .code,
+        ErrorCode::InvalidInput
+    );
+    let confirmation = fixture
+        .service
+        .inspect_hard_links(&snapshot)
+        .unwrap()
+        .unwrap();
+    fs::write(&fixture.path, b"external during native consent").unwrap();
+    assert_eq!(
+        confirmation
+            .prepare_confirmed(&fixture.service, snapshot, &fixture.journal)
+            .err()
+            .unwrap()
+            .code,
+        ErrorCode::Conflict
+    );
+    assert_eq!(
+        fs::read(&fixture.path).unwrap(),
+        b"external during native consent"
+    );
+    assert_eq!(fs::read(&alias).unwrap(), b"external during native consent");
+    assert!(!fixture.journal.exists());
+}
+
+#[test]
+fn cancelled_existing_save_is_cached_before_any_repeat_confirmation_or_disk_write() {
+    use featherpad_lib::{models::AppError, services::save_requests::SaveStart};
+    let mut fixture = fixture();
+    let snapshot = request(&fixture.opened);
+    let SaveStart::Fresh(ticket) = fixture.service.begin_save(&snapshot).unwrap() else {
+        panic!("Fresh request expected");
+    };
+    let cancelled = AppError::new(ErrorCode::Cancelled, "Controlled native No");
+    assert_eq!(
+        fixture
+            .service
+            .finish_save(ticket, Err(cancelled))
+            .unwrap_err()
+            .code,
+        ErrorCode::Cancelled
+    );
+    let SaveStart::Replay(result) = fixture.service.begin_save(&snapshot).unwrap() else {
+        panic!("Cancelled request must replay before any dialog");
+    };
+    assert_eq!(result.unwrap_err().code, ErrorCode::Cancelled);
+    let mut changed = snapshot;
+    changed.text.push('x');
+    assert_eq!(
+        fixture.service.begin_save(&changed).err().unwrap().code,
+        ErrorCode::InvalidInput
+    );
+    assert!(!fixture.journal.exists());
+    assert_eq!(
+        fs::read(&fixture.path).unwrap(),
+        "original\r\n中文😀".as_bytes()
+    );
+}
