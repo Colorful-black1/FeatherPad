@@ -3,7 +3,9 @@ use super::{
     save::{HardLinkPolicy, PreparedSave, MAX_SNAPSHOT_BYTES},
     snapshot::read_snapshot,
 };
-use crate::models::{AppError, ErrorCode, FileMetadata, SaveAck, SaveRequest};
+use crate::models::{
+    AppError, ErrorCode, FileMetadata, SaveAck, SaveAsAck, SaveAsRequest, SaveRequest,
+};
 use sha2::{Digest, Sha256};
 use std::{
     collections::{HashMap, VecDeque},
@@ -14,9 +16,15 @@ use std::{
 
 type Key = (String, String);
 type Outcome = Result<SaveAck, AppError>;
+type AsOutcome = Result<SaveAsAck, AppError>;
+#[derive(Clone)]
+enum SavedValue {
+    Existing(SaveAck),
+    Destination(SaveAsAck),
+}
 #[derive(Default)]
 pub struct SaveHistory {
-    results: HashMap<Key, (String, Outcome)>,
+    results: HashMap<Key, (String, Result<SavedValue, AppError>)>,
     order: VecDeque<Key>,
 }
 
@@ -29,10 +37,30 @@ pub struct SavePermit {
     key: Key,
 }
 
+pub struct SaveAsTicket {
+    key: Key,
+    hash: String,
+}
+pub enum SaveAsStart {
+    Replay(AsOutcome),
+    Fresh(SaveAsTicket),
+}
+
 impl InFlightSaves {
     pub fn enter(self: &Arc<Self>, request: &SaveRequest) -> Result<SavePermit, AppError> {
         let hash = payload_hash(request)?;
         let key = (request.document_id.clone(), request.request_id.clone());
+        self.enter_hash(key, hash)
+    }
+
+    pub fn enter_as(self: &Arc<Self>, request: &SaveAsRequest) -> Result<SavePermit, AppError> {
+        self.enter_hash(
+            (request.document_id.clone(), request.request_id.clone()),
+            as_hash(request)?,
+        )
+    }
+
+    fn enter_hash(self: &Arc<Self>, key: Key, hash: String) -> Result<SavePermit, AppError> {
         let mut requests = self.requests.lock().map_err(|_| internal())?;
         if let Some(previous) = requests.get(&key) {
             return Err(if previous == &hash {
@@ -68,7 +96,11 @@ impl FileService {
         let key = (request.document_id.clone(), request.request_id.clone());
         if let Some((previous, result)) = self.saves.results.get(&key) {
             return if *previous == hash {
-                result.clone()
+                match result.clone() {
+                    Ok(SavedValue::Existing(ack)) => Ok(ack),
+                    Err(error) => Err(error),
+                    _ => Err(reused_id()),
+                }
             } else {
                 Err(reused_id())
             };
@@ -76,14 +108,33 @@ impl FileService {
         let result = PreparedSave::prepare(self, request, journal_root, policy)
             .and_then(|prepared| prepared.commit(self));
         self.saves
-            .results
-            .insert(key.clone(), (hash, result.clone()));
-        self.saves.order.push_back(key);
-        while self.saves.order.len() > 512 {
-            if let Some(expired) = self.saves.order.pop_front() {
-                self.saves.results.remove(&expired);
+            .remember(key, hash, result.clone().map(SavedValue::Existing));
+        result
+    }
+
+    pub fn begin_save_as(&self, request: &SaveAsRequest) -> Result<SaveAsStart, AppError> {
+        let hash = as_hash(request)?;
+        let key = (request.document_id.clone(), request.request_id.clone());
+        if let Some((previous, result)) = self.saves.results.get(&key) {
+            if *previous != hash {
+                return Err(reused_id());
             }
+            let result = match result.clone() {
+                Ok(SavedValue::Destination(ack)) => Ok(ack),
+                Err(error) => Err(error),
+                _ => Err(reused_id()),
+            };
+            return Ok(SaveAsStart::Replay(result));
         }
+        Ok(SaveAsStart::Fresh(SaveAsTicket { key, hash }))
+    }
+
+    pub fn finish_save_as(&mut self, ticket: SaveAsTicket, result: AsOutcome) -> AsOutcome {
+        self.saves.remember(
+            ticket.key,
+            ticket.hash,
+            result.clone().map(SavedValue::Destination),
+        );
         result
     }
 
@@ -95,6 +146,46 @@ impl FileService {
         let (file, _) = self.grants.open_file(&document.reference)?;
         Ok(read_snapshot(file, super::save::MAX_FILE_BYTES)?.metadata)
     }
+}
+
+impl SaveHistory {
+    fn remember(&mut self, key: Key, hash: String, value: Result<SavedValue, AppError>) {
+        if !self.results.contains_key(&key) {
+            self.order.push_back(key.clone());
+        }
+        self.results.insert(key, (hash, value));
+        while self.order.len() > 512 {
+            if let Some(expired) = self.order.pop_front() {
+                self.results.remove(&expired);
+            }
+        }
+    }
+}
+
+fn as_hash(request: &SaveAsRequest) -> Result<String, AppError> {
+    if uuid::Uuid::parse_str(&request.document_id).is_err()
+        || uuid::Uuid::parse_str(&request.request_id).is_err()
+        || request.document_version > 9_007_199_254_740_991
+        || request.format.encoding.len() > 64
+        || request.format.bom.len() > 16
+        || request.format.line_ending.len() > 16
+        || request
+            .newline_map
+            .as_ref()
+            .is_some_and(|map| map.endings.len() > request.text.len())
+    {
+        return Err(AppError::new(
+            ErrorCode::InvalidInput,
+            "另存快照格式或长度无效。",
+        ));
+    }
+    if request.text.len() > MAX_SNAPSHOT_BYTES {
+        return Err(AppError::new(
+            ErrorCode::TooLarge,
+            "保存快照超过64MiB限制。",
+        ));
+    }
+    fingerprint(request)
 }
 
 fn payload_hash(request: &SaveRequest) -> Result<String, AppError> {
@@ -125,6 +216,10 @@ fn payload_hash(request: &SaveRequest) -> Result<String, AppError> {
             "保存快照超过64MiB限制。",
         ));
     }
+    fingerprint(request)
+}
+
+fn fingerprint(request: &impl serde::Serialize) -> Result<String, AppError> {
     struct HashWriter(Sha256);
     impl Write for HashWriter {
         fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {

@@ -9,7 +9,7 @@ use tauri::{
     AppHandle, Manager,
 };
 
-fn journal_root(app: &AppHandle) -> Result<PathBuf, AppError> {
+pub(super) fn journal_root(app: &AppHandle) -> Result<PathBuf, AppError> {
     let root = if let Some(directory) = std::env::var_os("FEATHERPAD_USER_DATA_DIR") {
         let directory = PathBuf::from(directory);
         if !directory.is_absolute() {

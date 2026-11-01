@@ -309,3 +309,42 @@ fn successful_overwrite_switches_source_only_for_save_as_and_copy_keeps_source()
         assert_eq!(result.document_id, opened.document_id);
     }
 }
+
+#[test]
+fn save_as_cache_replays_cancelled_intent_and_never_reuses_it_for_a_different_snapshot() {
+    use featherpad_lib::{
+        models::AppError,
+        services::save_requests::{InFlightSaves, SaveAsStart},
+    };
+    use std::sync::Arc;
+    let mut service = FileService::default();
+    let snapshot = request(SaveIntent::SaveAs);
+    let active = Arc::new(InFlightSaves::default());
+    let permit = active.enter_as(&snapshot).unwrap();
+    assert_eq!(
+        active.enter_as(&snapshot).err().unwrap().code,
+        ErrorCode::Busy
+    );
+    let SaveAsStart::Fresh(ticket) = service.begin_save_as(&snapshot).unwrap() else {
+        panic!("New request must be fresh")
+    };
+    let result = service.finish_save_as(
+        ticket,
+        Err(AppError::new(ErrorCode::Cancelled, "cancelled fixture")),
+    );
+    assert_eq!(result.unwrap_err().code, ErrorCode::Cancelled);
+    assert!(
+        matches!(service.begin_save_as(&snapshot).unwrap(), SaveAsStart::Replay(Err(error)) if error.code == ErrorCode::Cancelled)
+    );
+    let mut changed = snapshot;
+    changed.text.push('x');
+    assert_eq!(
+        active.enter_as(&changed).err().unwrap().code,
+        ErrorCode::InvalidInput
+    );
+    assert_eq!(
+        service.begin_save_as(&changed).err().unwrap().code,
+        ErrorCode::InvalidInput
+    );
+    drop(permit);
+}
