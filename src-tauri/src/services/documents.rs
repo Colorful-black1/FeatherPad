@@ -1,9 +1,9 @@
 use super::identity::FileIdentity;
-use crate::models::FileRef;
+use crate::models::{AppError, ErrorCode, FileRef, RenamedDocument};
 use std::{
     collections::{HashMap, HashSet},
     fs::File,
-    path::PathBuf,
+    path::{Component, Path, PathBuf},
 };
 
 pub struct DocumentLease {
@@ -11,6 +11,13 @@ pub struct DocumentLease {
     pub reference: FileRef,
     pub path: PathBuf,
     pub file: File,
+}
+
+#[derive(Clone)]
+pub(super) struct DetachedDocument {
+    pub id: String,
+    pub identity: FileIdentity,
+    pub path: PathBuf,
 }
 
 #[derive(Default)]
@@ -67,6 +74,96 @@ impl DocumentRegistry {
 
     pub fn get(&self, id: &str) -> Option<&DocumentLease> {
         self.documents.get(id)
+    }
+
+    pub fn rebase_under(
+        &mut self,
+        old_root: &Path,
+        new_root: &Path,
+        new_reference: &FileRef,
+    ) -> Vec<RenamedDocument> {
+        let mut renamed = Vec::new();
+        for (document_id, document) in &mut self.documents {
+            let Ok(suffix) = document.path.strip_prefix(old_root) else {
+                continue;
+            };
+            let new_path = if suffix.as_os_str().is_empty() {
+                new_root.to_path_buf()
+            } else {
+                new_root.join(suffix)
+            };
+            let mut relative_path = new_reference
+                .relative_path
+                .trim_end_matches(['/', '\\'])
+                .to_owned();
+            for component in suffix.components() {
+                let Component::Normal(segment) = component else {
+                    continue;
+                };
+                if !relative_path.is_empty() {
+                    relative_path.push('/');
+                }
+                relative_path.push_str(&segment.to_string_lossy());
+            }
+            let reference = FileRef {
+                grant_id: new_reference.grant_id.clone(),
+                relative_path,
+            };
+            document.path = new_path.clone();
+            document.reference = reference.clone();
+            renamed.push(RenamedDocument {
+                document_id: document_id.clone(),
+                reference,
+                display_path: new_path.to_string_lossy().into_owned(),
+            });
+        }
+        renamed
+    }
+
+    pub(super) fn detach_under(&mut self, old_root: &Path) -> Vec<DetachedDocument> {
+        let document_ids = self
+            .documents
+            .iter()
+            .filter(|(_, document)| document.path.starts_with(old_root))
+            .map(|(id, _)| id.clone())
+            .collect::<Vec<_>>();
+        let mut detached = Vec::with_capacity(document_ids.len());
+        for id in document_ids {
+            if let Some(document) = self.documents.remove(&id) {
+                self.identities.remove(&document.identity);
+                detached.push(DetachedDocument {
+                    id,
+                    identity: document.identity,
+                    path: document.path,
+                });
+            }
+        }
+        detached
+    }
+
+    pub(super) fn restore_all(
+        &mut self,
+        leases: Vec<(String, DocumentLease)>,
+    ) -> Result<(), AppError> {
+        let mut document_ids = HashSet::with_capacity(leases.len());
+        let mut identities = HashSet::with_capacity(leases.len());
+        for (id, lease) in &leases {
+            if self.documents.contains_key(id)
+                || self.identities.contains_key(&lease.identity)
+                || !document_ids.insert(id)
+                || !identities.insert(lease.identity.clone())
+            {
+                return Err(AppError::new(
+                    ErrorCode::Conflict,
+                    "目录改名期间已打开文档身份冲突，请刷新后重试。",
+                ));
+            }
+        }
+        for (id, lease) in leases {
+            self.identities.insert(lease.identity.clone(), id.clone());
+            self.documents.insert(id, lease);
+        }
+        Ok(())
     }
 
     pub fn replace(&mut self, id: &str, lease: DocumentLease) {

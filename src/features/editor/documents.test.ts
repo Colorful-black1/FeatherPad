@@ -340,3 +340,25 @@ it('undoes and redoes deletion of the complete document selection', () => {
   expect(redo({ state, dispatch: transaction => { state = transaction.state; } })).toBe(true);
   expect(state.doc.toString()).toBe('');
 });
+
+it('updates a renamed path and language hint without replacing buffer state or dirty history', () => {
+  const registry = new DocumentRegistry();
+  const id = registry.openDocument(fixture({ displayPath: 'E:\\workspace\\旧名称.txt' }));
+  const state = registry.getDocument(id)!.state;
+  registry.commit(id, [state.update({ changes: { from: state.doc.length, insert: '\nunsaved' } })]);
+  const before = registry.getDocument(id)!;
+  expect(before.summary.dirty).toBe(true);
+
+  registry.applyRenamedPaths([{
+    documentId: id,
+    ref: { grantId: before.source!.ref.grantId, relativePath: 'folder/新名称.ts' },
+    displayPath: 'E:\\workspace\\folder\\新名称.ts',
+  }]);
+
+  const after = registry.getDocument(id)!;
+  expect(after.source?.ref.relativePath).toBe('folder/新名称.ts');
+  expect(after.source?.metadata.displayPath).toBe('E:\\workspace\\folder\\新名称.ts');
+  expect(after.summary).toMatchObject({ title: '新名称.ts', displayPath: 'E:\\workspace\\folder\\新名称.ts', dirty: true });
+  expect(after.state).toBe(before.state);
+  expect(after.savedText).toBe(before.savedText);
+});

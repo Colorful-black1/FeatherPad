@@ -117,6 +117,7 @@ export interface DirectoryEntry {
   kind: 'file' | 'directory' | 'symlink' | 'junction';
   isHidden: boolean;
   isReadOnly: boolean;
+  revision: string;
 }
 export interface DirectoryPage {
   items: DirectoryEntry[];
@@ -127,4 +128,25 @@ export interface ListDirectoryRequest {
   cursor?: string;
   limit?: number;
   showHidden?: boolean;
+}
+export interface CreateEntryRequest {
+  parent: FileRef;
+  name: string;
+  kind: 'file' | 'directory';
+  requestId: string;
+}
+export interface RenameEntryRequest {
+  ref: FileRef;
+  newName: string;
+  expectedRevision?: string;
+  requestId: string;
+}
+export interface RenamedDocument {
+  documentId: DocumentId;
+  ref: FileRef;
+  displayPath: string;
+}
+export interface RenameEntryResult {
+  entry: DirectoryEntry;
+  renamedDocuments: RenamedDocument[];
 }

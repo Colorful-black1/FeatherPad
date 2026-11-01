@@ -50,7 +50,7 @@ impl NewFileTarget {
     }
 }
 
-fn validate_name(name: &str) -> Result<(), AppError> {
+pub(crate) fn validate_name(name: &str) -> Result<(), AppError> {
     let base = name.split('.').next().unwrap_or("").to_uppercase();
     let numbered_device = ["COM", "LPT"].iter().any(|prefix| {
         base.strip_prefix(prefix).is_some_and(|suffix| {
@@ -58,6 +58,7 @@ fn validate_name(name: &str) -> Result<(), AppError> {
         })
     });
     if name.is_empty()
+        || name.encode_utf16().count() > 255
         || name.ends_with([' ', '.'])
         || name.chars().any(|c| c < ' ' || "<>:\"/\\|?*".contains(c))
         || ["CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"].contains(&base.as_str())

@@ -1,6 +1,6 @@
 import type { EditorState, Text, Transaction } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
-import type { DocumentId, OpenDocument, ResultEnvelope, SaveAck, SaveAsAck, TextFormat } from '../../shared/contracts/files';
+import type { DocumentId, OpenDocument, RenamedDocument, ResultEnvelope, SaveAck, SaveAsAck, TextFormat } from '../../shared/contracts/files';
 import { createEditorState, reconfigureBracketMatching, reconfigureCloseBrackets, reconfigureIndentation,
   reconfigureLanguage, setSearchHighlights, type IndentWidth } from './editor-state';
 import { countCharacters, editorMetrics, type EditorMetrics } from './editor-metrics';
@@ -283,6 +283,39 @@ export class DocumentRegistry {
       this.publish(this.snapshot.activeId);
     }
     return result;
+  }
+
+  applyRenamedPaths(renamed: readonly RenamedDocument[]) {
+    let changed = false;
+    for (const mapping of renamed) {
+      const document = this.documents.get(mapping.documentId);
+      if (!document?.source) continue;
+      const title = mapping.displayPath.split(/[\\/]/).pop() || mapping.displayPath;
+      document.source = {
+        ...document.source,
+        ref: mapping.ref,
+        metadata: { ...document.source.metadata, displayPath: mapping.displayPath },
+      };
+      document.summary = {
+        ...document.summary,
+        title,
+        displayPath: mapping.displayPath,
+      };
+      if (document.summary.languageSource === 'auto') {
+        const languageId = document.source.mode === 'degraded' ? 'plaintext' : detectLanguage(mapping.displayPath);
+        if (languageId !== document.summary.languageId) {
+          document.state = reconfigureLanguage(document.state, []);
+          document.summary = {
+            ...document.summary,
+            languageId,
+            languageRevision: document.summary.languageRevision + 1,
+          };
+          this.scheduleLanguage(mapping.documentId);
+        }
+      }
+      changed = true;
+    }
+    if (changed) this.publish(this.snapshot.activeId);
   }
 
   commit(id: DocumentId, transactions: readonly Transaction[]): ResultEnvelope<{ version: number }> {

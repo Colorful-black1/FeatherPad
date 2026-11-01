@@ -1,6 +1,6 @@
 use crate::models::{io_error, AppError, ChosenFiles, ErrorCode, FileRef, SelectionFailure};
 use std::collections::HashMap;
-use std::fs::File;
+use std::fs::{self, File, Metadata};
 use std::path::{Component, Path, PathBuf};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -12,6 +12,11 @@ pub enum GrantKind {
 struct Grant {
     target: PathBuf,
     kind: GrantKind,
+}
+
+pub struct ResolvedEntry {
+    pub path: PathBuf,
+    pub metadata: Metadata,
 }
 
 #[derive(Default)]
@@ -132,6 +137,25 @@ impl GrantRegistry {
         Ok(target)
     }
 
+    pub fn resolve_entry(&self, reference: &FileRef) -> Result<ResolvedEntry, AppError> {
+        validate_reference(reference)?;
+        let grant = self
+            .grants
+            .get(&reference.grant_id)
+            .ok_or_else(out_of_scope)?;
+        if !matches!(grant.kind, GrantKind::Directory) || reference.relative_path.is_empty() {
+            return Err(out_of_scope());
+        }
+        let literal = grant.target.join(&reference.relative_path);
+        let metadata = fs::symlink_metadata(&literal).map_err(io_error)?;
+        ensure_not_reparse_entry(&metadata)?;
+        let path = literal.canonicalize().map_err(io_error)?;
+        if !grant.contains(&path) || !(metadata.is_file() || metadata.is_dir()) {
+            return Err(out_of_scope());
+        }
+        Ok(ResolvedEntry { path, metadata })
+    }
+
     pub fn root_display_name(&self, reference: &FileRef) -> Option<String> {
         let grant = self.grants.get(&reference.grant_id)?;
         if !matches!(grant.kind, GrantKind::Directory) {
@@ -173,6 +197,28 @@ fn validate_reference(reference: &FileRef) -> Result<(), AppError> {
 
 fn out_of_scope() -> AppError {
     AppError::new(ErrorCode::OutOfScope, "文件不在已授权范围内，请重新选择。")
+}
+
+pub(super) fn ensure_not_reparse_entry(metadata: &Metadata) -> Result<(), AppError> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        use windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_REPARSE_POINT;
+        if metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+            return Err(AppError::new(
+                ErrorCode::Unsupported,
+                "链接或目录联接不能在文件树中重命名。",
+            ));
+        }
+    }
+    #[cfg(not(windows))]
+    if metadata.file_type().is_symlink() {
+        return Err(AppError::new(
+            ErrorCode::Unsupported,
+            "链接或目录联接不能在文件树中重命名。",
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(windows)]

@@ -78,6 +78,7 @@ export function App() {
   }, [openOne, setError, setBusy, setAutoFocus]);
 
   const openTreeFile = useCallback(async (reference: FileRef) => {
+    setAutoFocus(true);
     setBusy(true);
     setError(null);
     try {
@@ -193,7 +194,8 @@ export function App() {
       dark={dark}
       onToggleSidebar={() => setSidebarOpen(open => !open)}
       onToggleTheme={() => setDark(value => !value)}
-      sidebar={<Explorer currentReference={currentReference} onOpen={reference => void openTreeFile(reference)} />}
+      sidebar={<Explorer currentReference={currentReference} onOpen={reference => void openTreeFile(reference)}
+        onRenamed={renamed => documents.applyRenamedPaths(renamed)} />}
       status={<><span>{batchBusy ? '正在全部保存…' : savingCount > 0 ? '正在保存…' : busy ? '正在打开…' : current ? current.readOnlyReason ? '只读' : current.dirty ? '未保存修改' : current.displayPath ? '未修改' : '未命名' : '就绪'}</span>{current && <EditorStatus registry={documents} id={current.id} summary={current} />}<span className="status-end">{current ? `${current.format.encoding.toUpperCase()}${current.format.bom === 'none' ? '' : ' BOM'} · ${current.format.lineEnding.toUpperCase()}` : '轻羽 FeatherPad'}</span></>}
     >
       {error && <div className="notice error-notice" role="alert"><span>{error}</span><button onClick={() => setError(null)}>关闭提示</button></div>}

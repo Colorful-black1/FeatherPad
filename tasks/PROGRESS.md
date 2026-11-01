@@ -5,7 +5,7 @@
 - 产品名称：**轻羽 FeatherPad**。
 - 当前交付：完整产品方案、86项功能矩阵、模块规格、UI规范与离线交互原型、技术/本机环境文档、M0–M5实现计划、57个开发任务、agent执行入口。
 - 产品代码：**M0/G0、M1/T101、T102、T103、T104、T106及T108通过**。真实Release保存/另存/副本/批次/覆盖/硬链接/进程终止、真实小容量满盘安全失败、<20MiB正常/降级编辑、20MiB分块只读、>100MiB显式预览、单根懒加载目录树、CodeMirror编辑/语言/系统中文IME，以及文件内搜索替换和只读保护均已验证；恢复和其余M1项仍未完成，G1未通过，更不是完整v1。
-- 下一项：**T105 树内变更**，其T102/T104依赖已满足；T107的T102/T106依赖也已满足。先完成树内新建/重命名/回收站删除，再推进标签关闭保护、恢复与G1。
+- 当前：**T105进行中，T105.a新建/重命名已通过真实Release验收**，含文件及已打开dirty后代的目录改名、新路径保存。下一项T105.b真实回收站删除；T107依赖也已满足。随后继续标签关闭保护、恢复与G1。
 - 本次交付检查：详见 [DELIVERY-CHECK](../docs/DELIVERY-CHECK.md)，不代表产品关卡G0–G5通过。
 
 ## 已核查环境
@@ -21,7 +21,17 @@
 | 2026-11-01 / T002 | app-shell | React Shell/App/token/CSS、Web及原生测试 | typecheck/lint exit 0；Web 2 passed；真实WebView2 debug 1 passed | Web与原生范围分开，未测OS对话框 | .artifacts/T002/及docs/acceptance/M0.md | T002通过；下一T003 |
 | 2026-11-01 / T003.a–d（进行中） | F-DESK-013 | Rust models/grants/files/commands、AppManifest ACL、TS contracts/bridge、CodeMirror只读UI、测试与脚本 | typecheck/lint/TS单测3、Rust原生5、Web4、Release smoke1均exit 0；check.ps1 -Desktop exit 0；交互选择器三次超时，后次显式exit 1 | 原生Rust磁盘+junction，真实Release IPC/WebView2，Web mock独立 | docs/acceptance/M0.md；.artifacts/T003；.artifacts/T002/native-release.json | T003未完成OS选取验收，G0不勾选 |
 
-## T102 安全保存闭环完成（最新，2026-11-01）
+## T105.a 树内新建与重命名完成（2026-11-01，T105仍进行中）
+
+- 功能追踪：F-WORK-004完成、F-FILE-017的新建/重命名部分完成；F-WORK-005与回收站删除尚未实现，T105保持[~]。
+- Rust `services/file_ops.rs`、`commands/file_ops.rs`、models/grants/documents/directories/windows_file与ACL接真实create_entry/rename_entry；TS contracts/bridge、workspace的file-actions/EntryInput/Explorer/store、editor registry与App接树内交互和文档路径映射。新建排他、不覆盖碰撞；Windows保留名/非法字符/UTF-16长度/越界/链接/旧revision均在Rust复核，requestId绑定payload回放。
+- 文件改名更新lease；目录改名释放后代文件句柄、移动后按原FileIdentity与最终路径重开并恢复原DocumentId，失败尝试回卷及重绑。没有扩大FILE_SHARE_DELETE。大小写改名使用唯一中间名；目录revision大小固定0，文件使用原始大小。创建/改名后刷新当前及直属上级目录，切根后迟到结果不污染新根。
+- 已执行：typecheck/lint exit0；TS单测81 passed；Rust全套73 passed、1个100k基准显式ignored；Web E2E27 passed；cargo fmt/clippy、pnpm build均exit0；pnpm test:desktop 1 passed（1.1分钟）。最终`powershell.exe -NoProfile -File scripts/check.ps1` exit0（含TS81/Rust73/Web27/fmt/clippy），日志`.artifacts/T105-a-final-check.log`；文档校验exit0（178文件/142链接/86功能），diff检查exit0。第一次最终整链Web为26通过/1失败，原因是mock未同步改名后的目录事实；修正fixture使后续list返回新名称后，定向workspace和最终整链通过，未放宽产品revision或断言。
+- 原生范围：真实Release/OS目录选择器/NTFS/IPC，新建文件自动打开、新建目录、保留名拒绝、碰撞不覆盖、文件改名保留dirty与原DocumentId并保存到新路径、目录含已打开dirty后代时仍可改名且保存到新路径。Web E2E为明确mock，Rust文件行为和原生Release另验。
+- 证据：`.artifacts/T102/native-release.json`的nativeWorkspaceObservation新增nativeCreateFileVerified、nativeCreateDirectoryVerified、nativeReservedNameRejected、nativeCollisionPreserved、nativeRenameKeepsDocumentIdAndDirtyBuffer、nativeRenameSaveUsesUpdatedPath、nativeDirectoryRenameKeepsDocumentIdAndDirtyBuffer、nativeDirectoryRenameSaveUsesUpdatedPath均为true；`.artifacts/T104/native-workspace-tree.png`已视觉检查。
+- Release：`src-tauri/target/release/featherpad.exe`，10,544,128 bytes，SHA256 `23FE13DCBB164AEF1640E13CE7E216D363367B275C461951711CDFE438AF5063`。下一步T105.b：真实回收站、dirty前置决策、成功保留缺失缓冲、失败不移除树项、绝无永久删除回退；恢复/G1及完整v1尚未完成。
+
+## T102 安全保存闭环完成（此前切片，2026-11-01）
 
 - F-FILE-003、F-FILE-004、F-FILE-005、F-FILE-009完成。此前已验收保存/另存/副本/全部保存/已有目标覆盖/硬链接确认、保存事务强杀，以及真实Tauri提交后Ack前终止；本轮补齐真实满盘故障，故T102不再保留磁盘满阻塞。
 - `tests/desktop/disk-full.ts`在本机已有Ubuntu WSL2中创建唯一UUID命名的16MiB `tmpfs`，Linux端填满后真实返回`ENOSPC`；该文件经`\\wsl.localhost`由真实OS选择器和Tauri Release打开。编辑后CtrlS在`write-temporary`阶段失败，UI显示恢复receipt与阶段，编辑器及当前输入保持dirty，源文件SHA256不变。

@@ -27,9 +27,14 @@ pub struct FileService {
     pub(super) documents: DocumentRegistry,
     pub(super) saves: super::save_requests::SaveHistory,
     pub(super) directory_cursors: super::directories::DirectoryCursors,
+    pub(super) entry_operations: super::file_ops::EntryOperationHistory,
 }
 
 impl FileService {
+    pub fn document_lease(&self, document_id: &str) -> Option<&DocumentLease> {
+        self.documents.get(document_id)
+    }
+
     pub fn open_document(&mut self, reference: FileRef) -> Result<OpenDocument, AppError> {
         self.open_document_with_mode(reference, OpenRequestMode::Auto)
     }

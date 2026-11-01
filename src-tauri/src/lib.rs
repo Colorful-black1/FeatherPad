@@ -5,6 +5,7 @@ pub mod services {
     pub mod directories;
     pub mod documents;
     pub mod encode;
+    pub mod file_ops;
     pub mod files;
     pub mod grants;
     pub mod identity;
@@ -33,6 +34,8 @@ pub fn run() {
             commands::choose_files,
             commands::choose_folder,
             commands::list_directory,
+            commands::file_ops::create_entry,
+            commands::file_ops::rename_entry,
             commands::open_document,
             commands::read_document_chunk,
             commands::save::save_document,

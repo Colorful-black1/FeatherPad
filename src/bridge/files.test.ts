@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { isChosenFiles, isChosenFolder, isDirectoryPage, isFileRef, isOpenDocument, isSaveAck, isSaveAsAck, isTextChunk } from './files';
+import { isChosenFiles, isChosenFolder, isDirectoryPage, isFileRef, isOpenDocument, isRenameEntryResult, isSaveAck, isSaveAsAck, isTextChunk } from './files';
 
 const valid = {
   documentId: 'document-fixture', ref: { grantId: 'fixture-grant', relativePath: '' },
@@ -23,7 +23,7 @@ it('validates complete directory pages and folder grants without trusting paths'
   const folder = { grant: valid.ref, displayName: 'controlled-root' };
   const entry = {
     id: 'opaque-entry', ref: { grantId: valid.ref.grantId, relativePath: 'folder/file.txt' },
-    name: 'file.txt', kind: 'file', isHidden: false, isReadOnly: false,
+    name: 'file.txt', kind: 'file', isHidden: false, isReadOnly: false, revision: 'a'.repeat(64),
   };
   expect(isChosenFolder(folder)).toBe(true);
   expect(isChosenFolder({ grant: null, displayName: null })).toBe(true);
@@ -33,6 +33,23 @@ it('validates complete directory pages and folder grants without trusting paths'
   expect(isDirectoryPage({ items: [{ ...entry, kind: 'device' }], nextCursor: null })).toBe(false);
   expect(isDirectoryPage({ items: [{ ...entry, ref: { grantId: '', relativePath: '' } }], nextCursor: null })).toBe(false);
   expect(isDirectoryPage({ items: [], nextCursor: '' })).toBe(false);
+  expect(isDirectoryPage({ items: [{ ...entry, revision: 'not-a-revision' }], nextCursor: null })).toBe(false);
+});
+
+it('validates rename results and their affected document mappings', () => {
+  const entry = {
+    id: 'renamed-entry', ref: { grantId: valid.ref.grantId, relativePath: 'renamed.txt' },
+    name: 'renamed.txt', kind: 'file', isHidden: false, isReadOnly: false, revision: 'b'.repeat(64),
+  };
+  const result = {
+    entry,
+    renamedDocuments: [{
+      documentId: valid.documentId, ref: entry.ref, displayPath: 'E:\\fixtures\\renamed.txt',
+    }],
+  };
+  expect(isRenameEntryResult(result)).toBe(true);
+  expect(isRenameEntryResult({ ...result, entry: { ...entry, revision: '' } })).toBe(false);
+  expect(isRenameEntryResult({ ...result, renamedDocuments: [{ ...result.renamedDocuments[0], ref: null }] })).toBe(false);
 });
 
 it('accepts complete native text records and rejects damaged newline/metadata contracts', () => {

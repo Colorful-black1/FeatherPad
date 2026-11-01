@@ -96,18 +96,24 @@ pub fn link_count(file: &File) -> Result<u32, AppError> {
 
 #[cfg(windows)]
 pub fn create_from_temporary(temporary: &Path, target: &Path) -> Result<(), AppError> {
+    move_no_replace(
+        temporary,
+        target,
+        "目标在保存期间出现，未覆盖；请重新选择或确认覆盖。",
+    )
+}
+
+#[cfg(windows)]
+pub fn move_no_replace(source: &Path, target: &Path, collision: &str) -> Result<(), AppError> {
     use std::os::windows::ffi::OsStrExt;
     use windows_sys::Win32::Storage::FileSystem::{MoveFileExW, MOVEFILE_WRITE_THROUGH};
-    let temporary: Vec<_> = temporary.as_os_str().encode_wide().chain(Some(0)).collect();
+    let source: Vec<_> = source.as_os_str().encode_wide().chain(Some(0)).collect();
     let target: Vec<_> = target.as_os_str().encode_wide().chain(Some(0)).collect();
-    // SAFETY: live NUL-terminated paths. No COPY_ALLOWED or REPLACE_EXISTING; same-directory move only.
-    if unsafe { MoveFileExW(temporary.as_ptr(), target.as_ptr(), MOVEFILE_WRITE_THROUGH) } == 0 {
+    // SAFETY: live NUL-terminated paths. Flags request write-through and never replace an existing target.
+    if unsafe { MoveFileExW(source.as_ptr(), target.as_ptr(), MOVEFILE_WRITE_THROUGH) } == 0 {
         let error = std::io::Error::last_os_error();
         if matches!(error.raw_os_error(), Some(80 | 183)) {
-            return Err(AppError::new(
-                ErrorCode::Conflict,
-                "目标在保存期间出现，未覆盖；请重新选择或确认覆盖。",
-            ));
+            return Err(AppError::new(ErrorCode::Conflict, collision));
         }
         return Err(io_error(error));
     }
@@ -116,6 +122,11 @@ pub fn create_from_temporary(temporary: &Path, target: &Path) -> Result<(), AppE
 
 #[cfg(not(windows))]
 pub fn create_from_temporary(_temporary: &Path, _target: &Path) -> Result<(), AppError> {
+    Err(unsupported())
+}
+
+#[cfg(not(windows))]
+pub fn move_no_replace(_source: &Path, _target: &Path, _collision: &str) -> Result<(), AppError> {
     Err(unsupported())
 }
 

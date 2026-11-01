@@ -14,6 +14,7 @@ use tauri::{
     AppHandle, Manager,
 };
 use tauri_plugin_dialog::DialogExt;
+pub mod file_ops;
 pub mod save;
 pub mod save_as;
 

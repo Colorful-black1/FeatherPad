@@ -148,6 +148,7 @@ export interface DirectoryEntry {
   kind: 'file' | 'directory' | 'symlink' | 'junction';
   isHidden: boolean;
   isReadOnly: boolean;
+  revision: string;
 }
 export interface Page<T> { items: T[]; nextCursor: string | null; }
 ```
@@ -156,7 +157,7 @@ export interface Page<T> { items: T[]; nextCursor: string | null; }
 |---|---|---|
 | `list_directory` | `{ref,cursor?,limit?:number,showHidden?:boolean}` | `Page<DirectoryEntry>` |
 | `create_entry` | `{parent:FileRef,name,kind:'file'|'directory',requestId}` | `DirectoryEntry` |
-| `rename_entry` | `{ref,newName,expectedRevision?,requestId}` | `{ref:FileRef}` |
+| `rename_entry` | `{ref,newName,expectedRevision?,requestId}` | `{entry:DirectoryEntry,renamedDocuments:{documentId,ref,displayPath}[]}` |
 | `trash_entry` | `{ref,expectedRevision?,requestId}` | `{trashed:boolean,receiptId:string}` |
 | `start_watch` | `{refs:FileRef[]}` | `{watchId:string}` |
 | `stop_watch` | `{watchId}` | `{stopped:boolean}` |
@@ -166,6 +167,10 @@ M1/T104实施决策（2026-11-01）：目录打开后只请求根的直接子项
 同一进程内重复选择相同canonical目录时复用既有目录grant，使关闭/重开树后已打开文档仍可定位；复用不扩大既有授权范围。目录树刷新`locate`按相对路径逐层加载，当前文件属于另一授权根时明确提示且不扫描其他根。
 
 **变更命令不可盲目重试。** create/rename/trash 用 requestId 在运行进程中去重、校验 payload；超时先查询目录/receipt。进程崩溃后不提供 exactly-once 保证，UI 先重扫状态。回收站 receipt 是审计标识，不承诺所有系统配置均支持程序化还原；引导用户系统回收站恢复。reparse point 每次解析后验证授权边界，不默认递归跟随。
+
+M1/T105.a实施决策（2026-11-01）：`create_entry`只接受目录授权内的目录引用；空名、控制字符、路径分隔符、Windows保留设备名及数字/上标变体、尾点/尾空格、单段超过255个UTF-16单元和最终路径超过32,767单元在任何写入前拒绝。新建文件用`create_new`，目录用排他创建；父路径链及目标目录在操作期间保持不可换名，已存在统一返回`CONFLICT`，绝不覆盖。`DirectoryEntry.revision`绑定目录列举时的名称、类型、完整Windows属性、大小及最后写入FILETIME；仅文件使用原始大小，目录大小固定为0，避免枚举与metadata的目录大小差异。`rename_entry`拒绝空相对路径和链接项，先按当前明确引用重新计算revision并复核，再在锁定的同目录使用不覆盖移动。大小写改名走UUID命名的同目录中间项；第二步失败必须尝试移回原名，中间态不能报成功。
+
+文件改名直接更新已有lease路径；目录改名前先释放其后代文件lease，移动后从新路径逐个重新打开，核对FileIdentity与最终路径，再恢复原DocumentId。重新打开或注册失败会尝试将目录移回原名并重绑旧路径；回卷或重绑失败须明确报告，不返回成功。成功结果返回新`DirectoryEntry`及受影响的`documentId/ref/displayPath`列表，应用端据此更新标签路径但保留原缓冲、undo与dirty；未打开文档不发生内存映射。创建/改名成功后刷新当前目录及直属上级目录的revision。requestId在进程内成功去重并绑定完整payload，同ID异payload拒绝，失败不伪装已提交。
 
 watch 事件：`filesystem_changed {watchId, sequence, entries:[{ref,kind,diskRevision?}],overflow:boolean}`。去抖、合并、自写标记仅做优化；overflow 和窗口重新聚焦后 stat 兜底，不能只依赖事件判断源文件安全。
 

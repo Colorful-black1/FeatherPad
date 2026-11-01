@@ -1,6 +1,7 @@
 import { files } from '../../bridge/files';
 import type {
-  DirectoryEntry, DirectoryPage, FileRef, ListDirectoryRequest, ResultEnvelope,
+  CreateEntryRequest, DirectoryEntry, DirectoryPage, FileRef, ListDirectoryRequest,
+  RenameEntryRequest, RenameEntryResult, ResultEnvelope,
 } from '../../shared/contracts/files';
 
 export interface WorkspaceRoot {
@@ -26,6 +27,15 @@ export interface WorkspaceSnapshot {
 }
 
 type ListDirectory = (request: ListDirectoryRequest) => Promise<ResultEnvelope<DirectoryPage>>;
+type CreateEntry = (request: CreateEntryRequest) => Promise<ResultEnvelope<DirectoryEntry>>;
+type RenameEntry = (request: RenameEntryRequest) => Promise<ResultEnvelope<RenameEntryResult>>;
+
+const nameCollator = new Intl.Collator('zh-CN', { numeric: true, sensitivity: 'base' });
+
+function compareEntries(left: DirectoryEntry, right: DirectoryEntry) {
+  const kind = Number(right.kind === 'directory') - Number(left.kind === 'directory');
+  return kind || nameCollator.compare(left.name, right.name) || left.name.localeCompare(right.name);
+}
 
 const emptyRecord = (): DirectoryRecord => ({
   items: [], nextCursor: null, loaded: false, loading: false, error: null,
@@ -41,6 +51,8 @@ const initialSnapshot = (): WorkspaceSnapshot => ({
 
 export class WorkspaceStore {
   private readonly listDirectory: ListDirectory;
+  private readonly createEntryAction: CreateEntry;
+  private readonly renameEntryAction: RenameEntry;
   private readonly listeners = new Set<() => void>();
   private readonly records = new Map<string, DirectoryRecord>();
   private readonly expanded = new Set<string>();
@@ -52,8 +64,14 @@ export class WorkspaceStore {
   private rootError: string | null = null;
   private generation = 0;
 
-  constructor(listDirectory: ListDirectory = request => files.listDirectory(request)) {
+  constructor(
+    listDirectory: ListDirectory = request => files.listDirectory(request),
+    createEntry: CreateEntry = request => files.createEntry(request),
+    renameEntry: RenameEntry = request => files.renameEntry(request),
+  ) {
     this.listDirectory = listDirectory;
+    this.createEntryAction = createEntry;
+    this.renameEntryAction = renameEntry;
     this.records.set('', emptyRecord());
     this.snapshot = initialSnapshot();
   }
@@ -152,6 +170,120 @@ export class WorkspaceStore {
         if (relativePath !== key) void this.load({ grantId, relativePath }, false);
       }
     });
+  }
+
+  async createEntry(
+    parent: FileRef,
+    name: string,
+    kind: 'file' | 'directory',
+  ): Promise<ResultEnvelope<DirectoryEntry>> {
+    const requestGeneration = this.generation;
+    const result = await this.createEntryAction({
+      parent,
+      name,
+      kind,
+      requestId: crypto.randomUUID(),
+    });
+    if (!result.ok) return result;
+    if (requestGeneration !== this.generation || this.root?.grant.grantId !== parent.grantId) {
+      return result;
+    }
+    const record = this.records.get(parent.relativePath) ?? emptyRecord();
+    const existing = record.items.filter(item => item.ref.relativePath !== result.value.ref.relativePath);
+    this.records.set(parent.relativePath, {
+      items: [...existing, result.value].sort(compareEntries),
+      nextCursor: record.nextCursor,
+      loaded: true,
+      loading: false,
+      error: null,
+    });
+    if (parent.relativePath) this.expanded.add(parent.relativePath);
+    this.selectedPath = result.value.ref.relativePath;
+    this.rootError = null;
+    this.publish();
+    await this.refreshAfterMutation(parent, result.value.name);
+    return result;
+  }
+
+  async renameEntry(
+    entry: DirectoryEntry,
+    newName: string,
+  ): Promise<ResultEnvelope<RenameEntryResult>> {
+    const requestGeneration = this.generation;
+    const result = await this.renameEntryAction({
+      ref: entry.ref,
+      newName,
+      expectedRevision: entry.revision,
+      requestId: crypto.randomUUID(),
+    });
+    if (!result.ok) return result;
+    if (requestGeneration !== this.generation || this.root?.grant.grantId !== entry.ref.grantId) {
+      return result;
+    }
+
+    const parentPath = entry.ref.relativePath.split('/').slice(0, -1).join('/');
+    const parent = this.records.get(parentPath);
+    if (parent) {
+      this.records.set(parentPath, {
+        ...parent,
+        items: parent.items
+          .map(item => item.ref.relativePath === entry.ref.relativePath ? result.value.entry : item)
+          .sort(compareEntries),
+      });
+    }
+
+    const from = entry.ref.relativePath;
+    const to = result.value.entry.ref.relativePath;
+    const remap = (path: string) => path === from || path.startsWith(`${from}/`)
+      ? `${to}${path.slice(from.length)}` : null;
+    const remappedRecords = new Map<string, DirectoryRecord>();
+    for (const [key, record] of this.records) {
+      const nextKey = remap(key);
+      if (nextKey === null) {
+        remappedRecords.set(key, record);
+        continue;
+      }
+      remappedRecords.set(nextKey, {
+        ...record,
+        items: record.items.map(item => {
+          const itemPath = remap(item.ref.relativePath);
+          return item === result.value.entry || itemPath === null ? item : {
+            ...item,
+            ref: { ...item.ref, relativePath: itemPath },
+          };
+        }),
+      });
+    }
+    if (parentPath) remappedRecords.set(parentPath, this.records.get(parentPath) ?? emptyRecord());
+    this.records.clear();
+    for (const [key, record] of remappedRecords) this.records.set(key, record);
+    const remappedExpanded = new Set<string>();
+    for (const path of this.expanded) remappedExpanded.add(remap(path) ?? path);
+    this.expanded.clear();
+    for (const path of remappedExpanded) this.expanded.add(path);
+    if (this.selectedPath) this.selectedPath = remap(this.selectedPath) ?? this.selectedPath;
+    this.rootError = null;
+    this.publish();
+    await this.refreshAfterMutation(
+      { grantId: entry.ref.grantId, relativePath: parentPath },
+      result.value.entry.name,
+    );
+    return result;
+  }
+
+  private async refreshAfterMutation(directory: FileRef, changedName: string) {
+    if (this.root?.grant.grantId !== directory.grantId) return;
+    await this.load(directory, false);
+    await this.findEntry(directory, changedName);
+    if (!directory.relativePath) return;
+    const segments = directory.relativePath.split('/').filter(Boolean);
+    const ancestor = {
+      grantId: directory.grantId,
+      relativePath: segments.slice(0, -1).join('/'),
+    };
+    await this.load(ancestor, false);
+    const directoryName = segments.at(-1);
+    if (directoryName) await this.findEntry(ancestor, directoryName);
   }
 
   async locate(reference: FileRef): Promise<boolean> {

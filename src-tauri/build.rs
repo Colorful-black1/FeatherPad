@@ -4,6 +4,8 @@ fn main() {
             "choose_files",
             "choose_folder",
             "list_directory",
+            "create_entry",
+            "rename_entry",
             "open_document",
             "read_document_chunk",
             "save_document",

@@ -4,9 +4,10 @@ use crate::models::{
 };
 use sha2::{Digest, Sha256};
 #[cfg(not(windows))]
-use std::fs::{self, Metadata};
+use std::fs;
 use std::{
     collections::{HashMap, VecDeque},
+    fs::Metadata,
     path::Path,
 };
 #[cfg(windows)]
@@ -236,6 +237,14 @@ fn read_entries(root: &FileRef, directory: &Path) -> Result<Vec<DirectoryEntry>,
                 kind,
                 attributes & FILE_ATTRIBUTE_HIDDEN != 0,
                 attributes & FILE_ATTRIBUTE_READONLY != 0,
+                revision_from_windows_fields(
+                    &data,
+                    kind,
+                    revision_size(
+                        kind,
+                        ((data.nFileSizeHigh as u64) << 32) | data.nFileSizeLow as u64,
+                    ),
+                ),
             ));
         }
         if unsafe { FindNextFileW(handle.0, &raw mut data) } == 0 {
@@ -271,12 +280,19 @@ fn read_entries(root: &FileRef, directory: &Path) -> Result<Vec<DirectoryEntry>,
             metadata.is_dir()
         };
         let kind = entry_kind(&metadata, target_is_directory);
+        let revision = revision_from_metadata_with_size(
+            &name,
+            kind,
+            &metadata,
+            revision_size(kind, metadata.len()),
+        )?;
         output.push(directory_entry(
             root,
             name,
             kind,
             hidden,
             is_read_only(&metadata),
+            revision,
         ));
     }
     Ok(output)
@@ -288,6 +304,7 @@ fn directory_entry(
     kind: &'static str,
     is_hidden: bool,
     is_read_only: bool,
+    revision: String,
 ) -> DirectoryEntry {
     let relative_path = relative_path(root, &name);
     DirectoryEntry {
@@ -300,7 +317,113 @@ fn directory_entry(
         kind,
         is_hidden,
         is_read_only,
+        revision,
     }
+}
+
+#[cfg(windows)]
+fn revision_from_windows_fields(
+    data: &windows_sys::Win32::Storage::FileSystem::WIN32_FIND_DATAW,
+    kind: &str,
+    size: u64,
+) -> String {
+    let name_length = data
+        .cFileName
+        .iter()
+        .position(|character| *character == 0)
+        .unwrap_or(data.cFileName.len());
+    let name = String::from_utf16_lossy(&data.cFileName[..name_length]);
+    revision_from_parts(
+        &name,
+        kind,
+        data.dwFileAttributes,
+        size,
+        ((data.ftLastWriteTime.dwHighDateTime as u64) << 32)
+            | data.ftLastWriteTime.dwLowDateTime as u64,
+    )
+}
+
+#[cfg(windows)]
+pub(super) fn revision_from_metadata(
+    name: &str,
+    kind: &str,
+    metadata: &Metadata,
+) -> Result<String, AppError> {
+    revision_from_metadata_with_size(name, kind, metadata, revision_size(kind, metadata.len()))
+}
+
+#[cfg(windows)]
+fn revision_from_metadata_with_size(
+    name: &str,
+    kind: &str,
+    metadata: &Metadata,
+    size: u64,
+) -> Result<String, AppError> {
+    use std::os::windows::fs::MetadataExt;
+    Ok(revision_from_parts(
+        name,
+        kind,
+        metadata.file_attributes(),
+        size,
+        metadata.last_write_time(),
+    ))
+}
+
+#[cfg(not(windows))]
+fn revision_from_metadata_with_size(
+    name: &str,
+    kind: &str,
+    metadata: &Metadata,
+    size: u64,
+) -> Result<String, AppError> {
+    let attributes = match (
+        metadata.is_dir(),
+        is_hidden(metadata),
+        is_read_only(metadata),
+    ) {
+        (true, true, true) => 7u32,
+        (true, true, false) => 6,
+        (true, false, true) => 5,
+        (true, false, false) => 4,
+        (false, true, true) => 3,
+        (false, true, false) => 2,
+        (false, false, true) => 1,
+        (false, false, false) => 0,
+    };
+    let modified = metadata
+        .modified()
+        .map_err(io_error)?
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|_| AppError::new(ErrorCode::Conflict, "文件时间戳无效，请刷新后重试。"))?
+        .as_nanos()
+        .min(u128::from(u64::MAX)) as u64;
+    Ok(revision_from_parts(name, kind, attributes, size, modified))
+}
+
+fn revision_size(kind: &str, file_size: u64) -> u64 {
+    if kind == "file" {
+        file_size
+    } else {
+        0
+    }
+}
+
+fn revision_from_parts(
+    name: &str,
+    kind: &str,
+    attributes: u32,
+    size: u64,
+    last_write: u64,
+) -> String {
+    let mut hash = Sha256::new();
+    hash.update((name.len() as u64).to_le_bytes());
+    hash.update(name.as_bytes());
+    hash.update((kind.len() as u64).to_le_bytes());
+    hash.update(kind.as_bytes());
+    hash.update(attributes.to_le_bytes());
+    hash.update(size.to_le_bytes());
+    hash.update(last_write.to_le_bytes());
+    format!("{:x}", hash.finalize())
 }
 
 fn relative_path(root: &FileRef, name: &str) -> String {
@@ -315,7 +438,7 @@ fn relative_path(root: &FileRef, name: &str) -> String {
     }
 }
 
-fn entry_id(grant_id: &str, relative_path: &str) -> String {
+pub(super) fn entry_id(grant_id: &str, relative_path: &str) -> String {
     let mut hash = Sha256::new();
     hash.update(grant_id.as_bytes());
     hash.update([0]);

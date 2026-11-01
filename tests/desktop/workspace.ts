@@ -1,6 +1,6 @@
 import { expect, type Page } from '@playwright/test';
 import { execFile } from 'node:child_process';
-import { mkdir, rm, symlink, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rm, stat, symlink, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
@@ -20,6 +20,7 @@ interface DirectoryEntry {
   kind: 'file' | 'directory' | 'symlink' | 'junction';
   isHidden: boolean;
   isReadOnly: boolean;
+  revision: string;
 }
 
 interface Result<T> {
@@ -210,6 +211,110 @@ export async function verifyNativeWorkspace(
       malformedCode: 'INVALID_INPUT',
     });
 
+    await tree.getByRole('treeitem', { name: '打开 中文😀.txt', exact: true }).click();
+    await page.getByRole('button', { name: '新建文件', exact: true }).click();
+    const createFile = page.getByRole('textbox', { name: '新建文件名称' });
+    await createFile.fill('CON');
+    await createFile.press('Enter');
+    await expect(page.getByRole('alert')).toContainText('Windows保留设备名');
+    await createFile.fill('树内新建.txt');
+    await createFile.press('Enter');
+    const createdName = '树内新建.txt';
+    const createdPath = path.join(alpha, createdName);
+    await expect(tree.getByRole('treeitem', { name: createdName, exact: true })).toBeVisible();
+    await expect(page.getByRole('tab', { name: createdName, exact: true })).toHaveAttribute('aria-selected', 'true');
+    expect(await readFile(createdPath, 'utf8')).toBe('');
+    const createdEditor = page.locator('.cm-content');
+    await createdEditor.focus();
+    await page.keyboard.insertText('树内创建未保存');
+    await expect(page.getByRole('tab', {
+      name: '树内新建.txt 有未保存修改',
+      exact: true,
+    })).toBeVisible();
+
+    await page.getByRole('button', { name: '新建文件夹', exact: true }).click();
+    const createDirectory = page.getByRole('textbox', { name: '新建文件夹名称' });
+    await createDirectory.fill('树内目录');
+    await createDirectory.press('Enter');
+    await expect(tree.getByRole('treeitem', { name: '树内目录', exact: true })).toBeVisible();
+    expect((await stat(path.join(alpha, '树内目录'))).isDirectory()).toBe(true);
+
+    await tree.getByRole('treeitem', { name: createdName, exact: true }).click();
+    await page.getByRole('button', { name: '重命名选中项', exact: true }).click();
+    const renameCreated = page.getByRole('textbox', { name: '重命名' });
+    await expect(renameCreated).toHaveValue(createdName);
+    await expect(page.getByText('后缀 .txt', { exact: true })).toBeVisible();
+    await renameCreated.fill('重命名 文件.txt');
+    await renameCreated.press('Enter');
+    const renamedName = '重命名 文件.txt';
+    const renamedPath = path.join(alpha, renamedName);
+    await expect(tree.getByRole('treeitem', { name: renamedName, exact: true })).toBeVisible();
+    await expect(page.getByRole('tab', { name: /重命名 文件\.txt 有未保存修改/ })).toBeVisible();
+    await expect(page.locator('.cm-content')).toHaveText('树内创建未保存');
+    let oldPathExists = true;
+    try {
+      await stat(createdPath);
+    } catch {
+      oldPathExists = false;
+    }
+    expect(oldPathExists).toBe(false);
+    await page.locator('.cm-content').focus();
+    await page.keyboard.press('Control+s');
+    await expect(page.getByRole('status')).toContainText('未修改');
+    expect(await readFile(renamedPath, 'utf8')).toBe('树内创建未保存');
+
+    await page.getByRole('button', { name: '新建文件夹', exact: true }).click();
+    const collidingDirectory = page.getByRole('textbox', { name: '新建文件夹名称' });
+    await collidingDirectory.fill('树内目录');
+    await collidingDirectory.press('Enter');
+    await expect(page.getByRole('alert')).toContainText('目标名称已存在');
+    await collidingDirectory.press('Escape');
+    expect(await readdir(alpha)).toContain('树内目录');
+
+    const nestedFolder = tree.getByRole('treeitem', { name: '树内目录', exact: true });
+    await nestedFolder.click();
+    await page.getByRole('button', { name: '新建文件', exact: true }).click();
+    const nestedCreate = page.getByRole('textbox', { name: '新建文件名称' });
+    await nestedCreate.fill('目录内打开.txt');
+    await nestedCreate.press('Enter');
+    const nestedCreatedPath = path.join(alpha, '树内目录', '目录内打开.txt');
+    await expect(tree.getByRole('treeitem', { name: '目录内打开.txt', exact: true })).toBeVisible();
+    await expect(page.getByRole('tab', { name: '目录内打开.txt', exact: true }))
+      .toHaveAttribute('aria-selected', 'true');
+    const directoryEditor = page.locator('.cm-content');
+    await directoryEditor.focus();
+    await page.keyboard.insertText('目录改名后仍保留');
+    await expect(page.getByRole('tab', {
+      name: '目录内打开.txt 有未保存修改',
+      exact: true,
+    })).toBeVisible();
+    await nestedFolder.click();
+    await page.getByRole('button', { name: '重命名选中项', exact: true }).click();
+    const renameDirectory = page.getByRole('textbox', { name: '重命名' });
+    await renameDirectory.fill('树内目录-改名');
+    await renameDirectory.press('Enter');
+    const renamedDirectory = tree.getByRole('treeitem', {
+      name: '树内目录-改名',
+      exact: true,
+    });
+    await expect(renamedDirectory).toBeVisible();
+    await expect(page.getByRole('tab', {
+      name: '目录内打开.txt 有未保存修改',
+      exact: true,
+    })).toBeVisible();
+    await expect(directoryEditor).toHaveText('目录改名后仍保留');
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(page.getByRole('status')).toContainText('未修改');
+    const renamedDirectoryPath = path.join(alpha, '树内目录-改名', '目录内打开.txt');
+    expect(await readFile(renamedDirectoryPath, 'utf8')).toBe('目录改名后仍保留');
+    let nestedOldPathExists = true;
+    try {
+      await stat(nestedCreatedPath);
+    } catch {
+      nestedOldPathExists = false;
+    }
+    expect(nestedOldPathExists).toBe(false);
+
     await page.screenshot({ path: path.join(evidence, 'native-workspace-tree.png') });
     return {
       rootName,
@@ -225,6 +330,14 @@ export async function verifyNativeWorkspace(
       keyboardNavigationVerified: true,
       dirtyDocumentPreservedOnRootReplacement: true,
       junctionBoundaryRejected: true,
+      nativeCreateFileVerified: true,
+      nativeCreateDirectoryVerified: true,
+      nativeReservedNameRejected: true,
+      nativeCollisionPreserved: true,
+      nativeRenameKeepsDocumentIdAndDirtyBuffer: true,
+      nativeRenameSaveUsesUpdatedPath: true,
+      nativeDirectoryRenameKeepsDocumentIdAndDirtyBuffer: true,
+      nativeDirectoryRenameSaveUsesUpdatedPath: true,
       scope: 'real Tauri folder dialog, IPC grants, NTFS ACL and junction; 100k direct-child performance measured separately',
     };
   } finally {

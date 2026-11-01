@@ -97,7 +97,7 @@ mod tests {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct FileRef {
     pub grant_id: String,
@@ -299,6 +299,7 @@ pub struct DirectoryEntry {
     pub kind: &'static str,
     pub is_hidden: bool,
     pub is_read_only: bool,
+    pub revision: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -317,4 +318,46 @@ pub struct ListDirectoryRequest {
     pub limit: Option<u32>,
     #[serde(default)]
     pub show_hidden: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum EntryKind {
+    File,
+    Directory,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CreateEntryRequest {
+    pub parent: FileRef,
+    pub name: String,
+    pub kind: EntryKind,
+    pub request_id: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RenameEntryRequest {
+    #[serde(rename = "ref")]
+    pub reference: FileRef,
+    pub new_name: String,
+    pub expected_revision: Option<String>,
+    pub request_id: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenamedDocument {
+    pub document_id: String,
+    #[serde(rename = "ref")]
+    pub reference: FileRef,
+    pub display_path: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameEntryResult {
+    pub entry: DirectoryEntry,
+    pub renamed_documents: Vec<RenamedDocument>,
 }

@@ -1,11 +1,20 @@
-import { useSyncExternalStore, type CSSProperties, type KeyboardEvent } from 'react';
-import type { DirectoryEntry, FileRef } from '../../shared/contracts/files';
+import { useEffect, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent } from 'react';
+import type { DirectoryEntry, FileRef, RenamedDocument } from '../../shared/contracts/files';
+import { EntryInput } from './EntryInput';
+import { creationParent, findDirectoryEntry } from './file-actions';
 import { workspace, type WorkspaceSnapshot, type WorkspaceStore } from './store';
 
 interface ExplorerProps {
   currentReference: FileRef | undefined;
   onOpen: (reference: FileRef) => void;
+  onRenamed?: ((documents: readonly RenamedDocument[]) => void) | undefined;
   store?: WorkspaceStore;
+}
+
+interface EditingEntry {
+  mode: 'create-file' | 'create-directory' | 'rename';
+  parent: FileRef;
+  entry?: DirectoryEntry;
 }
 
 interface DirectoryContentsProps {
@@ -15,6 +24,10 @@ interface DirectoryContentsProps {
   snapshot: WorkspaceSnapshot;
   currentReference: FileRef | undefined;
   onOpen: (reference: FileRef) => void;
+  onRenamed?: ((documents: readonly RenamedDocument[]) => void) | undefined;
+  editing: EditingEntry | null;
+  beginEditing: (editing: EditingEntry) => void;
+  finishEditing: (focusPath?: string) => void;
   store: WorkspaceStore;
 }
 
@@ -29,7 +42,8 @@ function EntryIcon({ entry }: { entry: DirectoryEntry }) {
 }
 
 function EntryRow({
-  entry, depth, parentKey, snapshot, currentReference, onOpen, store,
+  entry, depth, parentKey, snapshot, currentReference, onOpen, editing, beginEditing,
+  finishEditing, onRenamed, store,
 }: {
   entry: DirectoryEntry;
   depth: number;
@@ -37,6 +51,10 @@ function EntryRow({
   snapshot: WorkspaceSnapshot;
   currentReference: FileRef | undefined;
   onOpen: (reference: FileRef) => void;
+  onRenamed?: ((documents: readonly RenamedDocument[]) => void) | undefined;
+  editing: EditingEntry | null;
+  beginEditing: (editing: EditingEntry) => void;
+  finishEditing: (focusPath?: string) => void;
   store: WorkspaceStore;
 }) {
   const expandable = entry.kind === 'directory';
@@ -44,6 +62,8 @@ function EntryRow({
   const current = currentReference?.grantId === entry.ref.grantId
     && currentReference.relativePath === entry.ref.relativePath;
   const selected = snapshot.selectedPath === entry.ref.relativePath;
+  const renaming = editing?.mode === 'rename'
+    && editing.entry?.ref.relativePath === entry.ref.relativePath;
 
   function activate() {
     store.select(entry);
@@ -52,6 +72,16 @@ function EntryRow({
   }
 
   function navigate(event: KeyboardEvent<HTMLButtonElement>) {
+    if (event.key === 'F2' && !expandable && !['junction', 'symlink'].includes(entry.kind)) {
+      event.preventDefault();
+      beginEditing({ mode: 'rename', parent: entry.ref, entry });
+      return;
+    }
+    if (event.key === 'F2' && expandable) {
+      event.preventDefault();
+      beginEditing({ mode: 'rename', parent: entry.ref, entry });
+      return;
+    }
     if (!['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
     const tree = event.currentTarget.closest<HTMLElement>('[data-workspace-tree]');
     if (!tree) return;
@@ -83,7 +113,19 @@ function EntryRow({
   }
 
   return <>
-    <button
+    {renaming ? <EntryInput
+      depth={depth}
+      mode="rename"
+      initialValue={entry.name}
+      onSubmit={async name => {
+        const result = await store.renameEntry(entry, name);
+        if (!result.ok) return result.error.message;
+        onRenamed?.(result.value.renamedDocuments);
+        finishEditing(result.value.entry.ref.relativePath);
+        return null;
+      }}
+      onCancel={() => finishEditing(entry.ref.relativePath)}
+    /> : <button
       type="button"
       className="tree-row"
       role="treeitem"
@@ -103,7 +145,7 @@ function EntryRow({
       <span className="tree-name">{entry.name}</span>
       {entry.isReadOnly && <span className="tree-badge">只读</span>}
       {(entry.kind === 'junction' || entry.kind === 'symlink') && <span className="tree-badge">链接</span>}
-    </button>
+    </button>}
     {expanded && <DirectoryContents
       reference={entry.ref}
       depth={depth + 1}
@@ -111,15 +153,22 @@ function EntryRow({
       snapshot={snapshot}
       currentReference={currentReference}
       onOpen={onOpen}
+      onRenamed={onRenamed}
+      editing={editing}
+      beginEditing={beginEditing}
+      finishEditing={finishEditing}
       store={store}
     />}
   </>;
 }
 
 function DirectoryContents({
-  reference, depth, parentKey, snapshot, currentReference, onOpen, store,
+  reference, depth, parentKey, snapshot, currentReference, onOpen, editing, beginEditing,
+  finishEditing, onRenamed, store,
 }: DirectoryContentsProps) {
   const record = snapshot.records[reference.relativePath];
+  const creating = editing && editing.mode !== 'rename'
+    && editing.parent.relativePath === reference.relativePath;
   if (!record || (!record.loaded && !record.loading && !record.error)) return null;
   return <div role="group" className="tree-group">
     {record.loading && record.items.length === 0 && <p className="tree-state">正在读取…</p>}
@@ -135,9 +184,29 @@ function DirectoryContents({
         snapshot={snapshot}
         currentReference={currentReference}
         onOpen={onOpen}
+        onRenamed={onRenamed}
+        editing={editing}
+        beginEditing={beginEditing}
+        finishEditing={finishEditing}
         store={store}
       />
     </div>)}
+    {creating && <EntryInput
+      depth={depth}
+      mode={editing.mode}
+      onSubmit={async name => {
+        const result = await store.createEntry(
+          editing.parent,
+          name,
+          editing.mode === 'create-directory' ? 'directory' : 'file',
+        );
+        if (!result.ok) return result.error.message;
+        finishEditing(result.value.ref.relativePath);
+        if (result.value.kind === 'file') onOpen(result.value.ref);
+        return null;
+      }}
+      onCancel={() => finishEditing(reference.relativePath)}
+    />}
     {record.loaded && record.items.length === 0 && <p className="tree-state">此文件夹为空</p>}
     {record.nextCursor && <button
       type="button"
@@ -148,16 +217,74 @@ function DirectoryContents({
   </div>;
 }
 
-export function Explorer({ currentReference, onOpen, store = workspace }: ExplorerProps) {
+export function Explorer({ currentReference, onOpen, onRenamed, store = workspace }: ExplorerProps) {
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);
+  const [editing, setEditing] = useState<EditingEntry | null>(null);
+  const [focusPath, setFocusPath] = useState<string | null>(null);
   const root = snapshot.root;
   const currentInRoot = root && currentReference?.grantId === root.grant.grantId;
+  const selectedEntry = snapshot.selectedPath
+    ? findDirectoryEntry(snapshot, snapshot.selectedPath)
+    : null;
+  const canRename = selectedEntry
+    && !['junction', 'symlink'].includes(selectedEntry.kind);
+  const createParent = creationParent(snapshot);
+  const createRecord = createParent ? snapshot.records[createParent.relativePath] : null;
+  const canCreate = Boolean(createParent && createRecord?.loaded
+    && !createRecord.loading && !createRecord.error);
+
+  useEffect(() => {
+    if (!focusPath) return;
+    const frame = requestAnimationFrame(() => {
+      const tree = document.querySelector<HTMLElement>('[data-workspace-tree]');
+      const row = [...(tree?.querySelectorAll<HTMLButtonElement>('[role="treeitem"]') ?? [])]
+        .find(candidate => candidate.dataset.treeKey === focusPath);
+      row?.focus();
+      setFocusPath(null);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [focusPath, snapshot]);
+
+  function beginEditing(next: EditingEntry) {
+    setEditing(next);
+  }
+
+  function finishEditing(nextFocus?: string) {
+    setEditing(null);
+    if (nextFocus) setFocusPath(nextFocus);
+  }
+
+  function beginCreate(mode: 'create-file' | 'create-directory') {
+    const parent = createParent;
+    if (!canCreate || !parent) return;
+    if (parent.relativePath) {
+      const entry = findDirectoryEntry(snapshot, parent.relativePath);
+      if (entry?.kind === 'directory' && !snapshot.expanded[parent.relativePath]) {
+        store.toggleDirectory(entry);
+      }
+    }
+    setEditing({ mode, parent });
+  }
 
   return <section className="workspace-explorer" aria-label="文件树">
     <div className="explorer-heading">
       <h2 className="sidebar-title">资源管理器</h2>
       <div className="explorer-actions">
-        {root && <button type="button" className="icon-button compact" onClick={() => store.refresh()} aria-label="刷新目录树" title="刷新">
+        {root && <button type="button" className="icon-button compact" disabled={!canCreate || !!editing}
+          onClick={() => beginCreate('create-file')} aria-label="新建文件" title="新建文件">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h8l4 4v14H6ZM14 3v5h5M12 11v6M9 14h6" /></svg>
+        </button>}
+        {root && <button type="button" className="icon-button compact" disabled={!canCreate || !!editing}
+          onClick={() => beginCreate('create-directory')} aria-label="新建文件夹" title="新建文件夹">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7V5h7l2 2h9v13H3ZM3 9h18M12 12v5M9.5 14.5h5" /></svg>
+        </button>}
+        {root && <button type="button" className="icon-button compact" disabled={!canRename || !!editing}
+          onClick={() => { if (selectedEntry) setEditing({ mode: 'rename', parent: selectedEntry.ref, entry: selectedEntry }); }}
+          aria-label="重命名选中项" title="重命名（F2）">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 16-1 5 5-1L19 9l-4-4L4 16ZM13 7l4 4" /></svg>
+        </button>}
+        {root && <button type="button" className="icon-button compact" disabled={!!editing}
+          onClick={() => store.refresh()} aria-label="刷新目录树" title="刷新">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6" /></svg>
         </button>}
         {root && <button type="button" className="icon-button compact" disabled={!currentInRoot}
@@ -183,6 +310,10 @@ export function Explorer({ currentReference, onOpen, store = workspace }: Explor
           snapshot={snapshot}
           currentReference={currentReference}
           onOpen={onOpen}
+          onRenamed={onRenamed}
+          editing={editing}
+          beginEditing={beginEditing}
+          finishEditing={finishEditing}
           store={store}
         />
       </div>

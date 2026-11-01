@@ -1,4 +1,4 @@
-import type { ChosenFiles, ChosenFolder, DirectoryEntry, DirectoryPage, DocumentId, FileRef, ListDirectoryRequest, OpenDocument, ReadChunkRequest, SaveAck, SaveAsAck, SaveAsRequest, SaveRequest, TextChunk } from '../shared/contracts/files';
+import type { ChosenFiles, ChosenFolder, CreateEntryRequest, DirectoryEntry, DirectoryPage, DocumentId, FileRef, ListDirectoryRequest, OpenDocument, ReadChunkRequest, RenameEntryRequest, RenameEntryResult, SaveAck, SaveAsAck, SaveAsRequest, SaveRequest, TextChunk } from '../shared/contracts/files';
 import { callCommand, isAppError, isRecord } from './invoke';
 
 const nonemptyString = (value: unknown): value is string => typeof value === 'string' && value.length > 0;
@@ -50,7 +50,8 @@ export function isDirectoryEntry(value: unknown): value is DirectoryEntry {
   return isRecord(value) && nonemptyString(value.id) && value.id.length <= 128
     && isFileRef(value.ref) && nonemptyString(value.name) && value.name.length <= 32_767
     && ['file', 'directory', 'symlink', 'junction'].includes(value.kind as string)
-    && typeof value.isHidden === 'boolean' && typeof value.isReadOnly === 'boolean';
+    && typeof value.isHidden === 'boolean' && typeof value.isReadOnly === 'boolean'
+    && typeof value.revision === 'string' && /^[0-9a-f]{64}$/i.test(value.revision);
 }
 
 export function isDirectoryPage(value: unknown): value is DirectoryPage {
@@ -58,6 +59,15 @@ export function isDirectoryPage(value: unknown): value is DirectoryPage {
     && value.items.every(isDirectoryEntry)
     && (value.nextCursor === null
       || (nonemptyString(value.nextCursor) && value.nextCursor.length <= 128));
+}
+
+export function isRenameEntryResult(value: unknown): value is RenameEntryResult {
+  return isRecord(value) && isDirectoryEntry(value.entry) && Array.isArray(value.renamedDocuments)
+    && value.renamedDocuments.length <= 1000
+    && value.renamedDocuments.every(document => isRecord(document)
+      && nonemptyString(document.documentId) && document.documentId.length <= 128
+      && isFileRef(document.ref) && nonemptyString(document.displayPath)
+      && document.displayPath.length <= 32_767);
 }
 
 export function isOpenDocument(value: unknown): value is OpenDocument {
@@ -102,6 +112,8 @@ export const files = {
   chooseFiles: (multiple = false) => callCommand('choose_files', { multiple }, isChosenFiles),
   chooseFolder: () => callCommand('choose_folder', {}, isChosenFolder),
   listDirectory: (request: ListDirectoryRequest) => callCommand('list_directory', { ...request }, isDirectoryPage),
+  createEntry: (request: CreateEntryRequest) => callCommand('create_entry', { ...request }, isDirectoryEntry),
+  renameEntry: (request: RenameEntryRequest) => callCommand('rename_entry', { ...request }, isRenameEntryResult),
   open: (ref: FileRef, mode?: 'head-preview') => callCommand('open_document', mode ? { ref, mode } : { ref }, isOpenDocument),
   readChunk: (request: ReadChunkRequest) => callCommand('read_document_chunk', { ...request }, isTextChunk),
   save: (request: SaveRequest) => callCommand('save_document', { ...request }, isSaveAck),
