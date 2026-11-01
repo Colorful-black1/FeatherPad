@@ -42,6 +42,12 @@ impl AppError {
 }
 
 pub fn io_error(error: std::io::Error) -> AppError {
+    if matches!(error.raw_os_error(), Some(32 | 33)) {
+        return AppError::new(
+            ErrorCode::Busy,
+            "文件被其他程序锁定，请关闭占用后重试或另存。",
+        );
+    }
     let code = match error.kind() {
         std::io::ErrorKind::NotFound => ErrorCode::NotFound,
         std::io::ErrorKind::PermissionDenied => ErrorCode::PermissionDenied,

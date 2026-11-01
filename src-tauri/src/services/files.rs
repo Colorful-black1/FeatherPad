@@ -15,6 +15,7 @@ const NORMAL_LIMIT: u64 = 2 * 1024 * 1024;
 pub struct FileService {
     pub grants: GrantRegistry,
     pub(super) documents: DocumentRegistry,
+    pub(super) saves: super::save_requests::SaveHistory,
 }
 
 impl FileService {

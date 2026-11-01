@@ -410,3 +410,73 @@ fn failing_precommit_stage_record_stops_before_replacement() {
     assert!(!directory.join("committed.json").exists());
     assert!(directory.join("body.bin").is_file());
 }
+
+#[test]
+fn repeated_request_replays_ack_without_writing_and_different_payload_is_rejected() {
+    let mut fixture = fixture();
+    let request = request(&fixture.opened);
+    let ack = fixture
+        .service
+        .save_existing(
+            request.clone(),
+            &fixture.journal,
+            HardLinkPolicy::RequireConfirmation,
+        )
+        .unwrap();
+    let mtime = fs::metadata(&fixture.path).unwrap().modified().unwrap();
+    let replay = fixture
+        .service
+        .save_existing(
+            request.clone(),
+            &fixture.journal,
+            HardLinkPolicy::RequireConfirmation,
+        )
+        .unwrap();
+    assert_eq!(ack.disk_revision, replay.disk_revision);
+    assert_eq!(
+        mtime,
+        fs::metadata(&fixture.path).unwrap().modified().unwrap()
+    );
+    assert_eq!(fs::read_dir(&fixture.journal).unwrap().count(), 1);
+    let mut different = request;
+    different.text = "different".into();
+    assert_eq!(
+        fixture
+            .service
+            .save_existing(
+                different,
+                &fixture.journal,
+                HardLinkPolicy::RequireConfirmation
+            )
+            .unwrap_err()
+            .code,
+        ErrorCode::InvalidInput
+    );
+    assert_eq!(
+        fixture
+            .service
+            .stat_document(&fixture.opened.document_id)
+            .unwrap()
+            .disk_revision,
+        ack.disk_revision
+    );
+}
+
+#[test]
+fn in_flight_identical_request_is_busy_and_changed_payload_is_invalid() {
+    use featherpad_lib::services::save_requests::InFlightSaves;
+    use std::sync::Arc;
+    let fixture = fixture();
+    let request = request(&fixture.opened);
+    let active = Arc::new(InFlightSaves::default());
+    let permit = active.enter(&request).unwrap();
+    assert_eq!(active.enter(&request).err().unwrap().code, ErrorCode::Busy);
+    let mut changed = request.clone();
+    changed.text.push('x');
+    assert_eq!(
+        active.enter(&changed).err().unwrap().code,
+        ErrorCode::InvalidInput
+    );
+    drop(permit);
+    assert!(active.enter(&request).is_ok());
+}

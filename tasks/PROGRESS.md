@@ -23,6 +23,8 @@
 
 ## 当前恢复点（2026-11-01 14:09，Asia/Shanghai）
 
+- T102.b2.3：保存缓存/在途登记/原生stat已接FileService；新增2项受控测试，protected_save 12 passed，clippy exit 0。相同请求回放Ack且mtime/journal数量不变，不同payload拒绝；在途相同请求BUSY、不同payload INVALID_INPUT，RAII退出释放。缓存512条，payload流式摘要与字段长度上限；Windows共享冲突映射BUSY。下一b2.4接最小ACL的save_document/stat_document和界面；还未重建Release。
+
 - T102.b2.2已实现原生保存核心（尚未IPC/UI）：新增`save.rs`分prepare/commit、`save_journal.rs`原件/正文blob与不可变阶段记录、`windows_file.rs`ReplaceFileW/硬链接数/目录guard/按已验证句柄清备份。Rust全套24 passed（新增10个真实Windows磁盘保存场景）、fmt/clippy exit 0。覆盖CRLF中文emoji实际写入并重开同DocumentId，阶段间外改、同长度/同mtime改字节、只读/伪造ID/旧revision、硬链接确认与别名分离、真实共享锁定、日志目录不可用、临时文件被改和替换前记录失败，原件及快照正确。
 - 目录guard初次使用只读共享导致ReplaceFileW失败，测试exit 101；改为目录FILE_LIST_DIRECTORY+READ_ATTRIBUTES、共享读写但不共享删除，保持父目录名称稳定并兼容子文件替换；补正控测试通过。win-sys FILE_DISPOSITION_INFO.DeleteFile为bool，初次编译exit 101已修复。没有压制测试或放宽断言。当前保存事务blob暂保留，T110接启动扫描/预算；还未接幂等、IPC、硬链接原生确认、UI/另存/副本/全部保存和实际磁盘满/强杀，不标T102完成。下一b2.3缓存/在途请求，再b2.4 IPC/既有文件CtrlS原生验证。
 

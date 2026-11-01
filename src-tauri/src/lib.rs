@@ -8,6 +8,7 @@ pub mod services {
     pub mod identity;
     pub mod save;
     pub mod save_journal;
+    pub mod save_requests;
     pub mod snapshot;
     pub mod text;
     pub mod windows_file;
