@@ -1,6 +1,6 @@
 # 轻羽 FeatherPad 技术栈与架构决策
 
-状态：设计基线，**尚未创建产品工程、安装依赖或证明构建通过**。环境事实以 [ENVIRONMENT.md](ENVIRONMENT.md) 为准；模块范围以 [能力地图](../CAPABILITY-MAP.md) 和 [功能矩阵](FEATURE-MATRIX.md) 为准。
+状态：**M0工程已建立；依赖精确锁定，TS/lint/Web构建与Rust编译检查通过，真实窗口/G0及产品功能待验收。** 环境事实以 [ENVIRONMENT.md](ENVIRONMENT.md) 为准；实测证据见 [M0](acceptance/M0.md)。
 
 ## 1. 确定的技术路线
 
@@ -176,5 +176,6 @@ export async function saveCurrentDocument(id: DocumentId): Promise<void> {
 | ADR-005 | JSON manifest + 快照 | 数据规模小；避免数据库成为启动和恢复依赖 |
 | ADR-006 | 无账号、遥测默认无、无云服务 | 离线快速，用户文件不离开本机 |
 | ADR-007 | Worker / Rust 承担重操作 | 防止格式化、扫描与预览卡输入；IPC 不承载每键事务 |
+| ADR-008 | M0精确锁定React19.3.1/TS5.9.3/Vite7.3.7/CM6、Tauri CLI+API2.12.4与Rust2.12.5，appId为app.featherpad.desktop | 核查engines/peer/MSRV，复用Node22.13.0/Rust1.99.1；最终manifest+双锁为事实源。测试选Vitest4.1.12，开发lint选ESLint10.14.0以避开初始审计问题和停维线，不升级系统工具；残余minimatch开发期moderate可达性见M0报告 |
 
 参考入口（M0 需要联网核查锁定版本，不以本次检索可达性代替兼容性验证）：[Tauri](https://v2.tauri.app/)、[CodeMirror](https://codemirror.net/docs/)、[Vite](https://vite.dev/guide/)、[pnpm](https://pnpm.io/)、[Rust](https://www.rust-lang.org/)、[DOMPurify](https://github.com/cure53/DOMPurify)。

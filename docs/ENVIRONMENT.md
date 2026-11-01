@@ -1,6 +1,6 @@
 # 本机环境与安装约束
 
-状态：**已做只读环境盘点；未安装开发工具，未安装产品依赖，未运行 Tauri 构建。** 检查日期：2026-11-01。机器可继续日常使用，本项目不得切换全局 Node、修改全局 PATH 或升级现有 IDE。
+状态：**T000复核通过，Rust/MSVC原生编译与运行已验证；未安装新开发工具或产品依赖，Tauri构建待T001–T005验证。** 检查日期：2026-11-01。机器可继续日常使用，本项目不得切换全局 Node、修改全局 PATH 或升级现有 IDE。
 
 ## 1. 结论与实测清单
 
@@ -23,7 +23,7 @@
 | Chrome / Edge | 标准 Program Files 目录 | 两个 exe 路径均已找到 | 原型验证可复用；不下载测试浏览器 |
 | Python | `E:\Codeing\python\python.exe` | 命令发现，未核查版本 | 产品不需要；不因习惯新增 Python 依赖 |
 
-“目录存在”和“编译成功”是不同结论。目前尚未执行 Rust 链接测试、Tauri 原生启动或 MSI/NSIS 打包，M0 必须补齐证据。现有系统 SDK、WebView2 在 C 盘属于复用已安装环境，符合优先查找的要求。
+T000已执行 `scripts/Verify-NativeToolchain.ps1`，rustc通过已装MSVC链接并运行最小exe，exit 0，证据在 `.artifacts/T000/result.json`。会话入口现在导入已有vcvars64环境，仅影响当前进程。Tauri启动与MSI/NSIS打包尚未验证。现有系统SDK、WebView2在C盘属于复用已安装环境。
 
 ## 2. 必须遵守的安装顺序
 

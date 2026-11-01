@@ -34,6 +34,19 @@ $env:npm_config_store_dir = Join-Path $cacheRoot 'pnpm-store'
 $env:PLAYWRIGHT_BROWSERS_PATH = Join-Path $cacheRoot 'playwright'
 $env:TEMP = Join-Path $cacheRoot 'temp'
 $env:TMP = $env:TEMP
+$msvcInit = 'E:\Codeing\sdks\vs2022\VC\Auxiliary\Build\vcvars64.bat'
+if (-not (Test-Path -LiteralPath $msvcInit)) {
+    throw 'Previously discovered MSVC initialization is missing. Re-run Probe-Environment.'
+}
+# Import the developer environment into this process only. No user/machine PATH edits.
+$msvcEnvironment = & $env:ComSpec /d /s /c "`"`"$msvcInit`" >nul && set`""
+if ($LASTEXITCODE -ne 0) { throw 'MSVC developer environment initialization failed.' }
+foreach ($environmentLine in $msvcEnvironment) {
+    if ($environmentLine -match '^([^=]+)=(.*)$') {
+        [Environment]::SetEnvironmentVariable($matches[1], $matches[2], 'Process')
+    }
+}
+$env:PATH = "$nodeDir;$rustBin;C:\Program Files\Git\cmd;$env:PATH"
 $env:FEATHERPAD_NODE_EXE = Join-Path $nodeDir 'node.exe'
 $env:FEATHERPAD_PNPM_SCRIPT = $pnpmScript
 function global:pnpm { & $env:FEATHERPAD_NODE_EXE $env:FEATHERPAD_PNPM_SCRIPT @args }
@@ -44,4 +57,4 @@ if ($LASTEXITCODE -ne 0) { throw 'Node version check failed.' }
 if ($LASTEXITCODE -ne 0) { throw 'pnpm version check failed.' }
 & "$rustBin\rustc.exe" --version
 if ($LASTEXITCODE -ne 0) { throw 'Rust version check failed.' }
-Write-Host 'No dependencies installed, no toolchain updated, no system PATH changed. Native build awaits M0.'
+Write-Host 'MSVC loaded for this process. No dependencies installed or system PATH changed.'

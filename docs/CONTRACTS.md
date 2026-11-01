@@ -2,6 +2,8 @@
 
 状态：设计契约，尚无产品代码。模块责任见 [能力地图](../CAPABILITY-MAP.md)，功能 ID 见 [功能矩阵](FEATURE-MATRIX.md)。本文件定义跨进程边界；模块内部可以演进，但不得静默改变保存、取消和错误语义。v1 使用单一 schemaVersion=1，不维护平行版本 API。
 
+M0实施决策（T003，2026-11-01）：按既有协议先落地choose_files/choose_folder/open_document，不添加任意路径授权或测试专用IPC。授权仅保存在Rust内存；每次读取同时校验路径组件、canonical目标和已打开句柄的Windows最终路径，阻止junction换向逃逸。首个切片只提供有界UTF8只读查看，其他编码/大文件返回明确错误，完整打开策略/文档身份/保存由T101之后扩展；不得提前标记相应功能完成。AppManifest为这三个命令生成精确ACL，仅main本地窗口获权。
+
 ## 1. 一致规则
 
 - TS 字段 camelCase，Rust serde rename_all="camelCase"；命令使用 snake_case。字节数/版本为 JS safe integer；超出范围拒绝。时间为 ISO 8601 UTC 字符串。
