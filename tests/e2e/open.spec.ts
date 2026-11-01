@@ -7,7 +7,7 @@ test('Web mock verifies native bridge requests and read-only CodeMirror renderin
         if (command === 'choose_files') return { ok: true, value: { grants: [{ grantId: 'fixture-grant', relativePath: '' }] } };
         if (command === 'open_document') return { ok: true, value: {
           documentId: 'fixture-document', ref: { grantId: 'fixture-grant', relativePath: '' },
-          metadata: { displayPath: '中文 fixture.txt', sizeBytes: 12, modifiedAt: '2026-11-01T00:00:00Z', isReadOnly: false, diskRevision: 'fixture-revision' },
+          metadata: { displayPath: '中文 fixture.txt', sizeBytes: 12, modifiedAt: '2026-11-01T00:00:00Z', isReadOnly: true, diskRevision: 'fixture-revision' },
           format: { encoding: 'utf-8', bom: 'none', lineEnding: 'lf' }, warnings: [], mode: 'normal',
           content: { kind: 'text', text: '受控文件\nFeatherPad', newlineMap: { documentVersion: 0, endings: ['lf'] } },
         } };

@@ -1,7 +1,7 @@
 # 开发任务清单
 
 当前阶段：**M0/G0已通过，开始M1**。`[ ]` 待做，`[~]` 进行中，`[x]` 通过验收。禁止仅因代码存在就打勾；关联 [计划](plan.md)、[进度](PROGRESS.md) 与 [完整功能矩阵](../docs/FEATURE-MATRIX.md)。范围写 `F-FILE-001..005` 表示含端点的连续ID。
-执行更新（2026-11-01）：T000–T005/G0通过。真实Release系统选择器→grant→磁盘读取→CodeMirror正例已由受控Win32控件自动化验证；下一项T101。M0不代表MVP或完整v1。
+执行更新（2026-11-01）：T000–T005/G0及T101通过。真实Release多选/新建/缓冲切换与undo已验证；下一项T102安全保存。G1尚未通过，M0/T101不代表MVP或完整v1。
 
 ## 执行约定
 
@@ -33,7 +33,7 @@ Q/R/W/D/B命令已建立；具体通过范围见PROGRESS，命令存在不等于
 
 | 状态/任务 | 依赖 | 功能追踪 | 切片与明确验收 | 主要规划文件 | 验证 |
 |---|---|---|---|---|---|
-| [~] T101 文档身份与打开 | T005 | F-FILE-001..002,F-FILE-014..015 | a原生身份/严格解码；b唯一CM缓冲/新建多选；c原生多选验收；binary/未知编码不误写 | src/features/editor/documents.ts、src/bridge/files.ts、src-tauri/src/services/files.rs、src-tauri/src/services/identity.rs | a：Rust集成8、fmt/clippy exit 0；b/c待验收；首次保存仍由T102完成 |
+| [x] T101 文档身份与打开 | T005 | F-FILE-001..002,F-FILE-014..015 | a原生身份/严格解码；b唯一CM缓冲/新建多选；c原生多选验收；binary/未知编码不误写 | src/features/editor/documents.ts、src/bridge/files.ts、src-tauri/src/services/files.rs、src-tauri/src/services/identity.rs | check.ps1 -Desktop exit 0：TS9/Rust10/Web6/真实Release1；见M1验收。首次保存仍由T102，手动编码/只读试开后续T103/T201追踪，不提前标完整feature通过 |
 | [ ] T102 安全保存闭环 | T101 | F-FILE-003..005,F-FILE-009 | 保存/另存/副本/全部保存，revision串行和迟到Ack正确 | src/features/editor/save.ts、src-tauri/src/services/save.rs、src-tauri/src/models/documents.rs、src/features/editor/SaveDialog.tsx | Q/R/D：锁定/磁盘满/目标碰撞/保存中输入/取消另存 |
 | [ ] T103 大文件模式 | T101 | F-FILE-013 | 2/20/100MiB边界准确，限量预览不可保存，长行可降级 | src-tauri/src/services/open_policy.rs、src/features/editor/LargeFileView.tsx、src/features/editor/editor-policy.ts | R/D：各阈值±1字节及长行；内存观察 |
 | [ ] T104 单根目录树 | T101 | F-WORK-001,F-WORK-003 | 打开根、懒加载/分页/排序/刷新/当前文件定位，空和拒绝态完整 | src/features/workspace/Explorer.tsx、src/features/workspace/store.ts、src-tauri/src/services/directories.rs | Q/R/W/D：空目录、无权限、100k文件首层 |

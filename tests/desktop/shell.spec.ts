@@ -18,9 +18,11 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
   const root = process.cwd();
   const exe = path.join(root, 'src-tauri', 'target', profile, 'featherpad.exe');
   const hash = createHash('sha256').update(await readFile(exe)).digest('hex');
-  const evidence = path.join(root, '.artifacts', 'T002');
+  const evidence = path.join(root, '.artifacts', 'T101');
+  const chooserRoot = path.join(root, '.artifacts', 'T002');
   await mkdir(evidence, { recursive: true });
-  const dataDir = await mkdtemp(path.join(evidence, 'webview2-'));
+  await mkdir(chooserRoot, { recursive: true });
+  const dataDir = await mkdtemp(path.join(chooserRoot, 'webview2-'));
   const server = createServer();
   const port = await new Promise<number>((resolve, reject) => {
     server.once('error', reject);
@@ -86,15 +88,19 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
     await page.screenshot({ path: path.join(evidence, `native-${profile}-dark.png`) });
     if (verifyChooser) {
       const fixture = path.join(dataDir, '中文 fixture.txt');
+      const second = path.join(dataDir, '第二份 emoji😀.txt');
       const marker = `FeatherPad ${randomUUID()}`;
+      const secondMarker = `Independent ${randomUUID()}`;
       await writeFile(fixture, `原生选择器受控文件\r\n${marker}`, 'utf8');
-      const manifest = path.join(evidence, 'chooser-fixture.json');
-      const selectionRecord = { fixture, processId: child.pid, workerProcessId: process.pid,
-        fixtureSha256: createHash('sha256').update(await readFile(fixture)).digest('hex'), executable: exe, executableSha256: hash };
+      await writeFile(second, secondMarker, 'utf8');
+      const fixtureRecords = await Promise.all([fixture, second].map(async file => ({ path: file, sha256: createHash('sha256').update(await readFile(file)).digest('hex') })));
+      const manifest = path.join(chooserRoot, 'chooser-fixture.json');
+      const selectionRecord = { fixtures: fixtureRecords, processId: child.pid, workerProcessId: process.pid,
+        executable: exe, executableSha256: hash };
       await writeFile(manifest, JSON.stringify(selectionRecord));
       const helper = path.join(root, 'scripts', 'Select-ControlledFixture.ps1');
       if (chooserAutomation === 'native-controls') {
-        const invalidManifest = path.join(evidence, 'chooser-invalid-worker.json');
+        const invalidManifest = path.join(chooserRoot, 'chooser-invalid-worker.json');
         await writeFile(invalidManifest, JSON.stringify({ ...selectionRecord, workerProcessId: 0 }));
         await expect(runFile('powershell.exe', ['-NoProfile', '-File', helper, '-Manifest', invalidManifest], { windowsHide: true, timeout: 10_000 }))
           .rejects.toMatchObject({ code: 1, stderr: expect.stringContaining('Test process identity mismatch') });
@@ -104,11 +110,39 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
         const result = await runFile('powershell.exe', ['-NoProfile', '-File', helper, '-Manifest', manifest], { windowsHide: true, timeout: 25_000 });
         await writeFile(path.join(evidence, `native-${profile}-chooser-controls.json`), result.stdout.trim());
       }
-      await expect(page.locator('.cm-content')).toContainText('原生选择器受控文件', { timeout: 90_000 });
+      await expect(page.getByRole('tab')).toHaveCount(2, { timeout: 90_000 });
+      await page.getByRole('tab', { name: '中文 fixture.txt', exact: true }).click();
       await expect(page.locator('.cm-line')).toHaveText(['原生选择器受控文件', marker]);
-      await expect(page.locator('.cm-content')).toHaveAttribute('contenteditable', 'false');
-      expect(createHash('sha256').update(await readFile(fixture)).digest('hex')).toBe(selectionRecord.fixtureSha256);
+      await expect(page.locator('.cm-content')).toHaveAttribute('contenteditable', 'true');
       await page.screenshot({ path: path.join(evidence, `native-${profile}-file.png`) });
+      await page.locator('.cm-content').focus();
+      await page.keyboard.press('Control+End');
+      await page.keyboard.insertText(' 中文😀未保存');
+      await expect(page.getByRole('status')).toContainText('未保存修改');
+      await page.getByRole('tab', { name: '第二份 emoji😀.txt', exact: true }).click();
+      await expect(page.locator('.cm-content')).toHaveText(secondMarker);
+      await page.getByRole('tab', { name: /中文 fixture.txt/ }).click();
+      await expect(page.locator('.cm-content')).toContainText('中文😀未保存');
+      await page.locator('.cm-content').focus();
+      await page.keyboard.press('Control+z');
+      await expect(page.locator('.cm-line')).toHaveText(['原生选择器受控文件', marker]);
+      await expect(page.getByRole('status')).toContainText('未修改');
+      await page.keyboard.press('Control+y');
+      await expect(page.locator('.cm-content')).toContainText('中文😀未保存');
+      if (chooserAutomation === 'native-controls') {
+        await writeFile(manifest, JSON.stringify({ ...selectionRecord, fixtures: [fixtureRecords[0]] }));
+        await page.getByRole('button', { name: '打开文件', exact: true }).click();
+        await runFile('powershell.exe', ['-NoProfile', '-File', helper, '-Manifest', manifest], { windowsHide: true, timeout: 25_000 });
+        await expect(page.getByRole('button', { name: '打开文件', exact: true })).toBeEnabled();
+        await expect(page.getByRole('tab')).toHaveCount(2);
+        await expect(page.locator('.cm-content')).toContainText('中文😀未保存');
+      }
+      await page.keyboard.press('Control+n');
+      await expect(page.getByRole('tab', { name: '无标题 1', exact: true })).toHaveAttribute('aria-selected', 'true');
+      await page.keyboard.insertText('原生中文😀草稿');
+      await expect(page.locator('.cm-content')).toHaveText('原生中文😀草稿');
+      for (const record of fixtureRecords) expect(createHash('sha256').update(await readFile(record.path)).digest('hex')).toBe(record.sha256);
+      await page.screenshot({ path: path.join(evidence, `native-${profile}-documents.png`) });
     }
     await writeFile(path.join(evidence, `native-${profile}.json`), JSON.stringify({
       checkedAt: new Date().toISOString(),
@@ -116,6 +150,7 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
       executable: path.relative(root, exe), sha256: hash, pid: child.pid,
       profile, browserVersion: browser.version(), url: page.url(),
       nativeChooserVerified: verifyChooser,
+      multiOpenAndDraftVerified: verifyChooser,
       chooserAutomation: verifyChooser ? chooserAutomation : 'disabled-explicitly',
       browserOffline: profile === 'release',
       checks: ['native-title', 'native-brand', 'tauri-ipc-present', 'light-theme', 'dark-theme', 'forged-grant-rejected', 'malformed-ref-rejected', 'ungranted-plugin-rejected'],

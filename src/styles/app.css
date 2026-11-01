@@ -43,6 +43,14 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round
 .document-heading span:first-child { flex: 1; overflow-wrap: anywhere; }
 .document-heading span:last-child { flex: 0 0 auto; }
 .codemirror-host { flex: 1; min-height: 0; }
+.document-toolbar { display: flex; gap: var(--space-2); padding: var(--space-1) var(--space-3); border-bottom: 1px solid var(--border); flex: 0 0 auto; flex-wrap: wrap; }
+.document-tabs { display: flex; overflow-x: auto; flex: 0 0 auto; border-bottom: 1px solid var(--border); background: var(--bg-sidebar); }
+.document-tabs button { display: flex; align-items: center; gap: var(--space-2); min-height: 32px; min-width: 100px; max-width: 220px; padding: var(--space-1) var(--space-3); background: transparent; border: 0; border-right: 1px solid var(--border); border-bottom: 2px solid transparent; color: var(--text-secondary); flex: 0 0 auto; }
+.document-tabs button span:first-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.document-tabs button[aria-selected="true"] { background: var(--bg-editor); color: var(--text-primary); border-bottom-color: var(--accent); }
+.document-tabs button:hover { background: var(--bg-hover); }
+.document-tabs button:focus-visible { outline-offset: -3px; }
+.dirty-marker { font-size: 10px; color: var(--accent); }
 @media (max-width: 1099px) {
   .sidebar { position: absolute; left: var(--rail-width); top: 0; bottom: 0; width: min(var(--sidebar-width), calc(100% - var(--rail-width))); z-index: 3; box-shadow: var(--shadow); }
   .sidebar-scrim { display: block; position: absolute; inset: 0 0 0 var(--rail-width); border: 0; background: #0003; z-index: 2; }

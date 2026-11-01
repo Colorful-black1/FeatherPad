@@ -146,3 +146,50 @@ fn opens_authorized_unicode_long_path_with_native_identity() {
         "long path fixture"
     );
 }
+
+#[test]
+fn path_replacement_does_not_reuse_the_open_document_identity() {
+    let (mut service, reference) = open_bytes(b"same bytes");
+    let before = service.open_document(reference.clone()).unwrap();
+    let path = PathBuf::from(&before.metadata.display_path);
+    let archived = path.with_file_name("archived.txt");
+    // The open identity lease must allow rename while preventing reuse of the old file ID.
+    fs::rename(&path, &archived).unwrap();
+    fs::write(&path, b"same bytes").unwrap();
+    let after = service.open_document(reference).unwrap();
+    assert_ne!(before.document_id, after.document_id);
+    assert_ne!(before.metadata.disk_revision, after.metadata.disk_revision);
+    assert_eq!(fs::read(archived).unwrap(), b"same bytes");
+}
+
+#[test]
+fn authorized_junction_alias_focuses_the_same_physical_document() {
+    let (mut service, file_ref) = open_bytes(b"junction fixture");
+    let original = service.open_document(file_ref).unwrap();
+    let directory = PathBuf::from(&original.metadata.display_path)
+        .parent()
+        .unwrap()
+        .to_owned();
+    let alias = directory.join("alias");
+    let output = std::process::Command::new("cmd.exe")
+        .args(["/d", "/c", "mklink", "/J"])
+        .arg(&alias)
+        .arg(&directory)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "Controlled junction creation failed"
+    );
+    let mut reference = service
+        .grants
+        .register_selection(&directory, GrantKind::Directory)
+        .unwrap();
+    reference.relative_path = "alias/中文 fixture.txt".into();
+    let through_alias = service.open_document(reference).unwrap();
+    assert_eq!(original.document_id, through_alias.document_id);
+    assert_eq!(
+        original.metadata.disk_revision,
+        through_alias.metadata.disk_revision
+    );
+}

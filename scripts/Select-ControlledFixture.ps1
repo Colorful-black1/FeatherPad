@@ -18,19 +18,27 @@ if (-not $manifestPath.StartsWith($artifactRoot + '\', [StringComparison]::Ordin
     throw 'Fixture manifest is outside the controlled test root.'
 }
 $record = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
-$fixturePath = [IO.Path]::GetFullPath([string]$record.fixture)
-if (-not $fixturePath.StartsWith($artifactRoot + '\webview2-', [StringComparison]::OrdinalIgnoreCase)) {
-    throw 'Fixture is outside the generated WebView test directory.'
+$fixtures = @($record.fixtures)
+if ($fixtures.Count -lt 1 -or $fixtures.Count -gt 8) { throw 'Unexpected chooser fixture count.' }
+$verified = @()
+foreach ($fixture in $fixtures) {
+    $fixturePath = [IO.Path]::GetFullPath([string]$fixture.path)
+    if (-not $fixturePath.StartsWith($artifactRoot + '\webview2-', [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Fixture is outside the generated WebView test directory.'
+    }
+    $item = Get-Item -LiteralPath $fixturePath
+    if ($item.Length -gt 1024 -or $item.PSIsContainer) { throw 'Unexpected chooser fixture.' }
+    $ancestor = $item
+    while ($ancestor.FullName -ne $projectRoot) {
+        if (($ancestor.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'Fixture path contains a reparse point.' }
+        $ancestor = Get-Item -LiteralPath (Split-Path -Parent $ancestor.FullName)
+    }
+    $fixtureHash = Get-ControlledHash $fixturePath
+    if ($fixtureHash -ne $fixture.sha256) { throw 'Fixture hash mismatch.' }
+    $verified += [pscustomobject]@{ path=$fixturePath; sha256=$fixtureHash }
 }
-$item = Get-Item -LiteralPath $fixturePath
-if ($item.Length -gt 1024 -or $item.PSIsContainer) { throw 'Unexpected chooser fixture.' }
-$ancestor = $item
-while ($ancestor.FullName -ne $projectRoot) {
-    if (($ancestor.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'Fixture path contains a reparse point.' }
-    $ancestor = Get-Item -LiteralPath (Split-Path -Parent $ancestor.FullName)
-}
-$fixtureHash = Get-ControlledHash $fixturePath
-if ($fixtureHash -ne $record.fixtureSha256) { throw 'Fixture hash mismatch.' }
+$selectionText = ($verified | ForEach-Object { '"' + $_.path + '"' }) -join ' '
+if ($selectionText.Length -gt 32000) { throw 'Combined fixture paths exceed the controlled limit.' }
 $expectedExe = [IO.Path]::GetFullPath([string]$record.executable)
 if ($expectedExe -ne (Join-Path $projectRoot 'src-tauri\target\release\featherpad.exe') -and
     $expectedExe -ne (Join-Path $projectRoot 'src-tauri\target\debug\featherpad.exe')) { throw 'Unexpected test executable.' }
@@ -112,5 +120,5 @@ public static class FeatherPadChooserControls {
     }
 }
 "@
-[FeatherPadChooserControls]::Select([int]$record.processId, $fixturePath)
-[ordered]@{ scope='owned native chooser Win32 controls'; processId=[int]$record.processId; fixtureSha256=$fixtureHash; valueVerified=$true; openInvoked=$true } | ConvertTo-Json -Compress
+[FeatherPadChooserControls]::Select([int]$record.processId, $selectionText)
+[ordered]@{ scope='owned native chooser Win32 controls'; processId=[int]$record.processId; fixtureHashes=@($verified | ForEach-Object { $_.sha256 }); valueVerified=$true; openInvoked=$true } | ConvertTo-Json -Compress
