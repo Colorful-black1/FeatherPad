@@ -3,5 +3,5 @@
   "identifier": "main",
   "description": "Local editor window; custom commands validate all grants in Rust.",
   "windows": ["main"],
-  "permissions": ["allow-choose-files", "allow-choose-folder", "allow-list-directory", "allow-create-entry", "allow-rename-entry", "allow-open-document", "allow-read-document-chunk", "allow-save-document", "allow-save-document-as", "allow-stat-document"]
+  "permissions": ["allow-choose-files", "allow-choose-folder", "allow-list-directory", "allow-create-entry", "allow-rename-entry", "allow-get-trash-impact", "allow-trash-entry", "allow-open-document", "allow-read-document-chunk", "allow-save-document", "allow-save-document-as", "allow-stat-document"]
 }

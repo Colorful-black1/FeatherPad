@@ -6,6 +6,8 @@ fn main() {
             "list_directory",
             "create_entry",
             "rename_entry",
+            "get_trash_impact",
+            "trash_entry",
             "open_document",
             "read_document_chunk",
             "save_document",

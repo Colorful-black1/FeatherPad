@@ -1,8 +1,10 @@
-import type { ChosenFiles, ChosenFolder, CreateEntryRequest, DirectoryEntry, DirectoryPage, DocumentId, FileRef, ListDirectoryRequest, OpenDocument, ReadChunkRequest, RenameEntryRequest, RenameEntryResult, SaveAck, SaveAsAck, SaveAsRequest, SaveRequest, TextChunk } from '../shared/contracts/files';
+import type { ChosenFiles, ChosenFolder, CreateEntryRequest, DirectoryEntry, DirectoryPage, DocumentId, FileRef, ListDirectoryRequest, OpenDocument, ReadChunkRequest, RenameEntryRequest, RenameEntryResult, SaveAck, SaveAsAck, SaveAsRequest, SaveRequest, TextChunk, TrashEntryRequest, TrashEntryResult, TrashImpact, TrashImpactRequest } from '../shared/contracts/files';
 import { callCommand, isAppError, isRecord } from './invoke';
 
 const nonemptyString = (value: unknown): value is string => typeof value === 'string' && value.length > 0;
 const safeCount = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+const opaqueId = (value: unknown): value is string => nonemptyString(value) && value.length <= 128;
+const revision = (value: unknown): value is string => typeof value === 'string' && /^[0-9a-f]{64}$/i.test(value);
 
 function isSelectionFailure(value: unknown): value is ChosenFiles['failures'][number] {
   return isRecord(value) && safeCount(value.selectionIndex) && isAppError(value.error);
@@ -70,6 +72,36 @@ export function isRenameEntryResult(value: unknown): value is RenameEntryResult 
       && document.displayPath.length <= 32_767);
 }
 
+export function isTrashImpact(value: unknown): value is TrashImpact {
+  if (!isRecord(value) || !isFileRef(value.ref) || !value.ref.relativePath
+    || !nonemptyString(value.displayPath) || value.displayPath.length > 32_767
+    || !['file', 'directory'].includes(value.kind as string) || !revision(value.revision) || !revision(value.identity)
+    || !Array.isArray(value.affectedDocuments) || value.affectedDocuments.length > 1000) return false;
+  const ids = new Set<string>();
+  return value.affectedDocuments.every(document => {
+    if (!isRecord(document) || !opaqueId(document.documentId) || ids.has(document.documentId)
+      || !nonemptyString(document.displayPath) || document.displayPath.length > 32_767
+      || typeof document.canSnapshot !== 'boolean') return false;
+    ids.add(document.documentId);
+    return true;
+  });
+}
+
+export function isTrashEntryResult(value: unknown): value is TrashEntryResult {
+  if (!isRecord(value) || value.trashed !== true || !opaqueId(value.receiptId)
+    || !Array.isArray(value.missingDocumentIds) || value.missingDocumentIds.length > 1000
+    || !value.missingDocumentIds.every(opaqueId) || new Set(value.missingDocumentIds).size !== value.missingDocumentIds.length
+    || !Array.isArray(value.drafts) || value.drafts.length > 1000) return false;
+  const missingDocumentIds = value.missingDocumentIds;
+  const ids = new Set<string>();
+  return value.drafts.every(draft => {
+    if (!isRecord(draft) || !opaqueId(draft.documentId) || !safeCount(draft.documentVersion)
+      || !opaqueId(draft.receiptId) || !missingDocumentIds.includes(draft.documentId) || ids.has(draft.documentId)) return false;
+    ids.add(draft.documentId);
+    return true;
+  });
+}
+
 export function isOpenDocument(value: unknown): value is OpenDocument {
   if (!isRecord(value) || !nonemptyString(value.documentId) || !isFileRef(value.ref)
     || !isRecord(value.metadata) || !isRecord(value.format) || !isRecord(value.content)) return false;
@@ -114,6 +146,8 @@ export const files = {
   listDirectory: (request: ListDirectoryRequest) => callCommand('list_directory', { ...request }, isDirectoryPage),
   createEntry: (request: CreateEntryRequest) => callCommand('create_entry', { ...request }, isDirectoryEntry),
   renameEntry: (request: RenameEntryRequest) => callCommand('rename_entry', { ...request }, isRenameEntryResult),
+  trashImpact: (request: TrashImpactRequest) => callCommand('get_trash_impact', { ...request }, isTrashImpact),
+  trashEntry: (request: TrashEntryRequest) => callCommand('trash_entry', { ...request }, isTrashEntryResult),
   open: (ref: FileRef, mode?: 'head-preview') => callCommand('open_document', mode ? { ref, mode } : { ref }, isOpenDocument),
   readChunk: (request: ReadChunkRequest) => callCommand('read_document_chunk', { ...request }, isTextChunk),
   save: (request: SaveRequest) => callCommand('save_document', { ...request }, isSaveAck),

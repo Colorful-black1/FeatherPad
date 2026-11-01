@@ -21,6 +21,13 @@
 | 2026-11-01 / T002 | app-shell | React Shell/App/token/CSS、Web及原生测试 | typecheck/lint exit 0；Web 2 passed；真实WebView2 debug 1 passed | Web与原生范围分开，未测OS对话框 | .artifacts/T002/及docs/acceptance/M0.md | T002通过；下一T003 |
 | 2026-11-01 / T003.a–d（进行中） | F-DESK-013 | Rust models/grants/files/commands、AppManifest ACL、TS contracts/bridge、CodeMirror只读UI、测试与脚本 | typecheck/lint/TS单测3、Rust原生5、Web4、Release smoke1均exit 0；check.ps1 -Desktop exit 0；交互选择器三次超时，后次显式exit 1 | 原生Rust磁盘+junction，真实Release IPC/WebView2，Web mock独立 | docs/acceptance/M0.md；.artifacts/T003；.artifacts/T002/native-release.json | T003未完成OS选取验收，G0不勾选 |
 
+## T105.b2 typed IPC已接（2026-11-01，确认UI待接）
+
+- get_trash_impact/trash_entry接到commands/file_ops、Tauri handler和两个最小ACL权限；输入严格JSON DTO，不接受本机路径或存储目录。恢复根由既有本地状态入口派生，Rust编排仍独立复核grant、revision、identity和全量文档集合。
+- InFlightSaves新增文档组预留，回收与保存/另存互斥；部分预留失败会释放已取得的许可，独立文档继续可操作。原生许可单测1 passed（.artifacts/T105-trash-ipc-rust.log）。
+- TS contracts/bridge补typed请求和严格结果guard，拒绝重复文档、非法identity、根引用、false删除结果或不一致草稿/缺失文档映射。typecheck/lint、TS82、Rust clippy --all-targets -D warnings均exit0；编译已生成精确命令权限。首次TS18046由闭包中的unknown属性收窄失效造成，改用已校验的局部常量解决，未用any/类型断言隐藏。
+- 尚未进行新IPC的真实Tauri删除验收；下一步确认Dialog、已删除缓冲的缺失/另存状态、失败保树及Web/Release验证。T105仍[~]。
+
 ## T105.b2 原生回收编排完成（2026-11-01，IPC/UI待接）
 
 - F-FILE-017/F-WORK-005的原生编排切片：新增services/trash.rs与trash_tests.rs，models增加impact/执行/回执DTO，documents提供后代lease查询与原引用恢复信息；file_ops共用结果缓存，windows_trash补预览identity绑定及可失败的STA线程创建。未开放生产删除IPC或UI。

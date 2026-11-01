@@ -39,6 +39,8 @@ pub fn run() {
             commands::list_directory,
             commands::file_ops::create_entry,
             commands::file_ops::rename_entry,
+            commands::file_ops::get_trash_impact,
+            commands::file_ops::trash_entry,
             commands::open_document,
             commands::read_document_chunk,
             commands::save::save_document,

@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { isChosenFiles, isChosenFolder, isDirectoryPage, isFileRef, isOpenDocument, isRenameEntryResult, isSaveAck, isSaveAsAck, isTextChunk } from './files';
+import { isChosenFiles, isChosenFolder, isDirectoryPage, isFileRef, isOpenDocument, isRenameEntryResult, isSaveAck, isSaveAsAck, isTextChunk, isTrashImpact, isTrashEntryResult } from './files';
 
 const valid = {
   documentId: 'document-fixture', ref: { grantId: 'fixture-grant', relativePath: '' },
@@ -7,6 +7,22 @@ const valid = {
   format: { encoding: 'utf-8', bom: 'none', lineEnding: 'lf' }, warnings: [], mode: 'normal',
   content: { kind: 'text', text: 'a\nb', newlineMap: { documentVersion: 0, endings: ['lf'] } },
 };
+
+it('rejects malformed or duplicate trash impacts and inconsistent missing-document receipts', () => {
+  const document = { documentId: 'document-fixture', displayPath: 'file.txt', canSnapshot: true };
+  const impact = { ref: { grantId: 'grant', relativePath: 'file.txt' }, displayPath: 'file.txt', kind: 'file',
+    revision: 'a'.repeat(64), identity: 'b'.repeat(64), affectedDocuments: [document] };
+  expect(isTrashImpact(impact)).toBe(true);
+  expect(isTrashImpact({ ...impact, identity: '' })).toBe(false);
+  expect(isTrashImpact({ ...impact, affectedDocuments: [document, document] })).toBe(false);
+  expect(isTrashImpact({ ...impact, ref: { ...impact.ref, relativePath: '' } })).toBe(false);
+  const result = { trashed: true, receiptId: 'receipt', missingDocumentIds: [document.documentId],
+    drafts: [{ documentId: document.documentId, documentVersion: 2, receiptId: 'draft' }] };
+  expect(isTrashEntryResult(result)).toBe(true);
+  expect(isTrashEntryResult({ ...result, trashed: false })).toBe(false);
+  expect(isTrashEntryResult({ ...result, missingDocumentIds: [] })).toBe(false);
+  expect(isTrashEntryResult({ ...result, drafts: [...result.drafts, ...result.drafts] })).toBe(false);
+});
 
 it('validates individual selection failures without dropping successful grant references', () => {
   const failure = { selectionIndex: 1, error: { code: 'NOT_FOUND', message: 'Controlled missing selection', retryable: false } };

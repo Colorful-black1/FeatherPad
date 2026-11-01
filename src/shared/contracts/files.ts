@@ -150,3 +150,28 @@ export interface RenameEntryResult {
   entry: DirectoryEntry;
   renamedDocuments: RenamedDocument[];
 }
+
+export interface TrashImpactRequest { ref: FileRef; expectedRevision: string }
+export interface TrashDocument { documentId: DocumentId; displayPath: string; canSnapshot: boolean }
+export interface TrashImpact {
+  ref: FileRef;
+  displayPath: string;
+  kind: 'file' | 'directory';
+  revision: string;
+  identity: string;
+  affectedDocuments: TrashDocument[];
+}
+export interface TrashEntryRequest {
+  ref: FileRef;
+  expectedRevision: string;
+  expectedIdentity: string;
+  requestId: string;
+  affectedDocumentIds: DocumentId[];
+  snapshots: SaveRequest[];
+}
+export interface TrashEntryResult {
+  trashed: true;
+  receiptId: string;
+  missingDocumentIds: DocumentId[];
+  drafts: { documentId: DocumentId; documentVersion: number; receiptId: string }[];
+}

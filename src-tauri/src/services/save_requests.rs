@@ -56,6 +56,34 @@ pub enum SaveStart {
 }
 
 impl InFlightSaves {
+    pub fn reserve_documents(
+        self: &Arc<Self>,
+        ids: &[String],
+        operation_id: &str,
+    ) -> Result<Vec<SavePermit>, AppError> {
+        let mut unique = std::collections::HashSet::new();
+        if ids.len() > 1000
+            || uuid::Uuid::parse_str(operation_id).is_err()
+            || ids
+                .iter()
+                .any(|id| uuid::Uuid::parse_str(id).is_err() || !unique.insert(id))
+        {
+            return Err(AppError::new(
+                ErrorCode::InvalidInput,
+                "文件操作的文档集合或请求标识无效。",
+            ));
+        }
+        // On partial acquisition failure, dropping the collected permits releases every reservation.
+        ids.iter()
+            .map(|id| {
+                self.enter_hash(
+                    (id.clone(), operation_id.to_owned()),
+                    "workspace-mutation".into(),
+                )
+            })
+            .collect()
+    }
+
     pub fn enter(self: &Arc<Self>, request: &SaveRequest) -> Result<SavePermit, AppError> {
         let hash = payload_hash(request)?;
         let key = (request.document_id.clone(), request.request_id.clone());
@@ -285,4 +313,59 @@ fn reused_id() -> AppError {
 }
 fn internal() -> AppError {
     AppError::new(ErrorCode::Internal, "保存请求服务暂时不可用。")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::TextFormat;
+
+    #[test]
+    fn workspace_reservations_block_saves_and_release_partial_acquisitions() {
+        let active = Arc::new(InFlightSaves::default());
+        let first = uuid::Uuid::new_v4().to_string();
+        let second = uuid::Uuid::new_v4().to_string();
+        let request = SaveRequest {
+            document_id: second.clone(),
+            request_id: uuid::Uuid::new_v4().to_string(),
+            document_version: 0,
+            expected_disk_revision: "a".repeat(64),
+            text: String::new(),
+            format: TextFormat {
+                encoding: "utf-8".into(),
+                bom: "none".into(),
+                line_ending: "lf".into(),
+            },
+            newline_map: None,
+        };
+        let saving = active.enter(&request).unwrap();
+        let failed = active.reserve_documents(
+            &[first.clone(), second.clone()],
+            &uuid::Uuid::new_v4().to_string(),
+        );
+        assert!(matches!(
+            failed,
+            Err(AppError {
+                code: ErrorCode::Busy,
+                ..
+            })
+        ));
+        let first_only = active
+            .reserve_documents(&[first], &uuid::Uuid::new_v4().to_string())
+            .unwrap();
+        drop(first_only);
+        drop(saving);
+        let reserved = active
+            .reserve_documents(&[second], &uuid::Uuid::new_v4().to_string())
+            .unwrap();
+        assert!(matches!(
+            active.enter(&request),
+            Err(AppError {
+                code: ErrorCode::Busy,
+                ..
+            })
+        ));
+        drop(reserved);
+        assert!(active.enter(&request).is_ok());
+    }
 }
