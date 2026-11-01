@@ -21,6 +21,15 @@
 | 2026-11-01 / T002 | app-shell | React Shell/App/token/CSS、Web及原生测试 | typecheck/lint exit 0；Web 2 passed；真实WebView2 debug 1 passed | Web与原生范围分开，未测OS对话框 | .artifacts/T002/及docs/acceptance/M0.md | T002通过；下一T003 |
 | 2026-11-01 / T003.a–d（进行中） | F-DESK-013 | Rust models/grants/files/commands、AppManifest ACL、TS contracts/bridge、CodeMirror只读UI、测试与脚本 | typecheck/lint/TS单测3、Rust原生5、Web4、Release smoke1均exit 0；check.ps1 -Desktop exit 0；交互选择器三次超时，后次显式exit 1 | 原生Rust磁盘+junction，真实Release IPC/WebView2，Web mock独立 | docs/acceptance/M0.md；.artifacts/T003；.artifacts/T002/native-release.json | T003未完成OS选取验收，G0不勾选 |
 
+## T105.b1 原生回收适配完成（2026-11-01，删除交互仍未开放）
+
+- 功能追踪：F-FILE-017/F-WORK-005的原生风险切片，不代表T105或UI验收通过。新增`services/windows_trash.rs`及受控原生测试，Cargo直接复用已有Microsoft windows/windows-core 0.62.2，未下载/安装新工具或crate；锁文件只增加本包到已有包的两条直接依赖。Rust/TS同步增加TRASH_UNAVAILABLE错误码。
+- IFileOperation固定回收标志、无永久删除实现；专用STA线程和父目录链锁，PreDeleteItem再次核对路径/identity/revision且否决缺少回收标志的系统请求；PostDeleteItem必须有成功结果及真实回收项，源路径消失后才成功。首个失败原因不被后续失败回调覆盖。
+- 真实Shell测试5 passed：中文emoji文件进入回收站、回收字节一致并由Shell移回；非空目录及子文件同样回收/还原；锁定原文件导致实际Shell失败且字节不变；移除回收标志的真实永久删除请求被PreDeleteItem拒绝且原件完整；旧revision/缺失路径/junction安全拒绝。还原只操作本次receipt的精确回收项，不扫描或清空用户回收站。
+- 检查：`cargo test --locked --offline`为78 passed、1个100k基准显式ignored，exit0（`.artifacts/T105-b1-rust.log`）；移除定位日志后原生5项再验exit0（`.artifacts/T105-b1-native-final.log`）；`cargo build --locked --offline` exit0（`.artifacts/T105-b1-build.log`）；typecheck/lint、TS81、clippy均exit0。这是Rust原生系统API证据，未重建Release、未声称Tauri删除入口或Web删除E2E通过。
+- 排错：COM实现宏需要直接windows-core依赖（首编译E0433）；真实Shell创建项曾对`\\?\`路径返回E_INVALIDARG/0x80070057，现仅在传入Shell前去掉扩展前缀，安全核验仍使用canonical路径。测试还收紧为必须触发PreDeleteItem的永久删除专用拒绝，避免前置错误假通过。失败测试残留的9个UUID fixture已在验证绝对目标及无reparse后清理。
+- 下一步T105.b2：grant/expectedRevision/requestId、删除前dirty快照落盘、已打开文档缺失标记、真实确认与树状态；尚无生产trash_entry命令或删除按钮。最新可交互Release仍为上节T105.a hash。
+
 ## T105.a 树内新建与重命名完成（2026-11-01，T105仍进行中）
 
 - 功能追踪：F-WORK-004完成、F-FILE-017的新建/重命名部分完成；F-WORK-005与回收站删除尚未实现，T105保持[~]。

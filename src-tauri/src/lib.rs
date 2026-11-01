@@ -19,6 +19,7 @@ pub mod services {
     pub mod targets;
     pub mod text;
     pub mod windows_file;
+    pub mod windows_trash;
 }
 
 pub fn run() {

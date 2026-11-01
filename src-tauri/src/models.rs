@@ -12,6 +12,7 @@ pub enum ErrorCode {
     EncodingRequired,
     LossyEncoding,
     DiskFull,
+    TrashUnavailable,
     ReadOnly,
     InvalidInput,
     InvalidPattern,

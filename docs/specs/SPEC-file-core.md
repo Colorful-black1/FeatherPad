@@ -103,6 +103,8 @@ T102.c3全部保存实施决策：开始时固定dirty文档的ID与顺序，不
 
 新建文件/目录以排他方式执行；rename拒绝碰撞，大小写仅变更采用Windows可靠两步处理并有中间恢复，更新映射事件。删除只调用Windows回收站能力，逐项结果；UNC/移动盘/系统策略不支持回收站时返回TRASH_UNAVAILABLE，不自动永久删除。dirty文件的保存/放弃决策由上层先完成，file-core只接收明确授权，不能自行读取editor状态。多项操作可部分成功，结果逐项列出。
 
+T105.b1原生适配决策（2026-11-01）：复用锁文件和E盘缓存中已有的Microsoft `windows`/`windows-core` 0.62.2（MIT/Apache-2.0、无build script），启用COM/Shell绑定。原生回收在专用STA线程使用IFileOperation，固定FOFX_RECYCLEONDELETE/FOFX_EARLYFAILURE/FOF_NO_CONNECTED_ELEMENTS/FOFX_NOCOPYHOOKS及无系统确认/错误弹窗；父路径链保持锁定，入口和PreDeleteItem再次复核目标路径、非reparse、identity与expectedRevision。PreDeleteItem发现没有TSF_DELETE_RECYCLE_IF_POSSIBLE就返回失败，禁止系统降级为永久删除；PostDeleteItem必须返回成功且有回收站新项，再检查源路径消失，才返回receipt。未确认/失败不清缓冲、不伪报成功。参考微软[操作标志](https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/nf-shobjidl_core-ifileoperation-setoperationflags)、[删除前回调](https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/nf-shobjidl_core-ifileoperationprogresssink-predeleteitem)和[删除后回调](https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/nf-shobjidl_core-ifileoperationprogresssink-postdeleteitem)。b1已用真实Shell验证回收/还原、锁定失败和永久删除否决，尚不开放生产删除IPC；b2继续grant/requestId/dirty快照与UI纵向切片。Shell不接受canonicalize产生的扩展路径前缀，传入Shell前仅转换路径表示；所有身份与边界复核仍使用canonical路径。
+
 ## Acceptance 与 error-state
 
 - F-FILE-001–005/018：无标题输入、取消另存、保存中继续输入、全部保存中第三项失败；原文和dirty状态正确，取消不关闭。

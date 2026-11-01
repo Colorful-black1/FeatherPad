@@ -27,6 +27,8 @@ tauri-plugin-dialog = "=2.8.4"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "=0.61.2", features = ["Win32_Storage_FileSystem", "Win32_Foundation"] }
+windows = { version = "=0.62.2", features = ["Win32_System_Com", "Win32_UI_Shell"] }
+windows-core = "=0.62.2"
 
 [dev-dependencies]
 regex = "=1.13.1"
