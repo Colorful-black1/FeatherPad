@@ -5,7 +5,7 @@
 - 产品名称：**轻羽 FeatherPad**。
 - 当前交付：完整产品方案、86项功能矩阵、模块规格、UI规范与离线交互原型、技术/本机环境文档、M0–M5实现计划、57个开发任务、agent执行入口。
 - 产品代码：**M0/G0、M1/T101、T102、T103、T104、T106及T108通过**。真实Release保存/另存/副本/批次/覆盖/硬链接/进程终止、真实小容量满盘安全失败、<20MiB正常/降级编辑、20MiB分块只读、>100MiB显式预览、单根懒加载目录树、CodeMirror编辑/语言/系统中文IME，以及文件内搜索替换和只读保护均已验证；恢复和其余M1项仍未完成，G1未通过，更不是完整v1。
-- 当前：**T105进行中，T105.a新建/重命名已通过真实Release验收**，含文件及已打开dirty后代的目录改名、新路径保存。下一项T105.b真实回收站删除；T107依赖也已满足。随后继续标签关闭保护、恢复与G1。
+- 当前：**T105进行中，T105.a新建/重命名已通过真实Release验收**，含文件及已打开dirty后代的目录改名、新路径保存。T105.b原生回收及草稿存储核心已验证，下一步连接授权/幂等、dirty前置保护和确认UI；删除入口尚未开放。T107依赖也已满足，随后继续标签关闭保护、恢复与G1。
 - 本次交付检查：详见 [DELIVERY-CHECK](../docs/DELIVERY-CHECK.md)，不代表产品关卡G0–G5通过。
 
 ## 已核查环境
@@ -20,6 +20,15 @@
 | 2026-11-01 / T001.a,b | F-DESK-013 | manifests/双锁、TS/Vite/ESLint、Tauri骨架与图标 | 冻结offline安装、typecheck/lint/build:web、Rust fmt/clippy/test均0；audit exit 1仅开发工具moderate | 编译级原生；当时Rust行为测试0个 | `docs/acceptance/M0.md`、`.artifacts/T001/` | T001通过；minimatch受控lint模式，2026-12-01复核 |
 | 2026-11-01 / T002 | app-shell | React Shell/App/token/CSS、Web及原生测试 | typecheck/lint exit 0；Web 2 passed；真实WebView2 debug 1 passed | Web与原生范围分开，未测OS对话框 | .artifacts/T002/及docs/acceptance/M0.md | T002通过；下一T003 |
 | 2026-11-01 / T003.a–d（进行中） | F-DESK-013 | Rust models/grants/files/commands、AppManifest ACL、TS contracts/bridge、CodeMirror只读UI、测试与脚本 | typecheck/lint/TS单测3、Rust原生5、Web4、Release smoke1均exit 0；check.ps1 -Desktop exit 0；交互选择器三次超时，后次显式exit 1 | 原生Rust磁盘+junction，真实Release IPC/WebView2，Web mock独立 | docs/acceptance/M0.md；.artifacts/T003；.artifacts/T002/native-release.json | T003未完成OS选取验收，G0不勾选 |
+
+## T105.b2 草稿存储核心完成（2026-11-01，回收编排待接）
+
+- 功能追踪：F-FILE-017/F-WORK-005删除前保护的存储部分，尚非T105或T110完整验收。新增`services/recovery.rs`与`tests/recovery.rs`，通过lib接入；规格先同步CONTRACTS。不新增IPC、路径权限或依赖。
+- before-trash快照保存原始路径/磁盘基线revision、bufferVersion、编码/BOM、逐行换行映射、正文长度/SHA256与时间。正文先排他写入并flush，manifest后写并flush；读回验证正文/摘要/schema后才返回成功。receipt只接受规范UUID，拒绝reparse、过大读取、非法映射与损坏记录，不自动删唯一副本，也不写源文件或清dirty。
+- recovery目录总256MiB、单正文64MiB；OS文件锁保护配额核算和写入，并发独立store不能双花剩余预算。预算只覆盖本切片的recovery目录；保存事务统一空间管理、10份冗余/30天提示、启动扫描/认领与热退出仍属T110。
+- 原生文件测试5 passed（`.artifacts/T105-b2-recovery-final.log`）：重建store后中文emoji正文、版本、UTF16LE/BOM及CRLF/孤立CR映射完整；等长有效UTF8正文篡改仅因摘要不符被拒绝；独立schema损坏和receipt越界被拒绝且副本保留；逻辑容量配额超限/存储路径不可写保源；junction拒绝零正文写入；两个并发store只有一项成功且总量不超预算。配额fixture只按文件逻辑长度制造，不冒称真实磁盘满。首轮失败是测试夹具用了非64位磁盘revision，原始日志保留`.artifacts/T105-b2-recovery-initial-failure.log`，修正夹具后通过，未放宽生产校验。
+- 最终`cargo fmt --check`、`cargo clippy --locked --offline --all-targets -- -D warnings`、`cargo test --locked --offline`（83 passed、1个100k基准ignored）、`cargo build --locked --offline`均exit0；全Rust日志`.artifacts/T105-b2-rust.log`。TS/UI本切片未变，沿用b1的typecheck/lint/TS81及a的Web27/真实Release证据，未冒称新Release或删除UI完成。
+- 下一步仍T105.b2：原生impact返回准确的已打开文档（包括独立文件grant打开的后代）；trash_entry绑定grant/expectedRevision/requestId和完整快照集合；先持久化后释放后代lease并调用原生回收，失败重绑原lease，成功返回缺失文档ID/草稿receipt。随后接保存/保留草稿/取消确认、失败保树、缺失缓冲与真实Release验收。T105继续[~]，T110/G1以后未完成。
 
 ## T105.b1 原生回收适配完成（2026-11-01，删除交互仍未开放）
 

@@ -10,6 +10,7 @@ pub mod services {
     pub mod grants;
     pub mod identity;
     pub mod open_policy;
+    pub mod recovery;
     pub mod save;
     pub mod save_as;
     pub mod save_journal;

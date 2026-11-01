@@ -172,6 +172,8 @@ M1/T105.a实施决策（2026-11-01）：`create_entry`只接受目录授权内�
 
 文件改名直接更新已有lease路径；目录改名前先释放其后代文件lease，移动后从新路径逐个重新打开，核对FileIdentity与最终路径，再恢复原DocumentId。重新打开或注册失败会尝试将目录移回原名并重绑旧路径；回卷或重绑失败须明确报告，不返回成功。成功结果返回新`DirectoryEntry`及受影响的`documentId/ref/displayPath`列表，应用端据此更新标签路径但保留原缓冲、undo与dirty；未打开文档不发生内存映射。创建/改名成功后刷新当前目录及直属上级目录的revision。requestId在进程内成功去重并绑定完整payload，同ID异payload拒绝，失败不伪装已提交。
 
+T105.b2草稿实施决策（2026-11-01，存储核心已验证、尚未接回收编排）：删除前快照使用本地状态目录的`recovery/<receiptId>/`，独立于保存事务。schemaVersion=1的manifest包含reason=before-trash、documentId、bufferVersion、原始路径与sourceRevision、encoding/BOM、newlineMap、UTF-8归一化正文的字节数/SHA256和创建时间。正文先排他写入`body.bin`并flush，manifest后写并flush，随后读回摘要和schema核验才确认保护成功；缺失/损坏不自动删除唯一副本。单正文64MiB、恢复目录总256MiB预算，持有`.recovery.lock`的OS文件锁后才核算及写入，并发请求不能同时消耗剩余配额；超限拒绝新保护且回收编排必须停止。receipt严格UUID，读取不接受路径；body/manifest及目录链拒绝reparse。该快照不清dirty、不写源文件；T110后续接启动扫描/认领/热退出/冗余清理，并将既有保存事务纳入空间管理，本切片不宣称会话恢复完成。
+
 watch 事件：`filesystem_changed {watchId, sequence, entries:[{ref,kind,diskRevision?}],overflow:boolean}`。去抖、合并、自写标记仅做优化；overflow 和窗口重新聚焦后 stat 兜底，不能只依赖事件判断源文件安全。
 
 ## 4. 搜索与批量替换 search-tools
