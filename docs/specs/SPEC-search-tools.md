@@ -1,6 +1,6 @@
 # SPEC-search-tools：查找、受保护替换与格式工具
 
-> 轻羽 FeatherPad；模块 `search-tools`；业务依赖仅 `editor`、`workspace`、`file-core`。状态：待实现、待验证，未声称用户已批准。拥有 F-SEARCH-001–012，详见 [矩阵](../FEATURE-MATRIX.md)。M1：001–003；M2：004–009；M3：010–012。
+> 轻羽 FeatherPad；模块 `search-tools`；业务依赖仅 `editor`、`workspace`、`file-core`。状态：M1 F-SEARCH-001–003已实现并验收，M2–M3待实现。拥有 F-SEARCH-001–012，详见 [矩阵](../FEATURE-MATRIX.md)。M1：001–003；M2：004–009；M3：010–012。
 
 ## Objective 与提供方契约
 
@@ -40,13 +40,15 @@ M2：F-SEARCH-004、F-SEARCH-005、F-SEARCH-006、F-SEARCH-007、F-SEARCH-008、
 
 M3：F-SEARCH-010、F-SEARCH-011、F-SEARCH-012。每项联合矩阵和下述交互/error-state/test strategy验收。
 
+M1实际实现（2026-11-01）：`FindBar`、`search-query`和本地module worker覆盖文件内查找替换；`tests/fixtures/search-semantics.json`由TS与Rust `regex`测试共同读取。当前交集包括字面/Unicode大小写、Unicode `\p`属性、捕获/命名/非捕获组、字符类、重复、多行和零长度前进。两端语义未证明一致的`\b`/`\B`、look-around及回溯引用明确拒绝；该夹具是代表性子集证据，不外推全部Rust regex语法。验收详情见 [M1](../acceptance/M1.md)。
+
 ## 文件内搜索（F-SEARCH-001/002/003）
 
 CtrlF面板非模态，Enter/ShiftEnter下一处/上一处，Escape回编辑器并保留查询。支持当前文档和显式选区；高亮/当前位置/总计、到末尾环绕提示；只读文档可查不可替换。选区版本变化时重算范围，不能对旧offset替换。
 
-普通文本搜索为Unicode字符串；大小写不敏感按确定性Unicode case fold，不跟系统区域随机变化。整词采用Unicode字母/数字/下划线边界，中文连续汉字作为词字符序列，UI说明其不等于中文分词。正则采用Rust regex支持的安全语法子集作为产品统一语义：捕获组/命名组/重复/多行支持，不支持回溯引用和look-around；前端不得直接用无限制JS RegExp偷偷扩大语义。前端可在worker中使用本地等价引擎/共享WASM，实施前做语义一致性夹具；不能每次键入跨Rust。
+普通文本搜索为Unicode字符串；大小写不敏感按确定性Unicode case fold，不跟系统区域随机变化。整词采用Unicode字母/数字/下划线边界，中文连续汉字作为词字符序列，UI说明其不等于中文分词。正则采用由共享夹具定义的Rust regex/local worker安全交集：捕获组/命名组/非捕获组/字符类/重复/多行/Unicode属性支持，不支持回溯引用和look-around；`\b`/`\B`因两端Unicode边界语义不一致必须报错并引导“整词”。前端不得用未测试JS RegExp语法偷偷扩大语义。worker每次键入只在本地匹配，不跨Rust；`tests/fixtures/search-semantics.json`维护两端代表用例。
 
-非法语法/不支持语法给定位错误，不当零结果。零长度匹配每次按Unicode scalar前进，EOF只计一次，不进入无限循环。模式长度上限10KiB，编译/匹配有内存和时间预算；worker可终止，取消目标≤250ms。单文档搜索默认10,000匹配上限并提示。
+非法语法/不支持语法给定位错误，不当零结果。零长度匹配每次按Unicode scalar前进，EOF只计一次，不进入无限循环。模式长度上限10KiB UTF-8字节，编译/匹配有内存和时间预算；worker可终止，取消目标≤250ms。单文档搜索默认10,000匹配上限并提示。
 
 替换支持字面文本、`$1`/`${name}`捕获、`$$`字面美元符；非法组引用报错。Escapes使用UI明确选项解释换行/Tab，不能无提示把用户字面`\n`改成换行。单个替换后定位下一处；全部替换先显示数量，可查看匹配摘要，一次editor事务一次undo，不自动保存。异步结果若expectedBufferVersion变化重算，不能偷用旧索引。
 

@@ -4,8 +4,8 @@
 
 - 产品名称：**轻羽 FeatherPad**。
 - 当前交付：完整产品方案、86项功能矩阵、模块规格、UI规范与离线交互原型、技术/本机环境文档、M0–M5实现计划、57个开发任务、agent执行入口。
-- 产品代码：**M0/G0、M1/T101、T103、T104及T106通过；T102仅真实磁盘满待权限补验**。真实Release保存/另存/副本/批次/覆盖/硬链接/进程终止、<20MiB正常/降级编辑、20MiB分块只读、>100MiB显式预览、单根懒加载目录树，以及CodeMirror编辑、语言高亮、剪贴板和系统中文IME均已验证；恢复和其余M1项仍未完成，G1未通过，更不是完整v1。
-- 下一项：**T108 文件内搜索替换**，依赖T106已满足；T102真实磁盘满保留权限缺口，并使T105暂不满足依赖。M1通过后继续M2–M5。
+- 产品代码：**M0/G0、M1/T101、T103、T104、T106及T108通过；T102仅真实磁盘满待权限补验**。真实Release保存/另存/副本/批次/覆盖/硬链接/进程终止、<20MiB正常/降级编辑、20MiB分块只读、>100MiB显式预览、单根懒加载目录树、CodeMirror编辑/语言/系统中文IME，以及文件内搜索替换和只读保护均已验证；恢复和其余M1项仍未完成，G1未通过，更不是完整v1。
+- 下一项：**T102 剩余真实磁盘满证据**。该缺口使T105/T107仍不满足依赖；先寻找不同于已被权限策略拒绝的64MiB VHD探针的受控方案，再推进其余M1与M2–M5。
 - 本次交付检查：详见 [DELIVERY-CHECK](../docs/DELIVERY-CHECK.md)，不代表产品关卡G0–G5通过。
 
 ## 已核查环境
@@ -21,7 +21,18 @@
 | 2026-11-01 / T002 | app-shell | React Shell/App/token/CSS、Web及原生测试 | typecheck/lint exit 0；Web 2 passed；真实WebView2 debug 1 passed | Web与原生范围分开，未测OS对话框 | .artifacts/T002/及docs/acceptance/M0.md | T002通过；下一T003 |
 | 2026-11-01 / T003.a–d（进行中） | F-DESK-013 | Rust models/grants/files/commands、AppManifest ACL、TS contracts/bridge、CodeMirror只读UI、测试与脚本 | typecheck/lint/TS单测3、Rust原生5、Web4、Release smoke1均exit 0；check.ps1 -Desktop exit 0；交互选择器三次超时，后次显式exit 1 | 原生Rust磁盘+junction，真实Release IPC/WebView2，Web mock独立 | docs/acceptance/M0.md；.artifacts/T003；.artifacts/T002/native-release.json | T003未完成OS选取验收，G0不勾选 |
 
-## T106 真实编辑内核完成（最新，2026-11-01）
+## T108 文件内搜索替换完成（最新，2026-11-01）
+
+- F-SEARCH-001、F-SEARCH-002、F-SEARCH-003完成。CtrlF在当前CodeMirror文档打开非模态面板，支持字面/安全正则、大小写、Unicode字母/数字/下划线整词边界、显式选区范围、上下导航、环绕提示、高亮、当前定位、总数和匹配摘要；Enter/Shift+Enter导航，Escape关闭后保留查询并恢复编辑器焦点。
+- 搜索在本地module worker执行，5秒watchdog限制病态输入；新查询立即终止旧worker并丢弃旧generation。受控病态正则场景从输入新查询到新结果显示为25.64ms，低于250ms取消目标。单文档最多保留10,000处，超出明确截断；模式上限按UTF-8字节执行10KiB。未来不适合交叉语义的`\b`/`\B`、look-around和回溯引用会明确拒绝并引导使用“整词”，不静默扩大JS `RegExp`语义。
+- `tests/fixtures/search-semantics.json`由TS worker与Rust `regex` crate两端读取，覆盖字面/大小写、Unicode整词、选区、非捕获/命名组、多行零长度、Unicode属性和UTF-16偏移。该夹具是当前公开安全子集的代表证据，不声称全部Rust regex语法均已等价。
+- 替换支持字面文本、`$1`、`${name}`、`$$`及显式`\n`/`\t`解释；非法组引用行内报错。单个替换后定位下一处；全部替换在单个CodeMirror transaction完成并只产生一次undo，不自动保存。文档registry绑定唯一view，替换前校验expectedVersion、文档仍存在、非只读且范围单调有效；旧搜索结果不能写回变化后的缓冲。
+- 只读文件可查找和导航，替换输入及按钮禁用并显示“只读文档仅支持查找”。选区随缓冲版本变化时安全重置全文，不继续使用旧offset。
+- 实际检查：`pnpm typecheck`、`pnpm lint` exit0；`pnpm test:unit` 74 passed；`pnpm test:integration`为Rust 67 passed且100k benchmark显式ignored；`pnpm test:e2e` 27 passed；`pnpm build` exit0；`pnpm test:desktop` 1 passed（56.8秒）。最终`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、文档校验与`git diff --check`见提交前检查。
+- 原生证据：`.artifacts/T102/native-release.json`的`nativeSearchVerified:true`；`nativeSearchObservation`记录Unicode/大小写、整词、导航和环绕、非法正则、捕获组替换、全部替换单次undo、选区范围及只读查找均为true。真实只读fixture SHA256在测试后保持`5CF5863A08ECF95927A508F08CF2493DEED211022497D3A7478EB7D1BBB79F1F`。`.artifacts/T108/native-search-editable.png`、`native-search-readonly.png`及Web `search-web.png`已视觉检查。Web取消证据为`.artifacts/T108/cancellation-web.json`。
+- 当前Release：`src-tauri/target/release/featherpad.exe`，10,367,488 bytes，SHA256 `09C3842A4BA28ACF752EA0AE05741886E7E7385BDAA25F0511233DFDEED4E039`。构建主JS chunk为609.67kB（gzip 196.96kB），保留Vite 500kB警告，未提高阈值。T102真实磁盘满、T105/T107、恢复、G1及以后仍未完成。
+
+## T106 真实编辑内核完成（此前切片，2026-11-01）
 
 - F-EDIT-001、F-EDIT-002、F-EDIT-003、F-EDIT-008、F-EDIT-018完成。文档registry继续独占CodeMirror事务与文档历史；标准编辑、两套redo快捷键、按词/行移动、全选、剪贴板、保存后保留undo、单事务多行空格缩进和2/4/8视觉列均已接真实编辑器。React只接收状态与指标通知，不在每键维护全文。
 - 状态栏按Unicode code point显示字符数和选区字符数，按tabSize计算视觉列；纯光标移动不发布正文快照。括号匹配与自动配对使用独立Compartment，可分别关闭；冒号等输入法组合内容由CodeMirror composition事务提交，不触发重复配对。

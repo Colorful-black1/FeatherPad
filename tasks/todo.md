@@ -1,7 +1,7 @@
 # 开发任务清单
 
 当前阶段：**M0/G0已通过，开始M1**。`[ ]` 待做，`[~]` 进行中，`[x]` 通过验收。禁止仅因代码存在就打勾；关联 [计划](plan.md)、[进度](PROGRESS.md) 与 [完整功能矩阵](../docs/FEATURE-MATRIX.md)。范围写 `F-FILE-001..005` 表示含端点的连续ID。
-执行更新（2026-11-01）：T000–T005/G0、T101、T103、T104与T106通过；T102除真实磁盘满外已完成。T106已用真实Release验证CodeMirror事务编辑、选区/字数、undo/redo、缩进、语言高亮、括号配对/匹配、剪贴板，以及Windows微软拼音候选窗提交；T105仍依赖未完成T102。下一项为依赖已满足的T108文件内搜索替换；G1尚未通过，不代表MVP或完整v1。
+执行更新（2026-11-01）：T000–T005/G0、T101、T103、T104、T106与T108通过；T102除真实磁盘满外已完成。T106已用真实Release验证CodeMirror事务编辑、选区/字数、undo/redo、缩进、语言高亮、括号配对/匹配、剪贴板，以及Windows微软拼音候选窗提交；T108已用共享TS/Rust夹具和真实Release验证Unicode/大小写/整词、选区范围、零长度、非法式、捕获组、全部替换单次undo与只读保护。T105/T107仍依赖未完成T102；下一工作优先解除真实磁盘满缺口，G1尚未通过，不代表MVP或完整v1。
 
 ## 执行约定
 
@@ -40,7 +40,7 @@ Q/R/W/D/B命令已建立；具体通过范围见PROGRESS，命令存在不等于
 | [ ] T105 树内变更 | T102,T104 | F-FILE-017,F-WORK-004..005 | 新建/重命名/回收站，dirty决策、保留名/碰撞/失败无假成功 | src/features/workspace/file-actions.ts、src/features/workspace/EntryInput.tsx、src-tauri/src/services/file_ops.rs | Q/R/D：失败不移除树项、无永久删除回退 |
 | [x] T106 真实编辑内核 | T101 | F-EDIT-001..003,F-EDIT-008,F-EDIT-018 | CM事务/undo/缩进/括号/高亮及手动语言，IME正常 | src/features/editor/{documents,editor-state,EditorDocument,EditorStatus,editor-metrics,editor-language,language-loader}.ts/tsx | typecheck/lint、TS63、Rust66+1 ignored、Web22、Release build、真实桌面1（56.0秒）exit0；真实WebView2/CDP composition、系统剪辑板及Windows微软拼音候选窗均验证。见M1验收 |
 | [ ] T107 标签与关闭保护 | T102,T106 | F-EDIT-013,F-FILE-018 | 每组单预览、dirty固定、关闭保存/放弃/取消不丢内容 | src/features/editor/tabs.ts、src/features/editor/TabStrip.tsx、src/features/editor/close.ts | Q/W/D：预览复用、取消、保存失败、放弃清理恢复 |
-| [ ] T108 文件内搜索替换 | T106 | F-SEARCH-001..003 | 一致正则/整词语法，选区范围、计数、替换单次undo | src/features/search-tools/FindBar.tsx、src/features/search-tools/pattern.ts、src/workers/find.worker.ts | Q/W/D：Unicode、零长度、非法式、捕获组、只读 |
+| [x] T108 文件内搜索替换 | T106 | F-SEARCH-001..003 | 一致正则/整词语法，选区范围、计数、替换单次undo | src/features/search-tools/{FindBar,search-query}.ts/tsx、src/workers/find.worker.ts、tests/fixtures/search-semantics.json | typecheck/lint、TS74、Rust67+1 ignored、Web27、Release build、真实桌面1（56.8秒）exit0；共享TS/Rust语义夹具、真实只读文件与单次undo原生化均验证，取消耗时25.64ms<250ms。见M1验收 |
 | [ ] T109 命令入口与快捷键 | T107 | F-EDIT-017 | CtrlP/CtrlShiftP/快捷键全指向同一命令注册，启用态/焦点正确 | src/shared/commands/registry.ts、src/shared/ui/CommandPalette.tsx、src/app/register-commands.ts | Q/W/D：键盘循环/冲突提示/Escape恢复焦点 |
 | [ ] T110 恢复与热退出 | T102,T107 | F-FILE-010..011,F-DESK-011 | 草稿与dirty快照真实落盘，退出等flush，损坏隔离，恢复不覆盖源 | src/features/desktop/session.ts、src-tauri/src/services/recovery.rs、src-tauri/src/services/session.rs、src/features/desktop/RecoveryPanel.tsx | Q/R/D：强杀/重启、恢复文件变化、flush失败、未命名 |
 | [ ] T111 外部变化 | T102,T110 | F-FILE-008 | clean重载/dirty横幅、外部删除可另存、聚焦补stat | src-tauri/src/services/watch.rs、src/features/editor/external-changes.ts、src/features/editor/ConflictBanner.tsx | Q/R/D：外部编辑/rename/delete/watch溢出 |

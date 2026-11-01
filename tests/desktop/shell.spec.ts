@@ -13,6 +13,7 @@ import { verifyNativeDegradedEditing } from './degraded';
 import { verifyNativeLargeFiles } from './large-files';
 import { verifyNativeWorkspace } from './workspace';
 import { verifyNativeEditor } from './editor';
+import { verifyNativeSearch } from './search';
 
 const runFile = promisify(execFile);
 
@@ -29,13 +30,16 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
   const evidence = path.join(root, '.artifacts', 'T102');
   const workspaceEvidence = path.join(root, '.artifacts', 'T104');
   const editorEvidence = path.join(root, '.artifacts', 'T106');
+  const searchEvidence = path.join(root, '.artifacts', 'T108');
   let nativeLargeFileObservation: Awaited<ReturnType<typeof verifyNativeLargeFiles>> | null = null;
   let nativeWorkspaceObservation: Awaited<ReturnType<typeof verifyNativeWorkspace>> | null = null;
   let nativeEditorObservation: Awaited<ReturnType<typeof verifyNativeEditor>>;
+  let nativeSearchObservation: Awaited<ReturnType<typeof verifyNativeSearch>> | null = null;
   const chooserRoot = path.join(root, '.artifacts', 'T002');
   await mkdir(evidence, { recursive: true });
   await mkdir(workspaceEvidence, { recursive: true });
   await mkdir(editorEvidence, { recursive: true });
+  await mkdir(searchEvidence, { recursive: true });
   await mkdir(chooserRoot, { recursive: true });
   const dataDir = await mkdtemp(path.join(chooserRoot, 'webview2-'));
   const server = createServer();
@@ -235,6 +239,14 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
           const result = await runFile('powershell.exe', ['-NoProfile', '-File', helper, '-Manifest', manifest], { windowsHide: true, timeout: 25_000 });
           await writeFile(path.join(evidence, `native-${profile}-${action}-controls.json`), result.stdout.trim());
         }
+        async function openControlledFile(target: string) {
+          await writeFile(manifest, JSON.stringify({ ...selectionRecord, action: 'open',
+            fixtures: [{ path: target, sha256: createHash('sha256').update(await readFile(target)).digest('hex') }] }));
+          await runFile('powershell.exe', ['-NoProfile', '-File', helper, '-Manifest', manifest], {
+            windowsHide: true,
+            timeout: 25_000,
+          });
+        }
         await page.keyboard.press('Control+s');
         await expect(page.getByRole('status')).toContainText('正在保存');
         await chooseDestination('cancel');
@@ -299,6 +311,7 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
             fixtures: [{ path: target, sha256: createHash('sha256').update(await readFile(target)).digest('hex') }] }));
           await runFile('powershell.exe', ['-NoProfile', '-File', helper, '-Manifest', manifest], { windowsHide: true, timeout: 45_000 });
         }, evidence, child.pid!);
+        nativeSearchObservation = await verifyNativeSearch(page, dataDir, openControlledFile, searchEvidence);
       }
       if (chooserAutomation !== 'native-controls') {
         expect(createHash('sha256').update(await readFile(second)).digest('hex')).toBe(fixtureRecords[1]?.sha256);
@@ -335,6 +348,8 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
       nativeWorkspaceObservation,
       nativeEditorVerified: nativeEditorObservation !== null,
       nativeEditorObservation,
+      nativeSearchVerified: nativeSearchObservation !== null,
+      nativeSearchObservation,
       forcedExit,
       chooserAutomation: verifyChooser ? chooserAutomation : 'disabled-explicitly',
       browserOffline: profile === 'release',

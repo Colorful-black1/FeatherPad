@@ -30,11 +30,13 @@ export function EditorDocument({ registry, id, autoFocus }: { registry: Document
         }
       },
     });
+    const detachView = registry.attachView(id, view);
     view.scrollDOM.scrollTop = record.scroll.top;
     view.scrollDOM.scrollLeft = record.scroll.left;
     if (autoFocus) view.focus();
     return () => {
       registry.setScroll(id, view.scrollDOM.scrollTop, view.scrollDOM.scrollLeft);
+      detachView();
       view.destroy();
     };
   }, [id, registry, autoFocus, readOnlyReason, indentWidth, languageId, languageRevision, bracketMatching, closeBrackets]);

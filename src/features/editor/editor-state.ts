@@ -1,8 +1,8 @@
-import { Compartment, EditorState, type Extension } from '@codemirror/state';
+import { Compartment, EditorState, StateEffect, StateField, type Extension } from '@codemirror/state';
 import { defaultKeymap, history, historyKeymap, indentWithTab, redo } from '@codemirror/commands';
 import { bracketMatching, defaultHighlightStyle, indentUnit, syntaxHighlighting } from '@codemirror/language';
 import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete';
-import { EditorView, keymap, lineNumbers } from '@codemirror/view';
+import { Decoration, type DecorationSet, EditorView, keymap, lineNumbers } from '@codemirror/view';
 
 const editability = new Compartment();
 const indentation = new Compartment();
@@ -10,6 +10,29 @@ const languageMode = new Compartment();
 const matching = new Compartment();
 const closing = new Compartment();
 export type IndentWidth = 2 | 4 | 8;
+export interface SearchHighlight {
+  from: number;
+  to: number;
+  current: boolean;
+}
+export const setSearchHighlights = StateEffect.define<readonly SearchHighlight[]>();
+const searchHighlightField = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update(markers, transaction) {
+    let next = markers.map(transaction.changes);
+    for (const effect of transaction.effects) {
+      if (!effect.is(setSearchHighlights)) continue;
+      const ranges = effect.value
+        .filter(marker => marker.from < marker.to)
+        .map(marker => Decoration.mark({
+          class: marker.current ? 'cm-searchMatch cm-searchMatch-current' : 'cm-searchMatch',
+        }).range(marker.from, marker.to));
+      next = Decoration.set(ranges, true);
+    }
+    return next;
+  },
+  provide: field => EditorView.decorations.from(field),
+});
 export interface EditorStateOptions {
   indentWidth?: IndentWidth;
   language?: Extension;
@@ -66,6 +89,7 @@ export function createEditorState(text: string, readOnly: boolean, options: Edit
       indentation.of(indentationExtensions(indentWidth)), EditorView.lineWrapping,
       languageMode.of(options.language ?? []),
       matching.of(options.bracketMatching === false ? [] : bracketMatching()),
+      searchHighlightField,
       syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
       editability.of(accessExtensions(readOnly)),
       EditorView.theme({

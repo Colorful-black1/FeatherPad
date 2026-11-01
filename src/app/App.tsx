@@ -9,9 +9,18 @@ import { documents } from '../features/editor/documents';
 import { saves } from '../features/editor/save';
 import { saveAll } from '../features/editor/save-all';
 import { SaveAllResults } from '../features/editor/SaveAllResults';
+import { FindBar } from '../features/search-tools/FindBar';
+import type { SearchScope } from '../features/search-tools/search-query';
 import { Explorer } from '../features/workspace/Explorer';
 import { workspace } from '../features/workspace/store';
 import type { DocumentId, FileRef } from '../shared/contracts/files';
+
+interface FindRequest {
+  token: number;
+  id: DocumentId;
+  version: number;
+  scope: SearchScope | null;
+}
 
 export function App() {
   const [dark, setDark] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches);
@@ -26,6 +35,8 @@ export function App() {
   const [savingCount, setSavingCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [findOpen, setFindOpen] = useState(false);
+  const [findRequest, setFindRequest] = useState<FindRequest | null>(null);
   const [previewCandidates, setPreviewCandidates] = useState<FileRef[]>([]);
   const opening = useRef(false);
 
@@ -115,9 +126,28 @@ export function App() {
     } finally { setSavingCount(count => count - 1); }
   }, [setError, setNotice, setSavingCount]);
 
+  const openFind = useCallback(() => {
+    const activeId = documents.getSnapshot().activeId;
+    const document = activeId ? documents.getDocument(activeId) : undefined;
+    if (!activeId || !document) return;
+    const selection = document.state.selection.main;
+    setFindRequest(previous => ({
+      token: (previous?.token ?? 0) + 1,
+      id: activeId,
+      version: document.summary.version,
+      scope: selection.empty ? null : { from: selection.from, to: selection.to },
+    }));
+    setFindOpen(true);
+  }, []);
+
   useEffect(() => {
     const handleKey = (event: globalThis.KeyboardEvent) => {
       if (!event.ctrlKey || event.altKey || event.isComposing) return;
+      if (event.key.toLowerCase() === 'f') {
+        event.preventDefault();
+        openFind();
+        return;
+      }
       if (event.shiftKey && event.key.toLowerCase() === 's') { event.preventDefault(); void saveDestination(); return; }
       if (event.shiftKey) return;
       if (event.key.toLowerCase() === 'n') { event.preventDefault(); newFile(); }
@@ -126,7 +156,7 @@ export function App() {
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [newFile, openFile, saveCurrent, saveDestination]);
+  }, [newFile, openFile, openFind, saveCurrent, saveDestination]);
 
   async function openFolder() {
     if (opening.current) return;
@@ -183,6 +213,7 @@ export function App() {
           <button className="plain-button" onClick={() => void openFile()} disabled={busy} aria-keyshortcuts="Control+o">打开文件</button>
           <button className="plain-button" onClick={() => void openFolder()} disabled={busy}>打开文件夹</button>
           <button className="plain-button" onClick={() => void saveCurrent()} disabled={!!current.readOnlyReason || savingCount > 0 || batchBusy} aria-keyshortcuts="Control+s">保存</button>
+          <button className="plain-button" onClick={openFind} aria-keyshortcuts="Control+f">查找</button>
           <button id="save-all-button" className="plain-button" onClick={() => void saveAll.run()} disabled={savingCount > 0 || batchBusy || !snapshot.documents.some(document => document.dirty)}>全部保存</button>
           <button className="plain-button" onClick={() => void saveDestination()} disabled={!current.canSaveAs || savingCount > 0 || batchBusy} aria-keyshortcuts="Control+Shift+s">另存为</button>
           <button className="plain-button" onClick={() => void saveDestination('copy')} disabled={!current.canSaveAs || savingCount > 0 || batchBusy}>保存副本</button>
@@ -206,6 +237,8 @@ export function App() {
           <label className="toolbar-check"><input type="checkbox" checked={current.closeBrackets}
             onChange={event => documents.setCloseBrackets(current.id, event.currentTarget.checked)} />自动配对</label>
         </div>
+        <FindBar registry={documents} id={current.id} version={current.version} readOnlyReason={current.readOnlyReason}
+          request={findRequest?.id === current.id ? findRequest : null} open={findOpen} onClose={() => setFindOpen(false)} />
         <SaveAllResults />
         <div className="document-tabs" role="tablist" aria-label="打开的文档">
           {snapshot.documents.map((document, index) => <button

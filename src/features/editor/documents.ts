@@ -1,7 +1,8 @@
 import type { EditorState, Text, Transaction } from '@codemirror/state';
+import type { EditorView } from '@codemirror/view';
 import type { DocumentId, OpenDocument, ResultEnvelope, SaveAck, SaveAsAck, TextFormat } from '../../shared/contracts/files';
 import { createEditorState, reconfigureBracketMatching, reconfigureCloseBrackets, reconfigureIndentation,
-  reconfigureLanguage, type IndentWidth } from './editor-state';
+  reconfigureLanguage, setSearchHighlights, type IndentWidth } from './editor-state';
 import { countCharacters, editorMetrics, type EditorMetrics } from './editor-metrics';
 import { detectLanguage, type LanguageId } from './editor-language';
 import { captureExisting, captureDestination, acknowledgeExisting, acknowledgeDestination, readOnlyReason,
@@ -37,12 +38,18 @@ export interface ManagedDocument {
   characterCount: number;
 }
 
+export interface BufferChange {
+  from: number;
+  to: number;
+  insert: string;
+}
+
 interface RegistrySnapshot {
   documents: readonly DocumentSummary[];
   activeId: DocumentId | null;
 }
 
-function failure(code: 'NOT_FOUND' | 'CONFLICT' | 'READ_ONLY' | 'UNSUPPORTED', message: string): ResultEnvelope<never> {
+function failure(code: 'NOT_FOUND' | 'CONFLICT' | 'READ_ONLY' | 'UNSUPPORTED' | 'INVALID_INPUT', message: string): ResultEnvelope<never> {
   return { ok: false, error: { code, message, retryable: false } };
 }
 
@@ -52,6 +59,7 @@ export class DocumentRegistry {
   private readonly metrics = new Map<DocumentId, EditorMetrics>();
   private readonly metricsListeners = new Map<DocumentId, Set<() => void>>();
   private readonly languageGenerations = new Map<DocumentId, number>();
+  private readonly views = new Map<DocumentId, EditorView>();
   private snapshot: RegistrySnapshot = { documents: [], activeId: null };
   private untitledCount = 0;
 
@@ -68,6 +76,13 @@ export class DocumentRegistry {
 
   getMetrics(id: DocumentId): EditorMetrics | null {
     return this.metrics.get(id) ?? null;
+  }
+
+  attachView(id: DocumentId, view: EditorView) {
+    this.views.set(id, view);
+    return () => {
+      if (this.views.get(id) === view) this.views.delete(id);
+    };
   }
 
   readonly subscribeMetrics = (id: DocumentId, listener: () => void) => {
@@ -154,6 +169,47 @@ export class DocumentRegistry {
   setScroll(id: DocumentId, top: number, left: number) {
     const document = this.documents.get(id);
     if (document) document.scroll = { top, left };
+  }
+
+  selectRange(id: DocumentId, from: number, to: number, focus = true): boolean {
+    const view = this.views.get(id);
+    if (!view) return false;
+    const anchor = Math.max(0, Math.min(view.state.doc.length, from));
+    const head = Math.max(0, Math.min(view.state.doc.length, to));
+    view.dispatch({ selection: { anchor, head }, scrollIntoView: true });
+    if (focus) view.focus();
+    return true;
+  }
+
+  focus(id: DocumentId): boolean {
+    const view = this.views.get(id);
+    if (!view) return false;
+    view.focus();
+    return true;
+  }
+
+  highlightSearch(id: DocumentId, ranges: readonly { from: number; to: number; current: boolean }[]) {
+    const view = this.views.get(id);
+    if (view) view.dispatch({ effects: setSearchHighlights.of(ranges) });
+  }
+
+  replaceRanges(id: DocumentId, expectedVersion: number, changes: readonly BufferChange[]): ResultEnvelope<{ version: number }> {
+    const document = this.documents.get(id);
+    const view = this.views.get(id);
+    if (!document || !view) return failure('NOT_FOUND', '文档已关闭。');
+    if (document.summary.readOnlyReason) return failure('READ_ONLY', document.summary.readOnlyReason);
+    if (document.summary.version !== expectedVersion) return failure('CONFLICT', '文档已变化，请重新查找后再替换。');
+    let previousTo = -1;
+    for (const change of changes) {
+      if (!Number.isSafeInteger(change.from) || !Number.isSafeInteger(change.to)
+        || change.from < previousTo || change.to < change.from || change.to > view.state.doc.length) {
+        return failure('INVALID_INPUT', '替换范围无效，请重新查找。');
+      }
+      previousTo = change.to;
+    }
+    view.dispatch({ changes: changes.map(change => ({ ...change })) });
+    const latest = this.documents.get(id);
+    return latest ? { ok: true, value: { version: latest.summary.version } } : failure('NOT_FOUND', '文档已关闭。');
   }
 
   setIndentWidth(id: DocumentId, indentWidth: IndentWidth) {
