@@ -23,6 +23,8 @@
 
 ## 当前恢复点（2026-11-01 14:42，Asia/Shanghai）
 
+- T102.c2.a1：新增Rust SaveAsRequest/SaveAsAck（intent默认save-as、copy可选）和不可Deserialize的新目标授权类型；Native保存选择器才可授权，先规范父目录/验证设备保留名、ADS、非法字符、末尾点/空格、绝对路径/UTF16长度。`cargo test --locked --offline --test save_as` 2 passed、fmt/clippy exit 0。授权不创建文件，已存在目标拒绝并保字节。CONTRACTS先同步字段和取消/绑定语义。当前还未接创建核心或IPC，Release仍为c1；继续a2无覆盖提交。
+
 - T102.b2.4/c1已验证：前端`SaveCoordinator`按文档串行，前一个Ack后捕获后续快照/expectedRevision；失败停止已排队写入，IPC结果未知时重试先stat，不清除新输入dirty。App接保存按钮/CtrlS/进度/错误，bridge运行时校验SaveAck/metadata。typecheck/lint/TS单测17、Web7、Rust全套26、fmt/clippy、Release build及真实桌面1项均exit 0（各命令实际分开运行，未声称新一轮check.ps1整链）。
 - 当前Release：`src-tauri/target/release/featherpad.exe`，9814016 bytes，SHA256 `278489BBBC0B476DB04DDEA7035653B776BCA3F41C697436B347EF8FB45DFBAA`。`.artifacts/T102/native-release.json`记录chooser/multi/draft/save/conflict/delayedAck均true、WebView2 156.0.4314.58和浏览器offline重载。真实OS选取→原生授权→编辑→CtrlS→UTF8/CRLF中文emoji实际字节和journal正文一致；外部修改后CtrlS拒绝且保留内存和磁盘；伪造保存/损坏请求/未知stat拒绝。
 - 原生迟到Ack证据：测试仅利用Tauri现有debug callbacks表延迟交付真实原生返回值，没有伪造IO/结果/grant或生产延迟IPC。实际字节已写入后保持Ack待交付，输入新字后释放原回执，UI仍dirty、磁盘仍是旧快照；下一次CtrlS才写入新字并clean。这不声称是在自然慢磁盘IO期间计时，也不是IME/OS缩放/Win10证据。初次尝试覆盖invoke未生效（框架readonly定义），desktop exit 1；读已锁定Tauri脚本定位后改用debug表，exit 0。截图saved/conflict/late-ack已视觉检查，历史T101/T002证据保留。

@@ -81,7 +81,7 @@ pub struct FileRef {
     pub relative_path: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileMetadata {
     pub display_path: String,
@@ -133,6 +133,51 @@ pub struct SaveAck {
     pub disk_revision: String,
     pub saved_at: String,
     pub size_bytes: u64,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum SaveIntent {
+    #[default]
+    SaveAs,
+    Copy,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SaveAsRequest {
+    pub document_id: String,
+    pub request_id: String,
+    pub document_version: u64,
+    pub text: String,
+    pub format: TextFormat,
+    pub newline_map: Option<NewlineMap>,
+    #[serde(default)]
+    pub intent: SaveIntent,
+}
+
+impl SaveAsRequest {
+    pub fn into_save_request(self, expected_disk_revision: String) -> SaveRequest {
+        SaveRequest {
+            document_id: self.document_id,
+            request_id: self.request_id,
+            document_version: self.document_version,
+            text: self.text,
+            format: self.format,
+            newline_map: self.newline_map,
+            expected_disk_revision,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveAsAck {
+    pub document_id: String,
+    #[serde(rename = "ref")]
+    pub reference: FileRef,
+    pub metadata: FileMetadata,
+    pub ack: SaveAck,
 }
 
 #[derive(Debug, Serialize)]

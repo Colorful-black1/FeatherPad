@@ -10,6 +10,7 @@ pub mod services {
     pub mod save_journal;
     pub mod save_requests;
     pub mod snapshot;
+    pub mod targets;
     pub mod text;
     pub mod windows_file;
 }

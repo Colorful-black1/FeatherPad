@@ -20,6 +20,13 @@ pub struct GrantRegistry {
 }
 
 impl GrantRegistry {
+    // Native save-selector result only; never accept a path through IPC.
+    pub fn authorize_new_target(
+        &self,
+        path: &Path,
+    ) -> Result<super::targets::NewFileTarget, AppError> {
+        super::targets::NewFileTarget::authorize(path)
+    }
     // Only native selectors/validated OS entry points may call this; never an IPC command.
     pub fn register_selection(
         &mut self,
