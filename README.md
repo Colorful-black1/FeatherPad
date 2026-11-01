@@ -2,7 +2,7 @@
 
 **快开文件，专心编辑。** 一个免费、离线、面向常用文档、配置和代码文本的轻量桌面编辑器。
 
-本目录是轻羽桌面编辑器的独立工程。**当前处于M0：Tauri/React工程、CodeMirror只读查看、原生授权服务和测试通路已建立，首个Release已构建；系统选择器完整选取验收未通过，G0尚未通过，编辑/保存等M1–M5功能待实现。** 不把原型、mock或早期Release视为成品。最新状态和证据见 [PROGRESS](tasks/PROGRESS.md)。
+本目录是轻羽桌面编辑器的独立工程。**M0/G0已通过：Tauri/React工程、CodeMirror只读查看、真实系统选择器授权读取、错误拒绝和Release验证通路已实测；当前开始M1，编辑/保存及M2–M5功能待实现。** 不把原型、mock或早期Release视为成品。最新状态和证据见 [PROGRESS](tasks/PROGRESS.md)。
 
 ## 立即开始
 

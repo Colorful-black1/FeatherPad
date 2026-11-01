@@ -1,7 +1,7 @@
 # 开发任务清单
 
-当前阶段：**M0环境与工程骨架进行中**。`[ ]` 待做，`[~]` 进行中，`[x]` 通过验收。禁止仅因代码存在就打勾；关联 [计划](plan.md)、[进度](PROGRESS.md) 与 [完整功能矩阵](../docs/FEATURE-MATRIX.md)。范围写 `F-FILE-001..005` 表示含端点的连续ID。
-执行更新（2026-11-01）：T000–T002已完成。T003拆为a授权registry、b有界读取、c typed IPC/ACL、d只读UI和系统选择器验收；a–c及d的Web层已验证，d的OS选取流程未通过。父任务保持进行中，T004/T005不提前打勾。
+当前阶段：**M0/G0已通过，开始M1**。`[ ]` 待做，`[~]` 进行中，`[x]` 通过验收。禁止仅因代码存在就打勾；关联 [计划](plan.md)、[进度](PROGRESS.md) 与 [完整功能矩阵](../docs/FEATURE-MATRIX.md)。范围写 `F-FILE-001..005` 表示含端点的连续ID。
+执行更新（2026-11-01）：T000–T005/G0通过。真实Release系统选择器→grant→磁盘读取→CodeMirror正例已由受控Win32控件自动化验证；下一项T101。M0不代表MVP或完整v1。
 
 ## 执行约定
 
@@ -25,9 +25,9 @@ Q/R/W/D/B命令已建立；具体通过范围见PROGRESS，命令存在不等于
 | [x] T000 复核已有环境 | — | F-DESK-013 | 版本/组件实查，复用本机工具；新增目录仅E盘，Rust最小编译成功 | scripts/Probe-Environment.ps1、scripts/Enter-Dev.ps1、scripts/Verify-NativeToolchain.ps1、docs/ENVIRONMENT.md | 2026-11-01 探针及原生编译运行exit 0；见PROGRESS |
 | [x] T001 工程与锁文件 | T000 | F-DESK-013 | T001.a精确依赖/脚本策略；T001.b原生骨架/质量检查；bundler工具缓存到E盘 | package.json、pnpm-lock.yaml、src-tauri/Cargo.toml、src-tauri/Cargo.lock、pnpm-workspace.yaml | 最终冻结离线安装、TS/lint/Web构建、Rust fmt/clippy/test exit 0；audit仅1条开发工具moderate已记录可达性；见M0验收 |
 | [x] T002 壳层和品牌 | T001 | app-shell | 轻羽标题、布局、主题token和焦点框；亮暗/缩放可用 | src/app/App.tsx、src/shared/ui/Shell.tsx、src/styles/{tokens,app}.css、src/main.tsx | TS/lint、2项Web测试、1项真实Tauri WebView2测试exit 0；原生内容区1200×800截图；CSS200%通过，OS缩放留T114 |
-| [~] T003 最小IPC与授权 | T001 | F-DESK-013 | a授权/b有界读取/c typed IPC与ACL已验证；d只读UI已实现，OS选取流程待验收 | src/bridge/、src/shared/contracts/files.ts、src-tauri/src/{commands,models}.rs、services/{grants,files}.rs、capabilities/main.json | 3项TS单测、5项Rust原生、4项Web、Release原生IPC拒绝路径通过；系统选择器三次因CU激活失败超时exit 1，未计通过 |
-| [ ] T004 测试与证据通路 | T002,T003 | F-DESK-013 | Web与原生测试明确区分；建立fixture隔离与测试脚本 | vitest.config.ts、playwright.config.ts、tests/desktop/config.ts、tests/fixtures/README.md、scripts/check.ps1 | 各跑一个有意义的正/负例；确认测试失败能阻断 |
-| [ ] T005 G0真实Release | T004 | F-DESK-013 | 真正窗口可启动；断网无dev server也运行 | tasks/PROGRESS.md、docs/ENVIRONMENT.md、scripts/build.ps1 | Q/R/B、原生启动证据；G0通过后继续 |
+| [x] T003 最小IPC与授权 | T001 | F-DESK-013 | a授权/b有界读取/c typed IPC/ACL/d真实系统选取→只读CM全部验证 | src/bridge/、src/shared/contracts/files.ts、src-tauri/src/{commands,models}.rs、services/{grants,files}.rs、capabilities/main.json | 2026-11-01 全量检查exit 0：TS3/Rust原生5/Web4/真实Release1（系统选择器随机fixture及错误worker拒绝）；旧CU失败保留历史 |
+| [x] T004 测试与证据通路 | T002,T003 | F-DESK-013 | Web与原生测试明确区分；建立fixture隔离与测试脚本 | vitest.config.ts、playwright.config.ts、tests/desktop/config.ts、tests/fixtures/README.md、scripts/check.ps1 | 各跑一个有意义的正/负例；确认测试失败能阻断 |
+| [x] T005 G0真实Release | T004 | F-DESK-013 | 真正窗口可启动；断网无dev server也运行 | tasks/PROGRESS.md、docs/ENVIRONMENT.md、package.json、src-tauri/tauri.conf.json | Q/R/B、原生启动证据；G0通过后继续 |
 
 ## M1 MVP（依赖：G0）
 

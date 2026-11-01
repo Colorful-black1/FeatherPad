@@ -9,7 +9,7 @@
 3. [任务清单](tasks/todo.md)：第一个依赖满足的未完成任务；[计划](tasks/plan.md) 给阶段关卡。
 4. 按feature ID只读 [功能矩阵](docs/FEATURE-MATRIX.md)、[能力地图](CAPABILITY-MAP.md) 和相关模块SPEC；跨进程先读 [CONTRACTS](docs/CONTRACTS.md)。UI参考 [UI-DESIGN](design/UI-DESIGN.md)。
 
-当前只有方案、交互设计原型和环境脚本，**没有产品实现，也没有已通过的产品构建/测试**。HTML原型不是CodeMirror/Tauri应用，演示保存不写源文件。M1不是最终完成，用户要求的完整v1必须推进M0–M5全部86项必需功能。
+当前**M0/G0已通过**，有真实Tauri工程、只读CodeMirror、原生授权读取和Release验证证据，下一项按PROGRESS恢复T101；M1及以后尚未完成。HTML原型不是CodeMirror/Tauri应用，演示保存不写源文件。M1不是最终完成，用户要求的完整v1必须推进M0–M5全部86项必需功能。
 
 ## 固定技术与环境
 
@@ -22,7 +22,7 @@ powershell.exe -NoProfile -File .\scripts\Probe-Environment.ps1
 
 **先查`E:\Codeing`和默认目录，优先复用；确实缺失时所有新工具/SDK/浏览器/安装包/缓存只能在`E:\Codeing`下，默认`E:\Codeing\featherpad-dev`。** 不修改系统PATH、不切全局nvm、不自动升级工具链。不能遵守指定目录的安装要停止并报告，不能静默例外。
 
-未来M0建立的命令（现在尚不可执行）：`pnpm dev` / `pnpm dev:web` / `pnpm typecheck` / `pnpm lint` / `pnpm test:unit` / `pnpm test:integration` / `pnpm test:e2e` / `pnpm test:desktop` / `pnpm build` / `pnpm bench:app`；Rust：`cargo fmt --manifest-path src-tauri/Cargo.toml --check`，`cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings`，`cargo test --manifest-path src-tauri/Cargo.toml`。
+M0已建立的命令（bench:app仍待性能阶段创建）：`pnpm dev` / `pnpm dev:web` / `pnpm typecheck` / `pnpm lint` / `pnpm test:unit` / `pnpm test:integration` / `pnpm test:e2e` / `pnpm test:desktop` / `pnpm build` / `pnpm bench:app`；Rust：`cargo fmt --manifest-path src-tauri/Cargo.toml --check`，`cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings`，`cargo test --manifest-path src-tauri/Cargo.toml`。
 
 ## 每轮怎么做
 

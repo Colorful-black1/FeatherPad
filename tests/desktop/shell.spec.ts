@@ -1,12 +1,17 @@
 import { chromium, expect, test } from '@playwright/test';
-import { spawn } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { execFile, spawn } from 'node:child_process';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import path from 'node:path';
+import { promisify } from 'node:util';
+
+const runFile = promisify(execFile);
 
 test('real Tauri WebView2 shell, without a mock bridge', async () => {
-  const verifyChooser = process.env.FEATHERPAD_VERIFY_CHOOSER === '1';
+  const verifyChooser = process.env.FEATHERPAD_VERIFY_CHOOSER !== '0';
+  const chooserAutomation = process.env.FEATHERPAD_CHOOSER_AUTOMATION ?? 'native-controls';
+  if (chooserAutomation !== 'native-controls' && chooserAutomation !== 'manual') throw new Error('Invalid chooser automation mode');
   if (verifyChooser) test.setTimeout(120_000);
   const profile = process.env.FEATHERPAD_DESKTOP_PROFILE ?? 'release';
   if (profile !== 'release' && profile !== 'debug') throw new Error('Invalid desktop build profile');
@@ -81,20 +86,37 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
     await page.screenshot({ path: path.join(evidence, `native-${profile}-dark.png`) });
     if (verifyChooser) {
       const fixture = path.join(dataDir, '中文 fixture.txt');
-      await writeFile(fixture, '原生选择器受控文件\r\nFeatherPad', 'utf8');
-      await writeFile(path.join(evidence, 'chooser-fixture.json'), JSON.stringify({ fixture }));
-      console.log('Native chooser waiting for fixture recorded in .artifacts/T002/chooser-fixture.json');
+      const marker = `FeatherPad ${randomUUID()}`;
+      await writeFile(fixture, `原生选择器受控文件\r\n${marker}`, 'utf8');
+      const manifest = path.join(evidence, 'chooser-fixture.json');
+      const selectionRecord = { fixture, processId: child.pid, workerProcessId: process.pid,
+        fixtureSha256: createHash('sha256').update(await readFile(fixture)).digest('hex'), executable: exe, executableSha256: hash };
+      await writeFile(manifest, JSON.stringify(selectionRecord));
+      const helper = path.join(root, 'scripts', 'Select-ControlledFixture.ps1');
+      if (chooserAutomation === 'native-controls') {
+        const invalidManifest = path.join(evidence, 'chooser-invalid-worker.json');
+        await writeFile(invalidManifest, JSON.stringify({ ...selectionRecord, workerProcessId: 0 }));
+        await expect(runFile('powershell.exe', ['-NoProfile', '-File', helper, '-Manifest', invalidManifest], { windowsHide: true, timeout: 10_000 }))
+          .rejects.toMatchObject({ code: 1, stderr: expect.stringContaining('Test process identity mismatch') });
+      }
       await page.getByRole('button', { name: '打开文件', exact: true }).click();
+      if (chooserAutomation === 'native-controls') {
+        const result = await runFile('powershell.exe', ['-NoProfile', '-File', helper, '-Manifest', manifest], { windowsHide: true, timeout: 25_000 });
+        await writeFile(path.join(evidence, `native-${profile}-chooser-controls.json`), result.stdout.trim());
+      }
       await expect(page.locator('.cm-content')).toContainText('原生选择器受控文件', { timeout: 90_000 });
+      await expect(page.locator('.cm-line')).toHaveText(['原生选择器受控文件', marker]);
       await expect(page.locator('.cm-content')).toHaveAttribute('contenteditable', 'false');
+      expect(createHash('sha256').update(await readFile(fixture)).digest('hex')).toBe(selectionRecord.fixtureSha256);
       await page.screenshot({ path: path.join(evidence, `native-${profile}-file.png`) });
     }
     await writeFile(path.join(evidence, `native-${profile}.json`), JSON.stringify({
       checkedAt: new Date().toISOString(),
-      scope: 'Real Tauri WebView2, CDP test process; OS chooser requires optional explicit interactive verification; no IME/Windows scaling coverage',
+      scope: 'Real Tauri WebView2 and real OS chooser; no mock bridge; no IME/Windows scaling coverage',
       executable: path.relative(root, exe), sha256: hash, pid: child.pid,
       profile, browserVersion: browser.version(), url: page.url(),
       nativeChooserVerified: verifyChooser,
+      chooserAutomation: verifyChooser ? chooserAutomation : 'disabled-explicitly',
       browserOffline: profile === 'release',
       checks: ['native-title', 'native-brand', 'tauri-ipc-present', 'light-theme', 'dark-theme', 'forged-grant-rejected', 'malformed-ref-rejected', 'ungranted-plugin-rejected'],
     }, null, 2));
