@@ -23,6 +23,8 @@
 
 ## 当前恢复点（2026-11-01 14:42，Asia/Shanghai）
 
+- T102.c2.a2：新增`PreparedCreation`真实新文件提交；journal expectedRevision可为null以区分新建与原本空文件，旧String记录仍可读。Native MoveFileExW同目录、无REPLACE_EXISTING/COPY_ALLOWED，目标出现报CONFLICT；持久化/字节核验成功才绑定源DocumentId，copy不绑定。保存错误保留原始行动说明并附receipt/stage。Rust全套32、fmt/clippy exit 0；新增内核禁止覆盖正例再验证后提交。未接新另存IPC/UI，Release仍是c1，继续既有目标/碰撞服务。
+
 - T102.c2.a1：新增Rust SaveAsRequest/SaveAsAck（intent默认save-as、copy可选）和不可Deserialize的新目标授权类型；Native保存选择器才可授权，先规范父目录/验证设备保留名、ADS、非法字符、末尾点/空格、绝对路径/UTF16长度。`cargo test --locked --offline --test save_as` 2 passed、fmt/clippy exit 0。授权不创建文件，已存在目标拒绝并保字节。CONTRACTS先同步字段和取消/绑定语义。当前还未接创建核心或IPC，Release仍为c1；继续a2无覆盖提交。
 
 - T102.b2.4/c1已验证：前端`SaveCoordinator`按文档串行，前一个Ack后捕获后续快照/expectedRevision；失败停止已排队写入，IPC结果未知时重试先stat，不清除新输入dirty。App接保存按钮/CtrlS/进度/错误，bridge运行时校验SaveAck/metadata。typecheck/lint/TS单测17、Web7、Rust全套26、fmt/clippy、Release build及真实桌面1项均exit 0（各命令实际分开运行，未声称新一轮check.ps1整链）。

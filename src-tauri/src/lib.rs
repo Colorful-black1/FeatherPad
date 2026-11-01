@@ -1,6 +1,7 @@
 mod commands;
 pub mod models;
 pub mod services {
+    pub mod create_file;
     pub mod documents;
     pub mod encode;
     pub mod files;

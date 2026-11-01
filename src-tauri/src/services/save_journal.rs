@@ -19,7 +19,7 @@ pub struct SaveManifest {
     pub target: PathBuf,
     pub temporary: PathBuf,
     pub backup: PathBuf,
-    pub expected_revision: String,
+    pub expected_revision: Option<String>,
     pub original_sha256: String,
     pub body_sha256: String,
     pub original_bytes: u64,
@@ -59,14 +59,32 @@ impl SaveJournal {
         before: &DiskSnapshot,
         body: &[u8],
     ) -> Result<Self, AppError> {
+        Self::prepare_target(root, request, &before.path, Some(&before.bytes), body)
+    }
+
+    pub fn prepare_creation(
+        root: &Path,
+        request: &SaveRequest,
+        target: &Path,
+        body: &[u8],
+    ) -> Result<Self, AppError> {
+        Self::prepare_target(root, request, target, None, body)
+    }
+
+    fn prepare_target(
+        root: &Path,
+        request: &SaveRequest,
+        target: &Path,
+        original: Option<&[u8]>,
+        body: &[u8],
+    ) -> Result<Self, AppError> {
         fs::create_dir_all(root).map_err(io_error)?;
         let root = root.canonicalize().map_err(io_error)?;
         let receipt = uuid::Uuid::new_v4().to_string();
         let directory = root.join(&receipt);
         fs::create_dir(&directory).map_err(io_error)?;
         let directory = directory.canonicalize().map_err(io_error)?;
-        let parent = before
-            .path
+        let parent = target
             .parent()
             .ok_or_else(|| AppError::new(ErrorCode::InvalidInput, "目标目录无效。"))?;
         let journal = Self {
@@ -77,13 +95,13 @@ impl SaveJournal {
                 document_id: request.document_id.clone(),
                 request_id: request.request_id.clone(),
                 document_version: request.document_version,
-                target: before.path.clone(),
+                target: target.to_owned(),
                 temporary: parent.join(format!(".featherpad-{receipt}.tmp")),
                 backup: parent.join(format!(".featherpad-{receipt}.bak")),
-                expected_revision: request.expected_disk_revision.clone(),
-                original_sha256: digest(&before.bytes),
+                expected_revision: original.map(|_| request.expected_disk_revision.clone()),
+                original_sha256: digest(original.unwrap_or_default()),
                 body_sha256: digest(body),
-                original_bytes: before.bytes.len() as u64,
+                original_bytes: original.unwrap_or_default().len() as u64,
                 body_bytes: body.len() as u64,
                 format: request.format.clone(),
             },
@@ -93,7 +111,7 @@ impl SaveJournal {
             &serde_json::to_vec(&journal.manifest)
                 .map_err(|_| AppError::new(ErrorCode::Internal, "无法建立保存事务记录。"))?,
         )?;
-        journal.persist("original.bin", &before.bytes)?;
+        journal.persist("original.bin", original.unwrap_or_default())?;
         journal.persist("body.bin", body)?;
         journal.stage(SaveStage::Staged)?;
         Ok(journal)
@@ -110,8 +128,8 @@ impl SaveJournal {
 
     pub fn failure(&self, mut error: AppError, stage: &str) -> AppError {
         error.message = format!(
-            "保存未能确认完成，已保留恢复记录（{}；阶段：{}）。请勿盲目重试。",
-            self.manifest.receipt_id, stage
+            "{} 保存未能确认完成，已保留恢复记录（{}；阶段：{}）。请勿盲目重试。",
+            error.message, self.manifest.receipt_id, stage
         );
         error
     }
