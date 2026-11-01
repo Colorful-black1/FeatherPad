@@ -4,7 +4,7 @@
 
 - 产品名称：**轻羽 FeatherPad**。
 - 当前交付：完整产品方案、86项功能矩阵、模块规格、UI规范与离线交互原型、技术/本机环境文档、M0–M5实现计划、57个开发任务、agent执行入口。
-- 产品代码：**M0/G0及M1/T101通过，T102进行中**。真实Release已有文件保存、新目标首次另存/取消、保存副本、冲突与迟到Ack保护已验证；全部保存、既有目标覆盖的原生交互验收、恢复等仍未完成，G1未通过，更不是完整v1。
+- 产品代码：**M0/G0及M1/T101通过，T102进行中**。真实Release已有文件保存、新目标首次另存/取消、保存副本、全部保存、冲突与迟到Ack保护已验证；既有目标覆盖的原生交互验收、恢复等仍未完成，G1未通过，更不是完整v1。
 - 下一项：**T102 安全保存闭环**；M1通过后继续M2–M5。
 - 本次交付检查：详见 [DELIVERY-CHECK](../docs/DELIVERY-CHECK.md)，不代表产品关卡G0–G5通过。
 
@@ -21,7 +21,14 @@
 | 2026-11-01 / T002 | app-shell | React Shell/App/token/CSS、Web及原生测试 | typecheck/lint exit 0；Web 2 passed；真实WebView2 debug 1 passed | Web与原生范围分开，未测OS对话框 | .artifacts/T002/及docs/acceptance/M0.md | T002通过；下一T003 |
 | 2026-11-01 / T003.a–d（进行中） | F-DESK-013 | Rust models/grants/files/commands、AppManifest ACL、TS contracts/bridge、CodeMirror只读UI、测试与脚本 | typecheck/lint/TS单测3、Rust原生5、Web4、Release smoke1均exit 0；check.ps1 -Desktop exit 0；交互选择器三次超时，后次显式exit 1 | 原生Rust磁盘+junction，真实Release IPC/WebView2，Web mock独立 | docs/acceptance/M0.md；.artifacts/T003；.artifacts/T002/native-release.json | T003未完成OS选取验收，G0不勾选 |
 
-## 当前恢复点（2026-11-01 15:40，Asia/Shanghai）
+## 当前恢复点（2026-11-01 16:05，Asia/Shanghai）
+
+- T102.c3/F-FILE-005全部保存已实现：`save-all.ts`固定开始时dirty文档列表，复用SaveCoordinator逐项保存，不预复制全部正文；单项失败继续其他独立项，原生路径取消/停止后续保存则等当前真实结果后停止。`SaveAllResults.tsx`逐项列成功/失败/取消/未处理与总体进度，支持点击定位文档、关闭回焦；实时显示保存后仍有的新输入及全部当前dirty计数，不伪报全局已保存。App接真实入口并阻止批次期间其他手动保存快捷键；CSS让200%结果列表可滚动且关闭按钮固定可见。规格先记录了批次/取消语义，无新增IPC/依赖。
+- 本切片已执行：Probe-Environment、typecheck/lint、TS30（新增4）、全Web12（新增3）、Release build、原生桌面综合1项均exit 0；200%滚动结果头部小调整后定向Web3 exit 0。Rust生产未改，本切片没有冒称重跑Rust全套；此前37项记录仍保留。真实Release五文档：前两份UTF8/CRLF中文emoji字节保存正确，第三份外部变化CONFLICT且外部字节不变，第四份原生Cancel，第五份未处理；第三/四/五正文和dirty都正确。证据`.artifacts/T102/native-release.json`与`native-release-save-all.png`，以及`save-all-failure-web.png`（Web mock，200% CSS zoom）；截图已视觉检查。
+- 最后CSS调整后Release build/原生桌面综合1项复验exit 0；当前exe为9955840 bytes、SHA256 `41DF8AB018AC8A5821657EE7F381A3D721CCCAB275DED370FBBDA2C4B4372026`。`node scripts/validate-docs.mjs` exit 0，128 files/27 Markdown/141 links/86 features/57 tasks覆盖，无失败；仅文档静态检查，不是产品行为验收。
+- 上轮未提交的另存UI/bridge/controller及原生helper/测试/文档已保存为`432cf33`；本轮重新运行其typecheck/lint/TS26 exit 0后继续，未重建既有工程。当前T102仍进行中：下一原生既有目标覆盖/碰撞与硬链接确认，磁盘满/强杀及T110启动扫描/预算/恢复/关闭保护尚未完成；F-FILE-002授权注册阶段单项失败回归也仍待修复。不标T102/G1通过。
+
+## T102.c2恢复点（历史，2026-11-01 15:40）
 
 - T102.c2新目标另存/副本已接真实UI/IPC：未命名CtrlS进入原生保存选择器，取消保留正文/无标题/dirty；成功后同一DocumentId绑定新路径。CtrlShiftS/另存、保存副本有真实入口；copy成功只显示目标结果，源路径/dirty/undo不改。未知As结果保留原捕获请求，重试同requestId取回结果后再保存较新输入，避免重复选择器/盲写。只读完整UTF8另存到可写路径可继续编辑，mixed/UTF16仍按M1策略只读。
 - 最新检查：typecheck/lint/TS26、Rust全套37、fmt/clippy、Web9、Release build、原生桌面综合1项均exit 0（分开实际运行）。Web9在与Release编译并行时首批5个page.goto 30s超时、尚未进入功能断言，trace本地请求12–15s；编译结束后原配置单独复验9 passed，未修改timeout/worker/断言。以后将Web验证与原生编译分开，独立只读检查可并行。

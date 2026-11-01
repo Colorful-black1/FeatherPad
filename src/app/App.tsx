@@ -5,12 +5,16 @@ import { files } from '../bridge/files';
 import { EditorDocument } from '../features/editor/EditorDocument';
 import { documents } from '../features/editor/documents';
 import { saves } from '../features/editor/save';
+import { saveAll } from '../features/editor/save-all';
+import { SaveAllResults } from '../features/editor/SaveAllResults';
 import type { DocumentId } from '../shared/contracts/files';
 
 export function App() {
   const [dark, setDark] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches);
   const [sidebarOpen, setSidebarOpen] = useState(() => window.matchMedia('(min-width: 1100px)').matches);
   const snapshot = useSyncExternalStore(documents.subscribe, documents.getSnapshot);
+  const batch = useSyncExternalStore(saveAll.subscribe, saveAll.getSnapshot);
+  const batchBusy = batch.phase === 'running' || batch.phase === 'cancelling';
   const current = snapshot.documents.find(document => document.id === snapshot.activeId);
   const [autoFocus, setAutoFocus] = useState(true);
   const [folderChosen, setFolderChosen] = useState(false);
@@ -46,6 +50,7 @@ export function App() {
   const newFile = useCallback(() => { setAutoFocus(true); documents.createUntitled(); }, [setAutoFocus]);
 
   const saveCurrent = useCallback(async () => {
+    if (saveAll.getSnapshot().phase === 'running' || saveAll.getSnapshot().phase === 'cancelling') return;
     const id = documents.getSnapshot().activeId;
     if (!id) return;
     setError(null);
@@ -57,6 +62,7 @@ export function App() {
   }, [setError, setSavingCount]);
 
   const saveDestination = useCallback(async (intent: 'save-as' | 'copy' = 'save-as') => {
+    if (saveAll.getSnapshot().phase === 'running' || saveAll.getSnapshot().phase === 'cancelling') return;
     const id = documents.getSnapshot().activeId;
     if (!id) return;
     setError(null);
@@ -115,7 +121,7 @@ export function App() {
       onToggleSidebar={() => setSidebarOpen(open => !open)}
       onToggleTheme={() => setDark(value => !value)}
       sidebar={<><h2 className="sidebar-title">资源管理器</h2><p className="sidebar-empty">{folderChosen ? '文件夹已授权' : '尚未打开文件夹'}</p></>}
-      status={<><span>{savingCount > 0 ? '正在保存…' : busy ? '正在打开…' : current ? current.readOnlyReason ? '只读' : current.dirty ? '未保存修改' : current.displayPath ? '未修改' : '未命名' : '就绪'}</span><span className="status-end">{current ? `${current.format.encoding.toUpperCase()}${current.format.bom === 'none' ? '' : ' BOM'} · ${current.format.lineEnding.toUpperCase()}` : '轻羽 FeatherPad'}</span></>}
+      status={<><span>{batchBusy ? '正在全部保存…' : savingCount > 0 ? '正在保存…' : busy ? '正在打开…' : current ? current.readOnlyReason ? '只读' : current.dirty ? '未保存修改' : current.displayPath ? '未修改' : '未命名' : '就绪'}</span><span className="status-end">{current ? `${current.format.encoding.toUpperCase()}${current.format.bom === 'none' ? '' : ' BOM'} · ${current.format.lineEnding.toUpperCase()}` : '轻羽 FeatherPad'}</span></>}
     >
       {error && <div className="notice error-notice" role="alert"><span>{error}</span><button onClick={() => setError(null)}>关闭提示</button></div>}
       {notice && <div className="notice error-notice" aria-live="polite"><span>{notice}</span><button onClick={() => setNotice(null)}>关闭提示</button></div>}
@@ -123,10 +129,12 @@ export function App() {
         <div className="document-toolbar" aria-label="文件操作">
           <button className="plain-button" onClick={newFile} aria-keyshortcuts="Control+n">新建文本</button>
           <button className="plain-button" onClick={() => void openFile()} disabled={busy} aria-keyshortcuts="Control+o">打开文件</button>
-          <button className="plain-button" onClick={() => void saveCurrent()} disabled={!!current.readOnlyReason || savingCount > 0} aria-keyshortcuts="Control+s">保存</button>
-          <button className="plain-button" onClick={() => void saveDestination()} disabled={savingCount > 0} aria-keyshortcuts="Control+Shift+s">另存为</button>
-          <button className="plain-button" onClick={() => void saveDestination('copy')} disabled={savingCount > 0}>保存副本</button>
+          <button className="plain-button" onClick={() => void saveCurrent()} disabled={!!current.readOnlyReason || savingCount > 0 || batchBusy} aria-keyshortcuts="Control+s">保存</button>
+          <button id="save-all-button" className="plain-button" onClick={() => void saveAll.run()} disabled={savingCount > 0 || batchBusy || !snapshot.documents.some(document => document.dirty)}>全部保存</button>
+          <button className="plain-button" onClick={() => void saveDestination()} disabled={savingCount > 0 || batchBusy} aria-keyshortcuts="Control+Shift+s">另存为</button>
+          <button className="plain-button" onClick={() => void saveDestination('copy')} disabled={savingCount > 0 || batchBusy}>保存副本</button>
         </div>
+        <SaveAllResults />
         <div className="document-tabs" role="tablist" aria-label="打开的文档">
           {snapshot.documents.map((document, index) => <button
             key={document.id} id={`tab-${document.id}`} role="tab" aria-selected={document.id === snapshot.activeId}
