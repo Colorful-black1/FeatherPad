@@ -1,4 +1,4 @@
-import type { DocumentId, FileRef, OpenDocument, SaveAck, SaveRequest } from '../shared/contracts/files';
+import type { DocumentId, FileRef, OpenDocument, SaveAck, SaveAsAck, SaveAsRequest, SaveRequest } from '../shared/contracts/files';
 import { callCommand, isRecord } from './invoke';
 
 const nonemptyString = (value: unknown): value is string => typeof value === 'string' && value.length > 0;
@@ -13,6 +13,12 @@ export function isFileMetadata(value: unknown): value is OpenDocument['metadata'
 export function isSaveAck(value: unknown): value is SaveAck {
   return isRecord(value) && safeCount(value.documentVersion) && safeCount(value.sizeBytes)
     && nonemptyString(value.diskRevision) && nonemptyString(value.savedAt) && Number.isFinite(Date.parse(value.savedAt));
+}
+
+export function isSaveAsAck(value: unknown): value is SaveAsAck {
+  return isRecord(value) && nonemptyString(value.documentId) && isFileRef(value.ref)
+    && isFileMetadata(value.metadata) && isSaveAck(value.ack)
+    && value.metadata.diskRevision === value.ack.diskRevision && value.metadata.sizeBytes === value.ack.sizeBytes;
 }
 
 export function isFileRef(value: unknown): value is FileRef {
@@ -46,5 +52,6 @@ export const files = {
     isRecord(value) && (value.grant === null || isFileRef(value.grant))),
   open: (ref: FileRef) => callCommand('open_document', { ref }, isOpenDocument),
   save: (request: SaveRequest) => callCommand('save_document', { ...request }, isSaveAck),
+  saveAs: (request: SaveAsRequest) => callCommand('save_document_as', { ...request }, isSaveAsAck),
   stat: (documentId: DocumentId) => callCommand('stat_document', { documentId }, isFileMetadata),
 };

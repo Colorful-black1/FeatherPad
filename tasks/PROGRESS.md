@@ -4,7 +4,7 @@
 
 - 产品名称：**轻羽 FeatherPad**。
 - 当前交付：完整产品方案、86项功能矩阵、模块规格、UI规范与离线交互原型、技术/本机环境文档、M0–M5实现计划、57个开发任务、agent执行入口。
-- 产品代码：**M0/G0及M1/T101通过，T102进行中**。真实Release已有文件CtrlS受保护保存、冲突拒绝、迟到Ack保留新输入已验证；另存/副本/全部保存、恢复等仍未完成，G1未通过，更不是完整v1。
+- 产品代码：**M0/G0及M1/T101通过，T102进行中**。真实Release已有文件保存、新目标首次另存/取消、保存副本、冲突与迟到Ack保护已验证；全部保存、既有目标覆盖的原生交互验收、恢复等仍未完成，G1未通过，更不是完整v1。
 - 下一项：**T102 安全保存闭环**；M1通过后继续M2–M5。
 - 本次交付检查：详见 [DELIVERY-CHECK](../docs/DELIVERY-CHECK.md)，不代表产品关卡G0–G5通过。
 
@@ -21,7 +21,15 @@
 | 2026-11-01 / T002 | app-shell | React Shell/App/token/CSS、Web及原生测试 | typecheck/lint exit 0；Web 2 passed；真实WebView2 debug 1 passed | Web与原生范围分开，未测OS对话框 | .artifacts/T002/及docs/acceptance/M0.md | T002通过；下一T003 |
 | 2026-11-01 / T003.a–d（进行中） | F-DESK-013 | Rust models/grants/files/commands、AppManifest ACL、TS contracts/bridge、CodeMirror只读UI、测试与脚本 | typecheck/lint/TS单测3、Rust原生5、Web4、Release smoke1均exit 0；check.ps1 -Desktop exit 0；交互选择器三次超时，后次显式exit 1 | 原生Rust磁盘+junction，真实Release IPC/WebView2，Web mock独立 | docs/acceptance/M0.md；.artifacts/T003；.artifacts/T002/native-release.json | T003未完成OS选取验收，G0不勾选 |
 
-## 当前恢复点（2026-11-01 14:42，Asia/Shanghai）
+## 当前恢复点（2026-11-01 15:40，Asia/Shanghai）
+
+- T102.c2新目标另存/副本已接真实UI/IPC：未命名CtrlS进入原生保存选择器，取消保留正文/无标题/dirty；成功后同一DocumentId绑定新路径。CtrlShiftS/另存、保存副本有真实入口；copy成功只显示目标结果，源路径/dirty/undo不改。未知As结果保留原捕获请求，重试同requestId取回结果后再保存较新输入，避免重复选择器/盲写。只读完整UTF8另存到可写路径可继续编辑，mixed/UTF16仍按M1策略只读。
+- 最新检查：typecheck/lint/TS26、Rust全套37、fmt/clippy、Web9、Release build、原生桌面综合1项均exit 0（分开实际运行）。Web9在与Release编译并行时首批5个page.goto 30s超时、尚未进入功能断言，trace本地请求12–15s；编译结束后原配置单独复验9 passed，未修改timeout/worker/断言。以后将Web验证与原生编译分开，独立只读检查可并行。
+- 当前Release：`src-tauri/target/release/featherpad.exe`，9954304 bytes，SHA256 `8AE2488D45561ADB6D290D0D9FA194A830C7482F27E9CF28D8D4989E3CFD72BD`。`.artifacts/T102/native-release.json`的newSaveAs/cancel/copy及已有save/conflict/delayedAck均true，WebView2 156.0.4314.58，浏览器offline重载。真实保存选择器两次路径选择写UTF8/CRLF中文emoji，副本写入新输入而源文件仍旧字节/源仍dirty，后续普通CtrlS才写源；源标题/路径保持，IPC提交path字段拒绝。`native-release-save-as-copy.png`已视觉检查。
+- 原生辅助器调试：cancel已通过后，save查不到1148文件名控件，desktop exit 1；增加有限初始化等待仍失败，诊断只记录owned进程class/ID/parent ID（不采集文件列表文字）。实测保存对话框Edit1001/ComboBox0，与打开1148容器不同，按action分别精确匹配且保持PID/exe/hash/根校验后通过。helper.save只准不存在的单一受控目标，cancel只操作该测试进程Cancel按钮。没有生产测试IPC或虚构保存。
+- 下一：T102.c3全部保存的逐项结果/进度、取消后未处理与失败仍dirty；补现有目标覆盖/碰撞和硬链接确认的原生交互（覆盖核心Rust已验、普通CtrlS多硬链接目前仍安全拒绝）。还需磁盘满/强杀、T110事务扫描/预算与恢复/关闭保护，不标T102/G1通过。自审另记F-FILE-002后续回归：choose_files授权注册当前collect会在单项失败时返回整批错误，须保留其余成功授权并逐项反馈，不能只凭Web mock的open阶段单项失败算完整能力。
+
+## T102.c2实施切片记录（历史，2026-11-01）
 
 - T102.c2.e前端快照/绑定已验证：保存状态逻辑移到`document-save-state.ts`，registry保持唯一CM所有权；新增As快照/baseSource和Ack绑定检查，copy不能更新源baseline，mixed按原逐行映射捕获。CodeMirror editability用Compartment更新，另存到可写UTF8后可继续编辑且不清undo/选区。typecheck/lint/TS22 exit 0（新增5项），旧17项保存/queue回归通过。前端接口增加SaveAsRequest/Ack；下一按钮/快捷键/bridge与原生新建保存/取消验收。
 

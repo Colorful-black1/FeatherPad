@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { isOpenDocument } from '../../bridge/files';
-import type { DiskRevision, ResultEnvelope, SaveAck, SaveRequest } from '../../shared/contracts/files';
+import type { DiskRevision, ResultEnvelope, SaveAck, SaveAsAck, SaveAsRequest, SaveRequest } from '../../shared/contracts/files';
 import { DocumentRegistry } from './documents';
 import { SaveCoordinator } from './save';
 
@@ -68,4 +68,66 @@ it('checks disk before retrying an unknown outcome and never overwrites a change
   expect(writes).toBe(1);
   expect(stats).toBe(1);
   expect(registry.getDocument(id)!.source?.metadata.diskRevision).toBe('rev-0');
+});
+
+function destination(request: SaveAsRequest): ResultEnvelope<SaveAsAck> {
+  const { registry, id } = opened();
+  const source = registry.getDocument(id)!.source!;
+  const saved: SaveAck = { documentVersion: request.documentVersion, diskRevision: 'as-rev-1' as DiskRevision, sizeBytes: 12, savedAt: '2026-11-01T00:00:00Z' };
+  return { ok: true, value: { documentId: request.documentId, ref: source.ref,
+    metadata: { ...source.metadata, displayPath: '新文件.txt', diskRevision: saved.diskRevision, sizeBytes: saved.sizeBytes }, ack: saved } };
+}
+
+it('routes untitled CtrlS to save-as and cancellation leaves the draft intact', async () => {
+  const registry = new DocumentRegistry();
+  const id = registry.createUntitled();
+  const state = registry.getDocument(id)!.state;
+  registry.commit(id, [state.update({ changes: { from: 0, insert: 'unsaved draft' } })]);
+  let calls = 0;
+  const coordinator = new SaveCoordinator(registry, undefined, undefined, async request => {
+    calls++;
+    return calls === 1 ? { ok: false, error: { code: 'CANCELLED', message: 'controlled cancel', retryable: false } } : destination(request);
+  });
+  expect(await coordinator.save(id)).toMatchObject({ ok: false, error: { code: 'CANCELLED' } });
+  expect(registry.getDocument(id)!.source).toBeNull();
+  expect(registry.getDocument(id)!.state.doc.toString()).toBe('unsaved draft');
+  expect(registry.getDocument(id)!.summary.dirty).toBe(true);
+  expect((await coordinator.save(id)).ok).toBe(true);
+  expect(registry.getDocument(id)!.summary).toMatchObject({ title: '新文件.txt', dirty: false });
+  expect(calls).toBe(2);
+});
+
+it('copy succeeds without changing the source binding, dirty state or editor state', async () => {
+  const { registry, id } = opened();
+  const original = registry.getDocument(id)!.state;
+  registry.commit(id, [original.update({ changes: { from: 0, insert: 'copy ' } })]);
+  const before = registry.getDocument(id)!.state;
+  const coordinator = new SaveCoordinator(registry, undefined, undefined, async request => {
+    expect(request.intent).toBe('copy');
+    return destination(request);
+  });
+  expect((await coordinator.saveAs(id, 'copy')).ok).toBe(true);
+  expect(registry.getDocument(id)!.state).toBe(before);
+  expect(registry.getDocument(id)!.summary).toMatchObject({ title: 'fixture.txt', dirty: true });
+  expect(registry.getDocument(id)!.source?.metadata.diskRevision).toBe('rev-0');
+});
+
+it('retries an unknown save-as with the same request before saving later input', async () => {
+  const registry = new DocumentRegistry();
+  const id = registry.createUntitled();
+  let state = registry.getDocument(id)!.state;
+  registry.commit(id, [state.update({ changes: { from: 0, insert: 'first' } })]);
+  const requests: SaveAsRequest[] = [];
+  const writes: SaveRequest[] = [];
+  const coordinator = new SaveCoordinator(registry, async request => { writes.push(request); return ack(request.documentVersion, 'rev-final'); }, undefined,
+    async request => { requests.push(request); if (requests.length === 1) throw new Error('controlled lost reply'); return destination(request); });
+  expect(await coordinator.save(id)).toMatchObject({ ok: false, error: { code: 'IPC_UNAVAILABLE' } });
+  state = registry.getDocument(id)!.state;
+  registry.commit(id, [state.update({ changes: { from: state.doc.length, insert: ' newer' } })]);
+  expect((await coordinator.save(id)).ok).toBe(true);
+  expect(requests).toHaveLength(2);
+  expect(requests[1]?.requestId).toBe(requests[0]?.requestId);
+  expect(requests[1]?.text).toBe('first');
+  expect(writes[0]).toMatchObject({ text: 'first newer', expectedDiskRevision: 'as-rev-1' });
+  expect(registry.getDocument(id)!.summary.dirty).toBe(false);
 });

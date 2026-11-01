@@ -74,16 +74,19 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
       });
       const malformedSave = await native.invoke('save_document', { documentId: null, unexpected: true });
       const unknownStat = await native.invoke('stat_document', { documentId: 'unknown-document' });
+      const forgedDestination = await native.invoke('save_document_as', { documentId: crypto.randomUUID(), requestId: crypto.randomUUID(), documentVersion: 1,
+        text: 'controlled denied path', format: { encoding: 'utf-8', bom: 'none', lineEnding: 'lf' }, path: 'ungranted.txt' });
       let ungrantedPluginRejected = false;
       try { await native.invoke('plugin:fs|read_text_file', { path: 'ungranted-fixture.txt', options: {} }); }
       catch { ungrantedPluginRejected = true; }
-      return { forged, malformed, forgedSave, malformedSave, unknownStat, ungrantedPluginRejected };
+      return { forged, malformed, forgedSave, malformedSave, unknownStat, forgedDestination, ungrantedPluginRejected };
     });
     expect(rejected.forged).toMatchObject({ ok: false, error: { code: 'OUT_OF_SCOPE' } });
     expect(rejected.malformed).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
     expect(rejected.forgedSave).toMatchObject({ ok: false, error: { code: 'NOT_FOUND' } });
     expect(rejected.malformedSave).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
     expect(rejected.unknownStat).toMatchObject({ ok: false, error: { code: 'NOT_FOUND' } });
+    expect(rejected.forgedDestination).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
     expect(rejected.ungrantedPluginRejected).toBe(true);
     if (profile === 'release') {
       expect(page.url()).toMatch(/^https?:\/\/tauri\.localhost\//);
@@ -209,8 +212,43 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
       await page.screenshot({ path: path.join(evidence, `native-${profile}-conflict.png`) });
       await page.keyboard.press('Control+n');
       await expect(page.getByRole('tab', { name: '无标题 1', exact: true })).toHaveAttribute('aria-selected', 'true');
-      await page.keyboard.insertText('原生中文😀草稿');
-      await expect(page.locator('.cm-content')).toHaveText('原生中文😀草稿');
+      await page.keyboard.insertText('原生中文😀草稿\n第二行');
+      await expect(page.locator('.cm-line')).toHaveText(['原生中文😀草稿', '第二行']);
+      if (chooserAutomation === 'native-controls') {
+        async function chooseDestination(action: 'save' | 'cancel', destination?: string) {
+          await writeFile(manifest, JSON.stringify({ ...selectionRecord, action, fixtures: destination ? [{ path: destination }] : [] }));
+          const result = await runFile('powershell.exe', ['-NoProfile', '-File', helper, '-Manifest', manifest], { windowsHide: true, timeout: 25_000 });
+          await writeFile(path.join(evidence, `native-${profile}-${action}-controls.json`), result.stdout.trim());
+        }
+        await page.keyboard.press('Control+s');
+        await expect(page.getByRole('status')).toContainText('正在保存');
+        await chooseDestination('cancel');
+        await expect(page.getByRole('status')).toContainText('未保存修改');
+        await expect(page.getByRole('tab', { name: /无标题 1/ })).toHaveAttribute('aria-selected', 'true');
+        await expect(page.locator('.cm-line')).toHaveText(['原生中文😀草稿', '第二行']);
+        await expect(page.getByRole('alert')).toHaveCount(0);
+        const firstSave = path.join(dataDir, '首次 保存😀.txt');
+        await page.keyboard.press('Control+s');
+        await chooseDestination('save', firstSave);
+        await expect(page.getByRole('status')).toContainText('未修改');
+        await expect(page.getByRole('tab', { name: '首次 保存😀.txt', exact: true })).toHaveAttribute('aria-selected', 'true');
+        expect(await readFile(firstSave, 'utf8')).toBe('原生中文😀草稿\r\n第二行');
+        await page.locator('.cm-content').focus();
+        await page.keyboard.press('Control+End');
+        await page.keyboard.insertText(' 副本输入');
+        const copy = path.join(dataDir, '副本 保存😀.txt');
+        await page.getByRole('button', { name: '保存副本', exact: true }).click();
+        await chooseDestination('save', copy);
+        await expect(page.getByText(`副本已保存：${copy}`, { exact: true })).toBeVisible();
+        await expect(page.getByRole('status')).toContainText('未保存修改');
+        await expect(page.getByRole('tab', { name: /首次 保存😀.txt/ })).toHaveAttribute('aria-selected', 'true');
+        expect(await readFile(firstSave, 'utf8')).toBe('原生中文😀草稿\r\n第二行');
+        expect(await readFile(copy, 'utf8')).toBe('原生中文😀草稿\r\n第二行 副本输入');
+        await page.screenshot({ path: path.join(evidence, `native-${profile}-save-as-copy.png`) });
+        await page.keyboard.press('Control+s');
+        await expect(page.getByRole('status')).toContainText('未修改');
+        expect(await readFile(firstSave, 'utf8')).toBe('原生中文😀草稿\r\n第二行 副本输入');
+      }
       expect(createHash('sha256').update(await readFile(second)).digest('hex')).toBe(fixtureRecords[1]?.sha256);
       expect(createHash('sha256').update(await readFile(fixture)).digest('hex')).not.toBe(fixtureRecords[0]?.sha256);
       await page.screenshot({ path: path.join(evidence, `native-${profile}-documents.png`) });
@@ -225,9 +263,11 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
       nativeSaveVerified: verifyChooser,
       nativeConflictVerified: verifyChooser,
       nativeDelayedAckVerified: verifyChooser,
+      nativeNewSaveAsAndCancelVerified: verifyChooser && chooserAutomation === 'native-controls',
+      nativeCopyVerified: verifyChooser && chooserAutomation === 'native-controls',
       chooserAutomation: verifyChooser ? chooserAutomation : 'disabled-explicitly',
       browserOffline: profile === 'release',
-      checks: ['native-title', 'native-brand', 'tauri-ipc-present', 'light-theme', 'dark-theme', 'forged-grant-rejected', 'malformed-ref-rejected', 'forged-save-rejected', 'malformed-save-rejected', 'unknown-stat-rejected', 'ungranted-plugin-rejected'],
+      checks: ['native-title', 'native-brand', 'tauri-ipc-present', 'light-theme', 'dark-theme', 'forged-grant-rejected', 'malformed-ref-rejected', 'forged-save-rejected', 'malformed-save-rejected', 'unknown-stat-rejected', 'ipc-destination-path-rejected', 'ungranted-plugin-rejected'],
     }, null, 2));
   } finally {
     try { await browser?.close(); }

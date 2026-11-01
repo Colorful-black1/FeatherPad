@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { isFileRef, isOpenDocument, isSaveAck } from './files';
+import { isFileRef, isOpenDocument, isSaveAck, isSaveAsAck } from './files';
 
 const valid = {
   documentId: 'document-fixture', ref: { grantId: 'fixture-grant', relativePath: '' },
@@ -24,4 +24,12 @@ it('rejects damaged save acknowledgements instead of declaring a buffer saved', 
   expect(isSaveAck({ ...ack, documentVersion: Number.MAX_SAFE_INTEGER + 1 })).toBe(false);
   expect(isSaveAck({ ...ack, savedAt: 'invalid' })).toBe(false);
   expect(isSaveAck({ ...ack, sizeBytes: -1 })).toBe(false);
+});
+
+it('requires save-as metadata and Ack to describe the same saved bytes', () => {
+  const result = { documentId: valid.documentId, ref: valid.ref, metadata: valid.metadata,
+    ack: { documentVersion: 1, diskRevision: valid.metadata.diskRevision, sizeBytes: valid.metadata.sizeBytes, savedAt: valid.metadata.modifiedAt } };
+  expect(isSaveAsAck(result)).toBe(true);
+  expect(isSaveAsAck({ ...result, ack: { ...result.ack, diskRevision: 'different' } })).toBe(false);
+  expect(isSaveAsAck({ ...result, ack: { ...result.ack, sizeBytes: 99 } })).toBe(false);
 });

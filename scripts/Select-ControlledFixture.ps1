@@ -18,26 +18,38 @@ if (-not $manifestPath.StartsWith($artifactRoot + '\', [StringComparison]::Ordin
     throw 'Fixture manifest is outside the controlled test root.'
 }
 $record = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$action = if ($record.action) { [string]$record.action } else { 'open' }
+if ($action -notin @('open', 'save', 'cancel')) { throw 'Unexpected native chooser action.' }
 $fixtures = @($record.fixtures)
-if ($fixtures.Count -lt 1 -or $fixtures.Count -gt 8) { throw 'Unexpected chooser fixture count.' }
+if (($action -eq 'cancel' -and $fixtures.Count -ne 0) -or ($action -ne 'cancel' -and ($fixtures.Count -lt 1 -or $fixtures.Count -gt 8)) -or ($action -eq 'save' -and $fixtures.Count -ne 1)) { throw 'Unexpected chooser fixture count.' }
 $verified = @()
 foreach ($fixture in $fixtures) {
     $fixturePath = [IO.Path]::GetFullPath([string]$fixture.path)
     if (-not $fixturePath.StartsWith($artifactRoot + '\webview2-', [StringComparison]::OrdinalIgnoreCase)) {
         throw 'Fixture is outside the generated WebView test directory.'
     }
-    $item = Get-Item -LiteralPath $fixturePath
-    if ($item.Length -gt 1024 -or $item.PSIsContainer) { throw 'Unexpected chooser fixture.' }
+    if ($action -eq 'save') {
+        if (Test-Path -LiteralPath $fixturePath) { throw 'Controlled new save destination already exists.' }
+        $item = Get-Item -LiteralPath (Split-Path -Parent $fixturePath)
+        if (-not $item.PSIsContainer) { throw 'Controlled destination parent is not a directory.' }
+    } else {
+        $item = Get-Item -LiteralPath $fixturePath
+        if ($item.Length -gt 1024 -or $item.PSIsContainer) { throw 'Unexpected chooser fixture.' }
+    }
     $ancestor = $item
     while ($ancestor.FullName -ne $projectRoot) {
         if (($ancestor.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'Fixture path contains a reparse point.' }
         $ancestor = Get-Item -LiteralPath (Split-Path -Parent $ancestor.FullName)
     }
-    $fixtureHash = Get-ControlledHash $fixturePath
-    if ($fixtureHash -ne $fixture.sha256) { throw 'Fixture hash mismatch.' }
+    $fixtureHash = $null
+    if ($action -eq 'open') {
+        $fixtureHash = Get-ControlledHash $fixturePath
+        if ($fixtureHash -ne $fixture.sha256) { throw 'Fixture hash mismatch.' }
+    }
     $verified += [pscustomobject]@{ path=$fixturePath; sha256=$fixtureHash }
 }
 $selectionText = ($verified | ForEach-Object { '"' + $_.path + '"' }) -join ' '
+if ($action -eq 'save') { $selectionText = $verified[0].path }
 if ($selectionText.Length -gt 32000) { throw 'Combined fixture paths exceed the controlled limit.' }
 $expectedExe = [IO.Path]::GetFullPath([string]$record.executable)
 if ($expectedExe -ne (Join-Path $projectRoot 'src-tauri\target\release\featherpad.exe') -and
@@ -77,7 +89,7 @@ public static class FeatherPadChooserControls {
         uint actual; if (window == IntPtr.Zero || GetWindowThreadProcessId(window, out actual) == 0 || actual != expected)
             throw new InvalidOperationException("Native chooser process identity changed.");
     }
-    public static void Select(int processId, string fixture) {
+    public static void Select(int processId, string fixture, bool cancel, bool saving) {
         var dialogs = new List<IntPtr>();
         var deadline = DateTime.UtcNow.AddSeconds(15);
         do {
@@ -91,9 +103,23 @@ public static class FeatherPadChooserControls {
         } while (dialogs.Count == 0 && DateTime.UtcNow < deadline);
         if (dialogs.Count != 1) throw new InvalidOperationException("Expected exactly one owned native file dialog.");
         var dialog = dialogs[0]; RequireOwned(dialog, processId);
+        if (cancel) {
+            var button = GetDlgItem(dialog, 2); RequireOwned(button, processId);
+            if (Class(button) != "Button" || !IsWindowEnabled(button)) throw new InvalidOperationException("Native cancel button is not enabled.");
+            IntPtr receipt;
+            if (Command(dialog, 0x0111, (IntPtr)2, button, 2, 5000, out receipt) == IntPtr.Zero) throw new InvalidOperationException("Native cancel command timed out.");
+            return;
+        }
         var edits = new List<IntPtr>();
+        var editDeadline = DateTime.UtcNow.AddSeconds(5);
+        do {
+        edits.Clear();
         EnumChildWindows(dialog, delegate(IntPtr window, IntPtr unused) {
             if (Class(window) == "Edit") {
+                if (saving) {
+                    if (GetDlgCtrlID(window) == 1001 && Class(GetParent(window)) == "ComboBox") edits.Add(window);
+                    return true;
+                }
                 var ancestor = window;
                 for (var depth = 0; depth < 8 && ancestor != dialog && ancestor != IntPtr.Zero; depth++) {
                     if (GetDlgCtrlID(ancestor) == 1148) { edits.Add(window); break; }
@@ -102,7 +128,16 @@ public static class FeatherPadChooserControls {
             }
             return true;
         }, IntPtr.Zero);
-        if (edits.Count != 1) throw new InvalidOperationException("Expected exactly one native filename Edit control.");
+        if (edits.Count == 0) Thread.Sleep(100);
+        } while (edits.Count == 0 && DateTime.UtcNow < editDeadline);
+        if (edits.Count != 1) {
+            var controls = new List<string>();
+            EnumChildWindows(dialog, delegate(IntPtr window, IntPtr unused) {
+                if (controls.Count < 100) controls.Add(Class(window) + ":" + GetDlgCtrlID(window) + "/" + GetDlgCtrlID(GetParent(window)));
+                return true;
+            }, IntPtr.Zero);
+            throw new InvalidOperationException("Expected exactly one native filename Edit control. Controls: " + String.Join("|", controls));
+        }
         var edit = edits[0]; var open = GetDlgItem(dialog, 1);
         RequireOwned(edit, processId); RequireOwned(open, processId);
         if (Class(open) != "Button" || !IsWindowEnabled(dialog) || !IsWindowEnabled(edit) || !IsWindowEnabled(open)
@@ -120,5 +155,5 @@ public static class FeatherPadChooserControls {
     }
 }
 "@
-[FeatherPadChooserControls]::Select([int]$record.processId, $selectionText)
-[ordered]@{ scope='owned native chooser Win32 controls'; processId=[int]$record.processId; fixtureHashes=@($verified | ForEach-Object { $_.sha256 }); valueVerified=$true; openInvoked=$true } | ConvertTo-Json -Compress
+[FeatherPadChooserControls]::Select([int]$record.processId, $selectionText, ($action -eq 'cancel'), ($action -eq 'save'))
+[ordered]@{ scope='owned native chooser Win32 controls'; processId=[int]$record.processId; action=$action; fixtureHashes=@($verified | ForEach-Object { $_.sha256 }); valueVerified=($action -ne 'cancel'); commandInvoked=$true } | ConvertTo-Json -Compress

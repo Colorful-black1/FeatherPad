@@ -80,6 +80,7 @@ export function acknowledgeDestination(document: ManagedDocument | undefined, ca
   if (result.documentId !== request.documentId || result.ack.documentVersion !== request.documentVersion
     || result.ack.documentVersion < document.savedVersion || result.ack.documentVersion > document.summary.version
     || result.metadata.diskRevision !== result.ack.diskRevision
+    || result.metadata.sizeBytes !== result.ack.sizeBytes
     || (current?.metadata.diskRevision ?? null) !== (baseSource?.revision ?? null)
     || (current?.ref.grantId ?? null) !== (baseSource?.ref.grantId ?? null)
     || (current?.ref.relativePath ?? null) !== (baseSource?.ref.relativePath ?? null)) {

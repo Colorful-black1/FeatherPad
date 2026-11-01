@@ -160,7 +160,7 @@ function destinationAck(id: DocumentId, version: number): SaveAsAck {
   const source = fixture();
   const ack = acknowledgement(version, 'as-revision');
   return { documentId: id, ref: source.ref,
-    metadata: { ...source.metadata, displayPath: 'E:\\fixtures\\另存 中文.txt', isReadOnly: false, diskRevision: ack.diskRevision }, ack };
+    metadata: { ...source.metadata, displayPath: 'E:\\fixtures\\另存 中文.txt', isReadOnly: false, diskRevision: ack.diskRevision, sizeBytes: ack.sizeBytes }, ack };
 }
 
 it('binds the first destination only on Ack and leaves input typed during save-as dirty', () => {
