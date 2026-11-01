@@ -7,7 +7,7 @@ function itemResult(item: SaveAllItem, dirty: boolean) {
     case 'pending': return '等待保存';
     case 'saving': return '正在保存…';
     case 'unchanged': return '已无修改，跳过保存';
-    case 'cancelled': return '已取消路径选择';
+    case 'cancelled': return '已取消保存';
     case 'unprocessed': return '未处理';
     case 'failed': return `保存失败：${item.error.message}`;
     case 'saved': return dirty ? '已保存当时内容；仍有未保存修改' : '已保存';

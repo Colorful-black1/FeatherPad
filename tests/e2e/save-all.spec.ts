@@ -65,7 +65,7 @@ test('Web mock: cancelled chooser stops subsequent items and a new run only retr
   const results = page.getByRole('region', { name: '全部保存', exact: true });
   await expect(results).toContainText('本次处理结束：已处理 2 / 3 份');
   const rows = results.getByRole('listitem');
-  await expect(rows.nth(1)).toContainText('已取消路径选择');
+  await expect(rows.nth(1)).toContainText('已取消保存');
   await expect(rows.nth(2)).toContainText('未处理');
   await expect(page.getByRole('tab', { name: /无标题 2/ })).toContainText('●');
   await expect(page.getByRole('tab', { name: /无标题 3/ })).toContainText('●');

@@ -16,6 +16,8 @@ T102.b2.3–4适配：进程内保存结果缓存512个请求，整个请求流�
 
 T102硬链接确认实施决策：普通save_document在原生确认前先查询同一请求的结果缓存；新请求只读检查当前授权目标/revision及硬链接数。多链接时创建不可Deserialize的确认对象，绑定完整请求摘要与canonical目标；原生YesNo说明仅替换所选路径、其他硬链接保留旧内容。等待确认不持有文件服务锁、不创建事务/临时正文；No返回CANCELLED且缓存，同请求回放不重复弹窗。Yes后检查源绑定仍指向捕获路径，重验revision、权限和身份，再走现有同目录保护替换。无确认时继续RequireConfirmation策略，检查后新出现的多链接仍安全拒绝并可重新发起确认。前端不能传hardLinkConfirmed或目标路径，旧Ack不清新输入的规则不变。
 
+原生在途协调同时按DocumentId互斥：相同ID不同payload仍INVALID_INPUT；同一文档的其他requestId（包括SaveAs/Copy）在保存或确认期间返回BUSY，RAII结束后才可再进入。不同文档与只读stat不受该文档的确认等待阻塞。该互斥不替代前端逐文档队列，也不承诺跨进程文件锁。
+
 ## 1. 一致规则
 
 T102.c2另存实施决策：SaveAsRequest复用快照字段但不接受目标路径/revision，增加可选intent（默认save-as，另值copy）；目标仅原生选择器授权。返回增加documentId与metadata，便于在成功Ack后更新展示路径/原生FileRef，逻辑DocumentId保持同一缓冲。取消返回CANCELLED，不绑定路径、不清dirty。新目标先规范父目录/验证Windows名称，以禁止覆盖的同卷移动提交，目标在期间出现则CONFLICT。已存在目标先取revision，再由原生明确确认并在提交前重验；其他已打开文档占用的路径/文件ID拒绝，副本目标与源同一物理文件也拒绝。save-as成功才更新源绑定/已保存基线；copy只返回结果，不更新源绑定、dirty或undo。选择器等待期间的输入仍属于更高bufferVersion，旧Ack不清新dirty。分新目标核心、现有目标/碰撞、IPC、前端和原生验收切片完成，不以部分切片标T102通过。

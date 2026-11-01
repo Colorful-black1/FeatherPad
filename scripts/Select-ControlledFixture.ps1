@@ -19,7 +19,7 @@ if (-not $manifestPath.StartsWith($artifactRoot + '\', [StringComparison]::Ordin
 }
 $record = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
 $action = if ($record.action) { [string]$record.action } else { 'open' }
-if ($action -notin @('open', 'save', 'cancel', 'overwrite', 'confirm-system', 'inspect-overwrite', 'confirm-overwrite', 'reject-overwrite')) { throw 'Unexpected native chooser action.' }
+if ($action -notin @('open', 'save', 'cancel', 'overwrite', 'confirm-system', 'inspect-overwrite', 'confirm-overwrite', 'reject-overwrite', 'inspect-hardlink', 'confirm-hardlink', 'reject-hardlink')) { throw 'Unexpected native chooser action.' }
 $fixtures = @($record.fixtures)
 if (($action -eq 'cancel' -and $fixtures.Count -ne 0) -or ($action -ne 'cancel' -and ($fixtures.Count -lt 1 -or $fixtures.Count -gt 8)) -or ($action -notin @('open', 'cancel') -and $fixtures.Count -ne 1)) { throw 'Unexpected chooser fixture count.' }
 $verified = @()
@@ -171,7 +171,9 @@ public static class FeatherPadChooserControls {
             throw new InvalidOperationException("Owned confirmation text could not be verified.");
         return text.ToString();
     }
-    public static void Confirm(int processId, string fixture, bool system, int buttonId) {
+    public static void Confirm(int processId, string fixture, int role, int buttonId) {
+        if (role < 0 || role > 2) throw new InvalidOperationException("Unexpected owned confirmation role.");
+        var system = role == 0;
         var dialogs = new List<IntPtr>();
         var deadline = DateTime.UtcNow.AddSeconds(15);
         do {
@@ -181,7 +183,8 @@ public static class FeatherPadChooserControls {
                 if (actual != processId || Class(window) != "#32770" || !IsWindowEnabled(window)) return true;
                 var title = Text(window);
                 var matches = system ? title == "Confirm Save As" || title == "\u786e\u8ba4\u53e6\u5b58\u4e3a"
-                    : title == "\u786e\u8ba4\u8986\u76d6\u6587\u4ef6";
+                    : role == 1 ? title == "\u786e\u8ba4\u8986\u76d6\u6587\u4ef6"
+                    : title == "\u786e\u8ba4\u66ff\u6362\u786c\u94fe\u63a5";
                 if (matches) dialogs.Add(window);
                 return true;
             }, IntPtr.Zero);
@@ -239,7 +242,8 @@ public static class FeatherPadChooserControls {
 if ($action -in @('open', 'save', 'cancel', 'overwrite')) {
     [FeatherPadChooserControls]::Select([int]$record.processId, $selectionText, ($action -eq 'cancel'), ($action -in @('save', 'overwrite')), ($action -eq 'overwrite'))
 } else {
-    $buttonId = if ($action -eq 'inspect-overwrite') { 0 } elseif ($action -eq 'reject-overwrite') { 7 } else { 6 }
-    [FeatherPadChooserControls]::Confirm([int]$record.processId, $verified[0].path, ($action -eq 'confirm-system'), $buttonId)
+    $buttonId = if ($action -in @('inspect-overwrite', 'inspect-hardlink')) { 0 } elseif ($action -in @('reject-overwrite', 'reject-hardlink')) { 7 } else { 6 }
+    $role = if ($action -eq 'confirm-system') { 0 } elseif ($action -like '*-hardlink') { 2 } else { 1 }
+    [FeatherPadChooserControls]::Confirm([int]$record.processId, $verified[0].path, $role, $buttonId)
 }
-[ordered]@{ scope='owned native chooser Win32 controls and bounded confirmation accessibility'; processId=[int]$record.processId; action=$action; fixtureHashes=@($verified | ForEach-Object { $_.sha256 }); valueVerified=($action -ne 'cancel'); commandInvoked=($action -ne 'inspect-overwrite') } | ConvertTo-Json -Compress
+[ordered]@{ scope='owned native chooser Win32 controls and bounded confirmation accessibility'; processId=[int]$record.processId; action=$action; fixtureHashes=@($verified | ForEach-Object { $_.sha256 }); valueVerified=($action -ne 'cancel'); commandInvoked=($action -notin @('inspect-overwrite', 'inspect-hardlink')) } | ConvertTo-Json -Compress

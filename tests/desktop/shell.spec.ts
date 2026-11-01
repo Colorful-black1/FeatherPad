@@ -7,6 +7,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { verifyNativeSaveAll } from './save-all';
 import { verifyNativeOverwrite, type OverwriteAction } from './overwrite';
+import { verifyNativeHardlinks, type HardlinkAction } from './hardlinks';
 
 const runFile = promisify(execFile);
 
@@ -260,6 +261,14 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
           await writeFile(path.join(evidence, `native-${profile}-overwrite-${++overwriteStep}-${action}.json`), result.stdout.trim());
         }
         await verifyNativeOverwrite(page, dataDir, second, overwriteAction, evidence);
+        let hardlinkStep = 0;
+        async function hardlinkAction(action: HardlinkAction, target: string) {
+          await writeFile(manifest, JSON.stringify({ ...selectionRecord, action,
+            fixtures: [{ path: target, sha256: createHash('sha256').update(await readFile(target)).digest('hex') }] }));
+          const result = await runFile('powershell.exe', ['-NoProfile', '-File', helper, '-Manifest', manifest], { windowsHide: true, timeout: 25_000 });
+          await writeFile(path.join(evidence, `native-${profile}-hardlink-${++hardlinkStep}-${action}.json`), result.stdout.trim());
+        }
+        await verifyNativeHardlinks(page, dataDir, hardlinkAction, evidence);
       }
       if (chooserAutomation !== 'native-controls') {
         expect(createHash('sha256').update(await readFile(second)).digest('hex')).toBe(fixtureRecords[1]?.sha256);
@@ -281,6 +290,7 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
       nativeCopyVerified: verifyChooser && chooserAutomation === 'native-controls',
       nativeSaveAllVerified: verifyChooser && chooserAutomation === 'native-controls',
       nativeExistingOverwriteVerified: verifyChooser && chooserAutomation === 'native-controls',
+      nativeHardlinkConsentVerified: verifyChooser && chooserAutomation === 'native-controls',
       chooserAutomation: verifyChooser ? chooserAutomation : 'disabled-explicitly',
       browserOffline: profile === 'release',
       checks: ['native-title', 'native-brand', 'tauri-ipc-present', 'light-theme', 'dark-theme', 'forged-grant-rejected', 'malformed-ref-rejected', 'forged-save-rejected', 'malformed-save-rejected', 'unknown-stat-rejected', 'ipc-destination-path-rejected', 'ungranted-plugin-rejected'],

@@ -4,7 +4,7 @@
 
 - 产品名称：**轻羽 FeatherPad**。
 - 当前交付：完整产品方案、86项功能矩阵、模块规格、UI规范与离线交互原型、技术/本机环境文档、M0–M5实现计划、57个开发任务、agent执行入口。
-- 产品代码：**M0/G0及M1/T101通过，T102进行中**。真实Release已有文件保存、新目标首次另存/取消、保存副本、全部保存、既有目标覆盖/取消/碰撞、冲突与迟到Ack保护已验证；普通CtrlS硬链接确认、剩余故障/恢复等仍未完成，G1未通过，更不是完整v1。
+- 产品代码：**M0/G0及M1/T101通过，T102进行中**。真实Release已有文件保存、新目标首次另存/取消、保存副本、全部保存、既有目标覆盖/取消/碰撞、普通CtrlS硬链接确认、冲突与迟到Ack保护已验证；剩余故障/恢复等仍未完成，G1未通过，更不是完整v1。
 - 下一项：**T102 安全保存闭环**；M1通过后继续M2–M5。
 - 本次交付检查：详见 [DELIVERY-CHECK](../docs/DELIVERY-CHECK.md)，不代表产品关卡G0–G5通过。
 
@@ -21,7 +21,17 @@
 | 2026-11-01 / T002 | app-shell | React Shell/App/token/CSS、Web及原生测试 | typecheck/lint exit 0；Web 2 passed；真实WebView2 debug 1 passed | Web与原生范围分开，未测OS对话框 | .artifacts/T002/及docs/acceptance/M0.md | T002通过；下一T003 |
 | 2026-11-01 / T003.a–d（进行中） | F-DESK-013 | Rust models/grants/files/commands、AppManifest ACL、TS contracts/bridge、CodeMirror只读UI、测试与脚本 | typecheck/lint/TS单测3、Rust原生5、Web4、Release smoke1均exit 0；check.ps1 -Desktop exit 0；交互选择器三次超时，后次显式exit 1 | 原生Rust磁盘+junction，真实Release IPC/WebView2，Web mock独立 | docs/acceptance/M0.md；.artifacts/T003；.artifacts/T002/native-release.json | T003未完成OS选取验收，G0不勾选 |
 
-## 当前恢复点（2026-11-01 16:23，Asia/Shanghai）
+## 当前恢复点（2026-11-01 16:38，Asia/Shanghai）
+
+- T102/F-FILE-003/009普通CtrlS硬链接确认已接真实IPC/Release：先begin_save回放已知结果，再只读检查授权目标/磁盘revision及link_count；不可Deserialize确认对象绑定完整快照摘要和canonical路径，No缓存CANCELLED且不写事务，Yes重验路径/revision/权限/身份后复用保护替换。原生确认等待不持有FileService锁，无新IPC字段/路径/权限。全部保存取消文案统一为“已取消保存”，兼容路径与硬链接确认的取消。
+- 自审补充原生DocumentId互斥：旧在途表只拒绝同requestId，等待弹窗释放锁后同文档不同requestId可能重复进入；现同文档保存/As/Copy在途均BUSY，不同文档及stat不受该文档等待阻塞。保留同ID异payload INVALID_INPUT、RAII释放与512条结果缓存。补普通保存documentVersion JS safe integer校验，不能通过非法大版本制造确认。
+- 检查实际通过：环境探针；typecheck/lint/TS31；全Web13（包括改取消文案）；Rust全套43（新增4，protected_save现16）；clippy --locked --offline --all-targets -- -D warnings；Release build、真实桌面综合1项均exit 0。第一版硬链接UI原生47.1秒通过；加文档互斥与并发原生断言后重跑Rust全套/typecheck/lint/build/native，最终44.6秒通过。未因信心重复无变更的Web测试，未冒称check.ps1整链再运行。
+- 原生证据：创建真实Windows硬链接→OS选取原路径→编辑CtrlS→inspect时两条路径仍原字节；此时真实stat成功，第二个同DocId不同requestId保存BUSY，证明无服务锁等待/无重入写入。No保正文/dirty/双路径原字节；下一CtrlS Yes只改原路径、别名旧字节且tab/DocumentId不变。打开旧别名得到独立文档，再加别名，在确认显示后真实外部写入，Yes触发CONFLICT、双别名外部字节和内存输入均保留，第一已保存路径不受影响。此前全部保存/覆盖/副本/迟到Ack/越权拒绝均原生回归。`.artifacts/T102/native-release.json`新增nativeHardlinkConsentVerified=true；hardlink步骤JSON、`native-release-hardlink-{saved,conflict}.png`为证据，截图已视觉检查。
+- 当前Release：9950208 bytes，SHA256 `4320A43CD7E1E04E23E610EA1B73F84C52D2D4B0C193845CEBDFD7BB9DFCE6C3`；Win11/WebView2 156.0.4314.58、浏览器offline重载，非Win10/IME/OS缩放/断电证据。确认核心首切片已提交`f0833fd`。没有新增依赖/工具安装。
+- 最后cargo fmt --check、文档静态检查（130文件/27 Markdown/141链接/86功能/57任务覆盖）和git diff --check均exit 0；文档检查不是产品验收。最后通过后仅更新交接文档，产品/行为测试未再改动。
+- 下一仍T102受控磁盘满/强杀；T110启动扫描/预算/恢复、关闭保护尚未实现，T102/G1不勾选。故障环境只读盘点：当前非提权，已有New-VHD/diskpart，无imdisk；尚未执行挂载或填盘，不据此宣称外部阻塞或磁盘满已测。后续先验证受控E盘小容量卷方案，不能填满宿主盘；有权限缺口时推进不受影响的进程终止测试及依赖就绪任务。
+
+## T102覆盖恢复点（历史，2026-11-01 16:23）
 
 - T102硬链接确认第一切片：`save.rs`新增原生不可Deserialize的确认对象，绑定完整请求摘要/canonical路径；只读检查多链接，不创建journal，确认后重验快照/revision再准备写入。`save_requests.rs`拆出begin_save/finish_save，在弹窗前回放已知结果，取消也可缓存；既有save_existing复用相同缓存。受控protected_save 15 passed（新增3：未确认零写入与别名字节保留、改快照/确认期间外改拒绝、取消缓存回放），clippy --all-targets -D warnings exit 0、cargo fmt执行成功。当前尚未接原生CtrlS弹窗，不声称新Release或硬链接GUI完成；继续IPC适配/原生验收。
 - T102/F-FILE-004原生已有目标覆盖/副本/碰撞已验收：新增`tests/desktop/overwrite.ts`，真实系统覆盖确认后另有绑定revision的应用确认；拒绝覆盖保原目标/无标题正文/dirty，inspect确认窗口后真实外部写入再Yes触发CONFLICT且不覆写；重新确认成功后同一tab/DocumentId绑定已有目标、字节正确。保存副本选源文件被拒绝，覆盖其他已有目标时副本字节更新而源路径/原字节/dirty保持；目标为另一打开文档时拒绝且双方保留。不是Web mock。

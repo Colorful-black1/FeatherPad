@@ -577,6 +577,12 @@ fn cancelled_existing_save_is_cached_before_any_repeat_confirmation_or_disk_writ
     };
     assert_eq!(result.unwrap_err().code, ErrorCode::Cancelled);
     let mut changed = snapshot;
+    changed.document_version = 9_007_199_254_740_992;
+    assert_eq!(
+        fixture.service.begin_save(&changed).err().unwrap().code,
+        ErrorCode::InvalidInput
+    );
+    changed.document_version = 1;
     changed.text.push('x');
     assert_eq!(
         fixture.service.begin_save(&changed).err().unwrap().code,
@@ -587,4 +593,38 @@ fn cancelled_existing_save_is_cached_before_any_repeat_confirmation_or_disk_writ
         fs::read(&fixture.path).unwrap(),
         "original\r\n中文😀".as_bytes()
     );
+}
+
+#[test]
+fn native_in_flight_guard_blocks_new_save_and_save_as_ids_for_the_same_document_only() {
+    use featherpad_lib::{
+        models::{SaveAsRequest, SaveIntent},
+        services::save_requests::InFlightSaves,
+    };
+    use std::sync::Arc;
+    let fixture = fixture();
+    let snapshot = request(&fixture.opened);
+    let active = Arc::new(InFlightSaves::default());
+    let permit = active.enter(&snapshot).unwrap();
+    let mut newer = snapshot.clone();
+    newer.request_id = uuid::Uuid::new_v4().to_string();
+    assert_eq!(active.enter(&newer).err().unwrap().code, ErrorCode::Busy);
+    let destination = SaveAsRequest {
+        document_id: snapshot.document_id.clone(),
+        request_id: uuid::Uuid::new_v4().to_string(),
+        document_version: snapshot.document_version,
+        text: snapshot.text,
+        format: snapshot.format,
+        newline_map: None,
+        intent: SaveIntent::SaveAs,
+    };
+    assert_eq!(
+        active.enter_as(&destination).err().unwrap().code,
+        ErrorCode::Busy
+    );
+    newer.document_id = uuid::Uuid::new_v4().to_string();
+    let other_document = active.enter(&newer).unwrap();
+    drop(permit);
+    assert!(active.enter_as(&destination).is_ok());
+    drop(other_document);
 }

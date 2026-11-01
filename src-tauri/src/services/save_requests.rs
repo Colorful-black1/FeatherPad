@@ -78,6 +78,12 @@ impl InFlightSaves {
                 reused_id()
             });
         }
+        if requests.keys().any(|pending| pending.0 == key.0) {
+            return Err(AppError::new(
+                ErrorCode::Busy,
+                "此文档正在保存，请等待完成后重试。",
+            ));
+        }
         requests.insert(key.clone(), hash);
         Ok(SavePermit {
             owner: self.clone(),
@@ -214,6 +220,7 @@ fn as_hash(request: &SaveAsRequest) -> Result<String, AppError> {
 pub(super) fn payload_hash(request: &SaveRequest) -> Result<String, AppError> {
     if request.document_id.is_empty()
         || request.document_id.len() > 128
+        || request.document_version > 9_007_199_254_740_991
         || uuid::Uuid::parse_str(&request.request_id).is_err()
         || request.expected_disk_revision.len() != 64
         || !request
