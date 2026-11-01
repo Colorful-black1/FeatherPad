@@ -1,4 +1,4 @@
-import type { ChosenFiles, DocumentId, FileRef, OpenDocument, ReadChunkRequest, SaveAck, SaveAsAck, SaveAsRequest, SaveRequest, TextChunk } from '../shared/contracts/files';
+import type { ChosenFiles, ChosenFolder, DirectoryEntry, DirectoryPage, DocumentId, FileRef, ListDirectoryRequest, OpenDocument, ReadChunkRequest, SaveAck, SaveAsAck, SaveAsRequest, SaveRequest, TextChunk } from '../shared/contracts/files';
 import { callCommand, isAppError, isRecord } from './invoke';
 
 const nonemptyString = (value: unknown): value is string => typeof value === 'string' && value.length > 0;
@@ -36,6 +36,28 @@ export function isSaveAsAck(value: unknown): value is SaveAsAck {
 export function isFileRef(value: unknown): value is FileRef {
   return isRecord(value) && nonemptyString(value.grantId) && value.grantId.length <= 128
     && typeof value.relativePath === 'string' && value.relativePath.length <= 32_767;
+}
+
+export function isChosenFolder(value: unknown): value is ChosenFolder {
+  return isRecord(value)
+    && (value.grant === null || isFileRef(value.grant))
+    && (value.displayName === null
+      || (nonemptyString(value.displayName) && value.displayName.length <= 32_767))
+    && ((value.grant === null) === (value.displayName === null));
+}
+
+export function isDirectoryEntry(value: unknown): value is DirectoryEntry {
+  return isRecord(value) && nonemptyString(value.id) && value.id.length <= 128
+    && isFileRef(value.ref) && nonemptyString(value.name) && value.name.length <= 32_767
+    && ['file', 'directory', 'symlink', 'junction'].includes(value.kind as string)
+    && typeof value.isHidden === 'boolean' && typeof value.isReadOnly === 'boolean';
+}
+
+export function isDirectoryPage(value: unknown): value is DirectoryPage {
+  return isRecord(value) && Array.isArray(value.items) && value.items.length <= 1000
+    && value.items.every(isDirectoryEntry)
+    && (value.nextCursor === null
+      || (nonemptyString(value.nextCursor) && value.nextCursor.length <= 128));
 }
 
 export function isOpenDocument(value: unknown): value is OpenDocument {
@@ -78,8 +100,8 @@ export function isTextChunk(value: unknown): value is TextChunk {
 
 export const files = {
   chooseFiles: (multiple = false) => callCommand('choose_files', { multiple }, isChosenFiles),
-  chooseFolder: () => callCommand('choose_folder', {}, (value): value is { grant: FileRef | null } =>
-    isRecord(value) && (value.grant === null || isFileRef(value.grant))),
+  chooseFolder: () => callCommand('choose_folder', {}, isChosenFolder),
+  listDirectory: (request: ListDirectoryRequest) => callCommand('list_directory', { ...request }, isDirectoryPage),
   open: (ref: FileRef, mode?: 'head-preview') => callCommand('open_document', mode ? { ref, mode } : { ref }, isOpenDocument),
   readChunk: (request: ReadChunkRequest) => callCommand('read_document_chunk', { ...request }, isTextChunk),
   save: (request: SaveRequest) => callCommand('save_document', { ...request }, isSaveAck),

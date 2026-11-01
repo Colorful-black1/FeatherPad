@@ -1,7 +1,7 @@
 # 开发任务清单
 
 当前阶段：**M0/G0已通过，开始M1**。`[ ]` 待做，`[~]` 进行中，`[x]` 通过验收。禁止仅因代码存在就打勾；关联 [计划](plan.md)、[进度](PROGRESS.md) 与 [完整功能矩阵](../docs/FEATURE-MATRIX.md)。范围写 `F-FILE-001..005` 表示含端点的连续ID。
-执行更新（2026-11-01）：T000–T005/G0、T101与T103通过；T102除真实磁盘满外已完成。T103已用真实Release验证2/20/100MiB边界、分块/限量预览、动态增长和片段保存拒绝。下一项T104单根目录树；G1尚未通过，不代表MVP或完整v1。
+执行更新（2026-11-01）：T000–T005/G0、T101、T103与T104通过；T102除真实磁盘满外已完成。T104已用真实Release验证空/无权限根恢复、懒加载、205项分页、定位、刷新、链接越界拒绝和dirty保留。下一项T106真实编辑内核；T105仍依赖未完成T102，G1尚未通过，不代表MVP或完整v1。
 
 ## 执行约定
 
@@ -36,7 +36,7 @@ Q/R/W/D/B命令已建立；具体通过范围见PROGRESS，命令存在不等于
 | [x] T101 文档身份与打开 | T005 | F-FILE-001..002,F-FILE-014..015 | a原生身份/严格解码；b唯一CM缓冲/新建多选；c原生多选验收；binary/未知编码不误写 | src/features/editor/documents.ts、src/bridge/files.ts、src-tauri/src/services/{files,identity,grants}.rs | 初验check.ps1 -Desktop exit 0；授权单项失败补正后TS31/Rust39/Web全量12+定向3/真实Release1及typecheck/lint/fmt/clippy/build exit 0；真实授权保其他成功项，Web失败不清buffer。见M1验收；手动编码/只读试开由T103/T201追踪 |
 | [~] T102 安全保存闭环 | T101 | F-FILE-003..005,F-FILE-009 | 保存/另存/副本/全部保存/覆盖/硬链接已验；新增保存进程终止，真实磁盘满待权限 | src/features/editor/{save,save-all}.ts、src-tauri/src/commands/save.rs、src-tauri/src/services/{save,save_requests,create_file,save_as}.rs、tests/desktop/forced-exit.ts | 最新Rust46/fmt/clippy、typecheck/lint/真实Release1 exit0；Rust替换前/提交后强杀+放行正控，真实Tauri提交后Ack前终止再核对磁盘。历史TS31/Web13/构建保留。64MiB VHD创建权限拒绝，磁盘满不标通过；先推进T103，见M1验收 |
 | [x] T103 大文件模式 | T101 | F-FILE-013 | 完整<20MiB降级/长行、≥20MiB单页分块、>100MiB显式前1MiB预览、动态增长重判、片段保存/As/Copy后端拒绝 | src-tauri/src/services/{open_policy,files,stream_snapshot}.rs、src/features/editor/{LargeFileView,EditorDocument}.tsx | TS33/Web16/Rust61/clippy/fmt/typecheck/lint/build exit0；真实Release1 exit0。原生20MiB分块前后页、100MiB+1显式预览、哈希不变；测量首屏上界1.12s/预览动作0.36s，进程树348–444MiB超M5目标，M5继续复核。见M1验收 |
-| [ ] T104 单根目录树 | T101 | F-WORK-001,F-WORK-003 | 打开根、懒加载/分页/排序/刷新/当前文件定位，空和拒绝态完整 | src/features/workspace/Explorer.tsx、src/features/workspace/store.ts、src-tauri/src/services/directories.rs | Q/R/W/D：空目录、无权限、100k文件首层 |
+| [x] T104 单根目录树 | T101 | F-WORK-001,F-WORK-003 | 打开根、懒加载/分页/排序/刷新/当前文件定位，空和拒绝态完整 | src/features/workspace/Explorer.tsx、src/features/workspace/store.ts、src-tauri/src/services/directories.rs | typecheck/lint、TS38、Rust66（100k基准另跑）、Web17、Release build、真实桌面1（55.2秒）exit0；原生空/无权限根恢复、205项分页、刷新保展开、junction拒绝、dirty保留；100k首分页159.669ms<300ms。见M1验收 |
 | [ ] T105 树内变更 | T102,T104 | F-FILE-017,F-WORK-004..005 | 新建/重命名/回收站，dirty决策、保留名/碰撞/失败无假成功 | src/features/workspace/file-actions.ts、src/features/workspace/EntryInput.tsx、src-tauri/src/services/file_ops.rs | Q/R/D：失败不移除树项、无永久删除回退 |
 | [ ] T106 真实编辑内核 | T101 | F-EDIT-001..003,F-EDIT-008,F-EDIT-018 | CM事务/undo/缩进/括号/高亮及手动语言，IME正常 | src/features/editor/Editor.tsx、src/features/editor/extensions.ts、src/features/editor/languages.ts、src/features/editor/status.ts | Q/W/D：中文输入法、选区粘贴、undo和保存历史 |
 | [ ] T107 标签与关闭保护 | T102,T106 | F-EDIT-013,F-FILE-018 | 每组单预览、dirty固定、关闭保存/放弃/取消不丢内容 | src/features/editor/tabs.ts、src/features/editor/TabStrip.tsx、src/features/editor/close.ts | Q/W/D：预览复用、取消、保存失败、放弃清理恢复 |

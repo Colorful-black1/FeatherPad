@@ -26,6 +26,7 @@ pub struct FileService {
     pub grants: GrantRegistry,
     pub(super) documents: DocumentRegistry,
     pub(super) saves: super::save_requests::SaveHistory,
+    pub(super) directory_cursors: super::directories::DirectoryCursors,
 }
 
 impl FileService {

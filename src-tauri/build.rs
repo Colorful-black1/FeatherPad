@@ -3,7 +3,9 @@ fn main() {
         tauri_build::Attributes::new().app_manifest(tauri_build::AppManifest::new().commands(&[
             "choose_files",
             "choose_folder",
+            "list_directory",
             "open_document",
+            "read_document_chunk",
             "save_document",
             "save_document_as",
             "stat_document",

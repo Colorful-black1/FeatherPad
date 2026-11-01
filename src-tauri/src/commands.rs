@@ -1,14 +1,13 @@
 use crate::{
     models::{
-        AppError, ChosenFiles, ErrorCode, FileRef, OpenDocument, ReadChunkRequest, ResultEnvelope,
-        TextChunk,
+        AppError, ChosenFiles, ChosenFolder, DirectoryPage, ErrorCode, ListDirectoryRequest,
+        OpenDocument, ReadChunkRequest, ResultEnvelope, TextChunk,
     },
     services::{
         files::{FileService, OpenRequestMode},
         grants::GrantKind,
     },
 };
-use serde::Serialize;
 use std::sync::{Arc, Mutex};
 use tauri::{
     ipc::{InvokeBody, Request},
@@ -19,11 +18,6 @@ pub mod save;
 pub mod save_as;
 
 type SharedFiles = Arc<Mutex<FileService>>;
-
-#[derive(Serialize)]
-pub struct ChosenFolder {
-    grant: Option<FileRef>,
-}
 
 fn internal_error() -> AppError {
     AppError::new(ErrorCode::Internal, "本地文件服务暂时不可用，请重试。")
@@ -72,25 +66,56 @@ pub async fn choose_folder(app: AppHandle) -> ResultEnvelope<ChosenFolder> {
             .set_parent(&parent)
             .set_title("打开文件夹")
             .blocking_pick_folder();
-        let grant = if let Some(selection) = selection {
+        let (grant, display_name) = if let Some(selection) = selection {
             let path = selection
                 .into_path()
                 .map_err(|_| AppError::new(ErrorCode::Unsupported, "请选择本地文件夹。"))?;
-            Some(
-                service
-                    .lock()
-                    .map_err(|_| internal_error())?
-                    .grants
-                    .register_selection(&path, GrantKind::Directory)?,
-            )
+            let mut service = service.lock().map_err(|_| internal_error())?;
+            let grant = service
+                .grants
+                .register_selection(&path, GrantKind::Directory)?;
+            let name = service.grants.root_display_name(&grant);
+            (Some(grant), name)
         } else {
-            None
+            (None, None)
         };
-        Ok(ChosenFolder { grant })
+        Ok(ChosenFolder {
+            grant,
+            display_name,
+        })
     })
     .await
     .unwrap_or_else(|_| Err(internal_error()))
     .into()
+}
+
+#[tauri::command]
+pub async fn list_directory(
+    app: AppHandle,
+    request: Request<'_>,
+) -> Result<ResultEnvelope<DirectoryPage>, ()> {
+    let value = match request.body() {
+        InvokeBody::Json(value) => value.clone(),
+        _ => {
+            return Ok(Err(AppError::new(
+                ErrorCode::InvalidInput,
+                "目录读取请求必须为JSON对象。",
+            ))
+            .into())
+        }
+    };
+    let service = app.state::<SharedFiles>().inner().clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let request: ListDirectoryRequest = serde_json::from_value(value)
+            .map_err(|_| AppError::new(ErrorCode::InvalidInput, "目录读取请求格式无效。"))?;
+        service
+            .lock()
+            .map_err(|_| internal_error())?
+            .list_directory(request)
+    })
+    .await
+    .unwrap_or_else(|_| Err(internal_error()));
+    Ok(result.into())
 }
 
 #[tauri::command]

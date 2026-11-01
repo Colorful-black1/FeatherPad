@@ -20,6 +20,30 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round
 .sidebar { width: var(--sidebar-width); flex: 0 0 auto; overflow: auto; background: var(--bg-sidebar); border-right: 1px solid var(--border); }
 .sidebar-title { margin: 0; padding: var(--space-3) var(--space-4); font-size: 12px; font-weight: 600; }
 .sidebar-empty { padding: 0 var(--space-4); color: var(--text-secondary); }
+.workspace-explorer { display: flex; min-height: 100%; flex-direction: column; }
+.explorer-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding-right: var(--space-2); }
+.explorer-heading .sidebar-title { flex: 1; }
+.explorer-actions { display: flex; gap: 2px; }
+.icon-button.compact { width: 28px; height: 28px; }
+.icon-button.compact svg { width: 16px; height: 16px; }
+.explorer-filter { display: flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-4) var(--space-2); color: var(--text-secondary); font-size: 11px; }
+.explorer-filter input { accent-color: var(--accent); }
+.tree-root-label { padding: var(--space-1) var(--space-4); border-block: 1px solid var(--border); color: var(--text-secondary); font-size: 11px; font-weight: 600; overflow-wrap: anywhere; }
+.tree { flex: 1; min-height: 0; overflow: auto; padding: var(--space-1) 0 var(--space-4); }
+.tree-row { width: 100%; min-height: 28px; display: grid; grid-template-columns: 12px 16px minmax(0, 1fr) auto auto; align-items: center; gap: var(--space-1); border: 0; padding: 1px var(--space-2) 1px calc(var(--space-1) + var(--tree-depth) * 16px); background: transparent; color: var(--text-primary); text-align: left; font-size: 12px; }
+.tree-row:hover { background: var(--bg-hover); }
+.tree-row[aria-selected="true"], .tree-row[aria-current="page"] { background: var(--bg-selected); }
+.tree-row:focus-visible { outline-offset: -2px; }
+.tree-chevron { color: var(--text-muted); font-size: 10px; text-align: center; }
+.tree-chevron-empty { visibility: hidden; }
+.tree-icon { display: grid; place-items: center; color: var(--text-secondary); }
+.tree-icon svg { width: 15px; height: 15px; }
+.tree-name { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.tree-badge { color: var(--text-muted); font-size: 9px; border: 1px solid var(--border); border-radius: 999px; padding: 0 5px; }
+.tree-state { margin: 0; padding: var(--space-2) var(--space-4); color: var(--text-secondary); font-size: 11px; overflow-wrap: anywhere; }
+.tree-error { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2); color: var(--warning); background: var(--warning-bg); }
+.tree-error button { flex: 0 0 auto; border: 1px solid currentColor; border-radius: var(--radius-sm); background: transparent; color: inherit; font-size: 11px; }
+.tree-load-more { display: block; margin: var(--space-2) auto; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 2px var(--space-3); background: var(--bg-surface); font-size: 11px; }
 .sidebar-scrim { display: none; }
 .editor-area { flex: 1; min-width: 0; overflow: auto; background: var(--bg-editor); display: flex; flex-direction: column; }
 .welcome { display: grid; align-items: center; flex: 1; min-height: 0; padding: var(--space-8); }

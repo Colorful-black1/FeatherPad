@@ -20,6 +20,10 @@ export interface ChosenFiles {
   grants: FileRef[];
   failures: { selectionIndex: number; error: AppError }[];
 }
+export interface ChosenFolder {
+  grant: FileRef | null;
+  displayName: string | null;
+}
 export interface TextFormat {
   encoding: string;
   bom: 'none' | 'utf8' | 'utf16le' | 'utf16be';
@@ -105,4 +109,22 @@ export interface ReadChunkRequest {
   expectedDiskRevision: DiskRevision;
   byteOffset: number;
   maxBytes: number;
+}
+export interface DirectoryEntry {
+  id: string;
+  ref: FileRef;
+  name: string;
+  kind: 'file' | 'directory' | 'symlink' | 'junction';
+  isHidden: boolean;
+  isReadOnly: boolean;
+}
+export interface DirectoryPage {
+  items: DirectoryEntry[];
+  nextCursor: string | null;
+}
+export interface ListDirectoryRequest {
+  ref: FileRef;
+  cursor?: string;
+  limit?: number;
+  showHidden?: boolean;
 }

@@ -7,6 +7,8 @@ import { documents } from '../features/editor/documents';
 import { saves } from '../features/editor/save';
 import { saveAll } from '../features/editor/save-all';
 import { SaveAllResults } from '../features/editor/SaveAllResults';
+import { Explorer } from '../features/workspace/Explorer';
+import { workspace } from '../features/workspace/store';
 import type { DocumentId, FileRef } from '../shared/contracts/files';
 
 export function App() {
@@ -16,8 +18,8 @@ export function App() {
   const batch = useSyncExternalStore(saveAll.subscribe, saveAll.getSnapshot);
   const batchBusy = batch.phase === 'running' || batch.phase === 'cancelling';
   const current = snapshot.documents.find(document => document.id === snapshot.activeId);
+  const currentReference = current ? documents.getDocument(current.id)?.source?.ref : undefined;
   const [autoFocus, setAutoFocus] = useState(true);
-  const [folderChosen, setFolderChosen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [savingCount, setSavingCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -28,6 +30,20 @@ export function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
   }, [dark]);
+
+  const openOne = useCallback(async (reference: FileRef): Promise<string | null> => {
+    const result = await files.open(reference);
+    if (result.ok) {
+      documents.openDocument(result.value);
+      return null;
+    }
+    if (result.error.code === 'TOO_LARGE') {
+      setPreviewCandidates(candidates => candidates.some(candidate =>
+        candidate.grantId === reference.grantId && candidate.relativePath === reference.relativePath,
+      ) ? candidates : [...candidates, reference]);
+    }
+    return result.error.message;
+  }, []);
 
   const openFile = useCallback(async () => {
     if (opening.current) return;
@@ -41,16 +57,21 @@ export function App() {
       const failures = selection.value.failures.map(failure => `第 ${failure.selectionIndex + 1} 个所选文件：${failure.error.message}`);
       setAutoFocus(true);
       for (const reference of selection.value.grants) {
-        const result = await files.open(reference);
-        if (result.ok) documents.openDocument(result.value);
-        else {
-          failures.push(result.error.message);
-          if (result.error.code === 'TOO_LARGE') setPreviewCandidates(candidates => [...candidates, reference]);
-        }
+        const failure = await openOne(reference);
+        if (failure) failures.push(failure);
       }
       if (failures.length) setError(failures.join('；'));
     } finally { opening.current = false; setBusy(false); }
-  }, [setError, setBusy, setAutoFocus]);
+  }, [openOne, setError, setBusy, setAutoFocus]);
+
+  const openTreeFile = useCallback(async (reference: FileRef) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const failure = await openOne(reference);
+      if (failure) setError(failure);
+    } finally { setBusy(false); }
+  }, [openOne, setBusy, setError]);
 
   const openHeadPreview = useCallback(async (reference: FileRef) => {
     setError(null);
@@ -113,7 +134,10 @@ export function App() {
     try {
       const result = await files.chooseFolder();
       if (!result.ok) { setError(result.error.message); return; }
-      if (result.value.grant) { setFolderChosen(true); setSidebarOpen(true); }
+      if (result.value.grant && result.value.displayName) {
+        workspace.setRoot({ grant: result.value.grant, displayName: result.value.displayName });
+        setSidebarOpen(true);
+      }
     } finally { opening.current = false; setBusy(false); }
   }
 
@@ -137,7 +161,7 @@ export function App() {
       dark={dark}
       onToggleSidebar={() => setSidebarOpen(open => !open)}
       onToggleTheme={() => setDark(value => !value)}
-      sidebar={<><h2 className="sidebar-title">资源管理器</h2><p className="sidebar-empty">{folderChosen ? '文件夹已授权' : '尚未打开文件夹'}</p></>}
+      sidebar={<Explorer currentReference={currentReference} onOpen={reference => void openTreeFile(reference)} />}
       status={<><span>{batchBusy ? '正在全部保存…' : savingCount > 0 ? '正在保存…' : busy ? '正在打开…' : current ? current.readOnlyReason ? '只读' : current.dirty ? '未保存修改' : current.displayPath ? '未修改' : '未命名' : '就绪'}</span><span className="status-end">{current ? `${current.format.encoding.toUpperCase()}${current.format.bom === 'none' ? '' : ' BOM'} · ${current.format.lineEnding.toUpperCase()}` : '轻羽 FeatherPad'}</span></>}
     >
       {error && <div className="notice error-notice" role="alert"><span>{error}</span><button onClick={() => setError(null)}>关闭提示</button></div>}
@@ -155,6 +179,7 @@ export function App() {
         <div className="document-toolbar" aria-label="文件操作">
           <button className="plain-button" onClick={newFile} aria-keyshortcuts="Control+n">新建文本</button>
           <button className="plain-button" onClick={() => void openFile()} disabled={busy} aria-keyshortcuts="Control+o">打开文件</button>
+          <button className="plain-button" onClick={() => void openFolder()} disabled={busy}>打开文件夹</button>
           <button className="plain-button" onClick={() => void saveCurrent()} disabled={!!current.readOnlyReason || savingCount > 0 || batchBusy} aria-keyshortcuts="Control+s">保存</button>
           <button id="save-all-button" className="plain-button" onClick={() => void saveAll.run()} disabled={savingCount > 0 || batchBusy || !snapshot.documents.some(document => document.dirty)}>全部保存</button>
           <button className="plain-button" onClick={() => void saveDestination()} disabled={!current.canSaveAs || savingCount > 0 || batchBusy} aria-keyshortcuts="Control+Shift+s">另存为</button>

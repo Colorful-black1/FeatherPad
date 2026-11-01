@@ -11,6 +11,7 @@ import { verifyNativeHardlinks, type HardlinkAction } from './hardlinks';
 import { verifyNativeForcedExit } from './forced-exit';
 import { verifyNativeDegradedEditing } from './degraded';
 import { verifyNativeLargeFiles } from './large-files';
+import { verifyNativeWorkspace } from './workspace';
 
 const runFile = promisify(execFile);
 
@@ -25,9 +26,12 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
   const exe = path.join(root, 'src-tauri', 'target', profile, 'featherpad.exe');
   const hash = createHash('sha256').update(await readFile(exe)).digest('hex');
   const evidence = path.join(root, '.artifacts', 'T102');
+  const workspaceEvidence = path.join(root, '.artifacts', 'T104');
   let nativeLargeFileObservation: Awaited<ReturnType<typeof verifyNativeLargeFiles>> | null = null;
+  let nativeWorkspaceObservation: Awaited<ReturnType<typeof verifyNativeWorkspace>> | null = null;
   const chooserRoot = path.join(root, '.artifacts', 'T002');
   await mkdir(evidence, { recursive: true });
+  await mkdir(workspaceEvidence, { recursive: true });
   await mkdir(chooserRoot, { recursive: true });
   const dataDir = await mkdtemp(path.join(chooserRoot, 'webview2-'));
   const server = createServer();
@@ -278,6 +282,14 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
             fixtures: [{ path: target, sha256: createHash('sha256').update(await readFile(target)).digest('hex') }] }));
           await runFile('powershell.exe', ['-NoProfile', '-File', helper, '-Manifest', manifest], { windowsHide: true, timeout: 25_000 });
         }, evidence);
+        nativeWorkspaceObservation = await verifyNativeWorkspace(page, dataDir, async target => {
+          await writeFile(manifest, JSON.stringify({ ...selectionRecord, action: 'open-folder',
+            fixtures: [{ path: target }] }));
+          await runFile('powershell.exe', ['-NoProfile', '-File', helper, '-Manifest', manifest], {
+            windowsHide: true,
+            timeout: 25_000,
+          });
+        }, workspaceEvidence);
         nativeLargeFileObservation = await verifyNativeLargeFiles(page, dataDir, async (target, action) => {
           await writeFile(manifest, JSON.stringify({ ...selectionRecord, action,
             fixtures: [{ path: target, sha256: createHash('sha256').update(await readFile(target)).digest('hex') }] }));
@@ -314,6 +326,8 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
       nativeLargeChunkReadonlyVerified: verifyChooser && chooserAutomation === 'native-controls',
       nativeHeadPreviewVerified: verifyChooser && chooserAutomation === 'native-controls',
       nativeLargeFileObservation,
+      nativeWorkspaceVerified: nativeWorkspaceObservation !== null,
+      nativeWorkspaceObservation,
       forcedExit,
       chooserAutomation: verifyChooser ? chooserAutomation : 'disabled-explicitly',
       browserOffline: profile === 'release',

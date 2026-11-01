@@ -19,7 +19,7 @@ if (-not $manifestPath.StartsWith($artifactRoot + '\', [StringComparison]::Ordin
 }
 $record = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
 $action = if ($record.action) { [string]$record.action } else { 'open' }
-if ($action -notin @('open', 'open-degraded', 'open-large-chunk', 'open-head-preview', 'save', 'cancel', 'overwrite', 'confirm-system', 'inspect-overwrite', 'confirm-overwrite', 'reject-overwrite', 'inspect-hardlink', 'confirm-hardlink', 'reject-hardlink')) { throw 'Unexpected native chooser action.' }
+if ($action -notin @('open', 'open-folder', 'open-degraded', 'open-large-chunk', 'open-head-preview', 'save', 'cancel', 'overwrite', 'confirm-system', 'inspect-overwrite', 'confirm-overwrite', 'reject-overwrite', 'inspect-hardlink', 'confirm-hardlink', 'reject-hardlink')) { throw 'Unexpected native chooser action.' }
 $fixtures = @($record.fixtures)
 if (($action -eq 'cancel' -and $fixtures.Count -ne 0) -or ($action -ne 'cancel' -and ($fixtures.Count -lt 1 -or $fixtures.Count -gt 8)) -or ($action -notin @('open', 'cancel') -and $fixtures.Count -ne 1)) { throw 'Unexpected chooser fixture count.' }
 $verified = @()
@@ -34,7 +34,9 @@ foreach ($fixture in $fixtures) {
         if (-not $item.PSIsContainer) { throw 'Controlled destination parent is not a directory.' }
     } else {
         $item = Get-Item -LiteralPath $fixturePath
-        if ($action -eq 'open-degraded') {
+        if ($action -eq 'open-folder') {
+            if (-not $item.PSIsContainer) { throw 'Unexpected non-directory workspace fixture.' }
+        } elseif ($action -eq 'open-degraded') {
             if ($item.Length -ne 2097153 -or $item.PSIsContainer) { throw 'Unexpected controlled degraded fixture size/type.' }
         } elseif ($action -eq 'open-large-chunk') {
             if ($item.Length -ne 20971520 -or $item.PSIsContainer) { throw 'Unexpected controlled chunked fixture size/type.' }
@@ -48,7 +50,7 @@ foreach ($fixture in $fixtures) {
         $ancestor = Get-Item -LiteralPath (Split-Path -Parent $ancestor.FullName)
     }
     $fixtureHash = $null
-    if ($action -notin @('save', 'cancel')) {
+    if ($action -notin @('open-folder', 'save', 'cancel')) {
         $fixtureHash = Get-ControlledHash $fixturePath
         if ($fixtureHash -ne $fixture.sha256) { throw 'Fixture hash mismatch.' }
     }
@@ -85,6 +87,8 @@ public static class FeatherPadChooserControls {
     [DllImport("user32.dll")] private static extern int GetDlgCtrlID(IntPtr window);
     [DllImport("user32.dll")] private static extern IntPtr GetParent(IntPtr window);
     [DllImport("user32.dll")] private static extern IntPtr GetDlgItem(IntPtr dialog, int id);
+    [DllImport("user32.dll")] private static extern bool IsWindow(IntPtr window);
+    [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr window);
     [DllImport("user32.dll")] private static extern bool IsWindowEnabled(IntPtr window);
     [DllImport("user32.dll")] private static extern int GetWindowLong(IntPtr window, int index);
     [DllImport("user32.dll", EntryPoint="PostMessageW", SetLastError=true)]
@@ -102,7 +106,7 @@ public static class FeatherPadChooserControls {
         uint actual; if (window == IntPtr.Zero || GetWindowThreadProcessId(window, out actual) == 0 || actual != expected)
             throw new InvalidOperationException("Native chooser process identity changed.");
     }
-    public static void Select(int processId, string fixture, bool cancel, bool saving, bool asynchronous) {
+    public static void Select(int processId, string fixture, bool cancel, bool saving, bool folder, bool asynchronous) {
         var dialogs = new List<IntPtr>();
         var deadline = DateTime.UtcNow.AddSeconds(15);
         do {
@@ -131,6 +135,10 @@ public static class FeatherPadChooserControls {
             if (Class(window) == "Edit") {
                 if (saving) {
                     if (GetDlgCtrlID(window) == 1001 && Class(GetParent(window)) == "ComboBox") edits.Add(window);
+                    return true;
+                }
+                if (folder) {
+                    if (GetDlgCtrlID(window) == 1152) edits.Add(window);
                     return true;
                 }
                 var ancestor = window;
@@ -170,6 +178,37 @@ public static class FeatherPadChooserControls {
         }
         if (Command(dialog, 0x0111, (IntPtr)1, open, 2, 5000, out result) == IntPtr.Zero)
             throw new InvalidOperationException("Native Open command timed out.");
+        if (folder) {
+            // Typing an existing folder navigates into it first. Select the now-current folder.
+            var navigateDeadline = DateTime.UtcNow.AddSeconds(1);
+            while (IsWindow(dialog) && IsWindowVisible(dialog) && DateTime.UtcNow < navigateDeadline) Thread.Sleep(50);
+            if (IsWindow(dialog) && IsWindowVisible(dialog)) {
+                var automation = AutomationElement.FromHandle(dialog);
+                var condition = new AndCondition(
+                    new PropertyCondition(AutomationElement.ProcessIdProperty, processId),
+                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),
+                    new PropertyCondition(AutomationElement.AutomationIdProperty, "1"));
+                var select = automation.FindFirst(TreeScope.Descendants, condition);
+                if (select == null || !select.Current.IsEnabled) throw new InvalidOperationException("Native folder selection button is unavailable.");
+                var invoke = select.GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
+                if (invoke == null) throw new InvalidOperationException("Native folder selection button lacks InvokePattern.");
+                invoke.Invoke();
+            }
+            var closeDeadline = DateTime.UtcNow.AddSeconds(5);
+            while (IsWindow(dialog) && IsWindowVisible(dialog) && DateTime.UtcNow < closeDeadline) Thread.Sleep(100);
+            if (IsWindow(dialog) && IsWindowVisible(dialog)) {
+                var details = new List<string>();
+                var automation = AutomationElement.FromHandle(dialog);
+                var descendants = automation.FindAll(TreeScope.Descendants, Condition.TrueCondition);
+                for (var index = 0; index < descendants.Count && details.Count < 80; index++) {
+                    var item = descendants[index];
+                    if (item.Current.ProcessId != processId) throw new InvalidOperationException("Native folder dialog accessibility owner changed.");
+                    var type = item.Current.ControlType == null ? "Unknown" : item.Current.ControlType.ProgrammaticName;
+                    details.Add(type + ":" + item.Current.AutomationId + ":" + item.Current.Name + "/enabled=" + item.Current.IsEnabled);
+                }
+                throw new InvalidOperationException("Native folder dialog did not close. Accessibility: " + String.Join("|", details));
+            }
+        }
     }
     private static string Text(IntPtr window) {
         var text = new StringBuilder(32768); IntPtr result;
@@ -245,8 +284,8 @@ public static class FeatherPadChooserControls {
     }
 }
 "@
-if ($action -in @('open', 'open-degraded', 'open-large-chunk', 'open-head-preview', 'save', 'cancel', 'overwrite')) {
-    [FeatherPadChooserControls]::Select([int]$record.processId, $selectionText, ($action -eq 'cancel'), ($action -in @('save', 'overwrite')), ($action -eq 'overwrite'))
+if ($action -in @('open', 'open-folder', 'open-degraded', 'open-large-chunk', 'open-head-preview', 'save', 'cancel', 'overwrite')) {
+    [FeatherPadChooserControls]::Select([int]$record.processId, $selectionText, ($action -eq 'cancel'), ($action -in @('save', 'overwrite')), ($action -eq 'open-folder'), ($action -eq 'overwrite'))
 } else {
     $buttonId = if ($action -in @('inspect-overwrite', 'inspect-hardlink')) { 0 } elseif ($action -in @('reject-overwrite', 'reject-hardlink')) { 7 } else { 6 }
     $role = if ($action -eq 'confirm-system') { 0 } elseif ($action -like '*-hardlink') { 2 } else { 1 }

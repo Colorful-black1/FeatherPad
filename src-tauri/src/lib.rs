@@ -2,6 +2,7 @@ mod commands;
 pub mod models;
 pub mod services {
     pub mod create_file;
+    pub mod directories;
     pub mod documents;
     pub mod encode;
     pub mod files;
@@ -31,6 +32,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::choose_files,
             commands::choose_folder,
+            commands::list_directory,
             commands::open_document,
             commands::read_document_chunk,
             commands::save::save_document,

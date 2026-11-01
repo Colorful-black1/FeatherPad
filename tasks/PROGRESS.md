@@ -4,8 +4,8 @@
 
 - 产品名称：**轻羽 FeatherPad**。
 - 当前交付：完整产品方案、86项功能矩阵、模块规格、UI规范与离线交互原型、技术/本机环境文档、M0–M5实现计划、57个开发任务、agent执行入口。
-- 产品代码：**M0/G0、M1/T101及T103通过；T102仅真实磁盘满待权限补验**。真实Release保存/另存/副本/批次/覆盖/硬链接/进程终止、<20MiB正常/降级编辑、20MiB分块只读和>100MiB显式预览均已验证；恢复、目录树等M1后续项仍未完成，G1未通过，更不是完整v1。
-- 下一项：**T104 单根目录树**；T102真实磁盘满保留权限缺口。M1通过后继续M2–M5。
+- 产品代码：**M0/G0、M1/T101、T103及T104通过；T102仅真实磁盘满待权限补验**。真实Release保存/另存/副本/批次/覆盖/硬链接/进程终止、<20MiB正常/降级编辑、20MiB分块只读、>100MiB显式预览，以及单根懒加载目录树均已验证；恢复和其余M1项仍未完成，G1未通过，更不是完整v1。
+- 下一项：**T106 真实编辑内核**；T102真实磁盘满保留权限缺口，并使T105暂不满足依赖。M1通过后继续M2–M5。
 - 本次交付检查：详见 [DELIVERY-CHECK](../docs/DELIVERY-CHECK.md)，不代表产品关卡G0–G5通过。
 
 ## 已核查环境
@@ -21,14 +21,24 @@
 | 2026-11-01 / T002 | app-shell | React Shell/App/token/CSS、Web及原生测试 | typecheck/lint exit 0；Web 2 passed；真实WebView2 debug 1 passed | Web与原生范围分开，未测OS对话框 | .artifacts/T002/及docs/acceptance/M0.md | T002通过；下一T003 |
 | 2026-11-01 / T003.a–d（进行中） | F-DESK-013 | Rust models/grants/files/commands、AppManifest ACL、TS contracts/bridge、CodeMirror只读UI、测试与脚本 | typecheck/lint/TS单测3、Rust原生5、Web4、Release smoke1均exit 0；check.ps1 -Desktop exit 0；交互选择器三次超时，后次显式exit 1 | 原生Rust磁盘+junction，真实Release IPC/WebView2，Web mock独立 | docs/acceptance/M0.md；.artifacts/T003；.artifacts/T002/native-release.json | T003未完成OS选取验收，G0不勾选 |
 
-## T103 大文件模式完成（最新，2026-11-01）
+## T104 单根目录树完成（最新，2026-11-01）
+
+- F-WORK-001、F-WORK-003完成。`choose_folder`现在返回内存目录grant和安全根显示名；树只读取授权根的直接子项，展开目录时才按需请求下一层。替换根不清dirty文档、不重建CodeMirror；树文件点击复用真实`open_document`，工具栏和欢迎页均可打开/替换根。空根、空子目录、无权限后的行内错误与重试、刷新、当前文件逐层定位、隐藏项开关、只读/链接标记和树形键盘导航均已实现。
+- Rust `list_directory`默认200、最大1000条，文件夹优先、自然排序；cursor绑定grant根、canonical目录、目录项签名、隐藏过滤和偏移，目录变化后旧cursor返回CONFLICT。目录解析再次校验grant、相对路径和canonical边界；枚举期间以不共享删除的句柄锁住父路径链和目录本身，并对打开句柄的最终路径复核，缩小junction换名竞态。重复选择同一canonical根复用原grant，使原先打开文档仍可定位且不扩大授权。
+- 刷新会按路径子树作废旧请求和缓存，同时保留展开身份；新一页返回后仅重载仍存在的展开目录，旧请求晚到不会覆盖新结果。真实原生场景在刷新新增文件后仍保留已展开的当前文件。
+- 100k真实目录首版Release首分页为3,204ms，超过既定300ms硬预算，未降阈值。改用`FindFirstFileExW`、`FindExInfoBasic`和`FIND_FIRST_EX_LARGE_FETCH`，旧文件系统对basic级别不支持时回退标准级别；加入路径锁后最终首分页159.669ms、200项并正常发cursor。原生UI另用205项真实子目录验证首屏200、加载更多后205。
+- 本切片实际检查：`pnpm typecheck`、`pnpm lint`、`pnpm test:unit`（38）、`pnpm test:integration`、`cargo test`（66 passed，1个100k benchmark为显式ignored）、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`pnpm test:e2e`（17）、`pnpm build`、`pnpm test:desktop`（1，55.2秒）均exit0；100k Release benchmark exit0。没有新增依赖或工具。审查补正后在最终Release上重跑静态/单元/E2E/构建/原生综合和Release基准。
+- 原生证据：`.artifacts/T102/native-release.json`的`nativeWorkspaceVerified:true`，observation记录lazyNestedLoad/pagination/hiddenFilter/emptyRoot/permissionDeniedRootAndRetry/currentFileLocate/refresh/keyboardNavigation/dirtyDocumentPreservedOnRootReplacement/junctionBoundaryRejected均为true；`.artifacts/T104/native-workspace-tree.png`已视觉检查，显示中文根/目录、当前文件、只读/链接标记和dirty编辑。`.artifacts/T104/directory-scale.json`记录100k文件、200项、159.669ms/budget300ms。Web E2E仍是明确mock，只证明同一前端交互；原生根、NTFS ACL、真实文件、真实IPC和OS文件夹选择器另验。
+- 当前Release：`src-tauri/target/release/featherpad.exe`，10,176,000 bytes，SHA256 `BF73C9C9E7DCA54E511D37DB8198F68FAFB3E067FD68BE142B80D8EA1E4AEA41`。实现采用分页而非虚拟化，因此不声明超大目录整表渲染通过。下一项T106；T102真实磁盘满仍阻塞T105，不重复权限策略已拒绝的VHD探针，G1仍未通过。
+
+## T103 大文件模式完成（历史切片，2026-11-01）
 
 - F-FILE-013完成。`open_policy.rs`继续作为2/20/100MiB原始字节阈值的唯一入口：≤2MiB normal、>2且<20MiB完整降级、20–100MiB只读分块、>100MiB自动打开拒绝且仅由用户显式选择前1MiB预览。`stream_snapshot.rs`用固定64KiB缓冲完成全文件摘要、UTF-8/UTF-16流式校验、换行统计和受控窗口；初始/后续块默认64KiB，后续请求上限1MiB并校验DocumentId、片段handle、磁盘revision及编码边界。旧revision返回CONFLICT。完整只读普通文件仍可另存；大文件片段由Rust文档lease标记，保存、另存和副本均在服务层返回READ_ONLY。
 - 动态增长已收紧：文件在可编辑读取时跨过20MiB会重新打开并按真实大小进入分块；跨过100MiB只返回可选择前1MiB预览的TOO_LARGE；未越上限但读取期间变化的文件返回CONFLICT，不返回截断正文。`LargeFileView`只持有当前64KiB页及页起点历史；上一块从已读精确起点重新请求，不在React中累加正文。>100MiB流程先关闭自动读取，用户明确点击后才调用head-preview。
 - 真实边界证据：Rust实际文件覆盖2MiB−1/2MiB/2MiB+1、20MiB−1/20MiB/20MiB+1、100MiB/100MiB+1；并发真实写入使读取跨过20MiB和100MiB上限均得到TOO_LARGE，未越限增长得到CONFLICT；另用“初次观察为可编辑大小、实际文件已增长”的路径验证自动分块重判。流式20MiB摘要与既有全文件快照一致且只保留小窗口；100MiB扫描保留零正文窗口，末尾UTF-8窗口精确。原生Release打开受控20MiB文件后可前/后分页，单页<64KiB+16字符，源文件SHA256不变；100MiB+1文件自动打开被拒，用户明确选择后显示前1MiB预览且保存/另存禁用，源文件SHA256不变。
 - 本切片实际检查：typecheck/lint、TS33、全Web16（分块下一页只显示新页、上一页恢复且保存入口禁用；Web mock与原生证据独立）、Rust全套61、`cargo fmt --check`、`cargo clippy --all-targets -D warnings`、Release build及真实桌面综合1（43.0秒）均exit0。没有新增依赖/工具。原生截图`native-release-large-chunk.png`显示第1页65,536字节/20,971,520字节及上一/下一按钮，`native-release-head-preview.png`显示截断前1MiB；均已视觉检查。`native-release.json`记录nativeLargeChunkReadonlyVerified=true、nativeHeadPreviewVerified=true。
 - 当前Release：10,088,960 bytes，SHA256 `1472127164a831ac654bd3985b757b6da14ef02ed5fc1cd936ce5b8747257633`。Win11/WebView2 156.0.4314.58、浏览器offline重载。单次开发机观测：20MiB分块首屏上界1,116.8ms（含受控原生选择器自动化），100MiB打开到预览选项上界1,596.4ms，用户预览动作361.2ms；该长流程进程树私有工作集约348–444MiB。计时不是10次p95/目标机结论，内存也高于SPEC的180MiB目标，故不标M5性能通过，后续bench:app与常驻预算继续复核。
-- 下一项T104单根目录树。T102真实磁盘满仍因New-VHD权限缺口[~]，不重复同一探针；T110恢复/关闭保护和G1仍待完成。
+- T104其后已由上方最新切片完成。T102真实磁盘满仍因New-VHD权限缺口[~]，不重复同一探针；T110恢复/关闭保护和G1仍待完成。
 
 ## T103.a 完整降级编辑（历史切片）
 

@@ -94,6 +94,13 @@ pub struct ChosenFiles {
     pub failures: Vec<SelectionFailure>,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChosenFolder {
+    pub grant: Option<FileRef>,
+    pub display_name: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileMetadata {
@@ -257,4 +264,34 @@ pub struct ReadChunkRequest {
     pub expected_disk_revision: String,
     pub byte_offset: u64,
     pub max_bytes: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DirectoryEntry {
+    pub id: String,
+    #[serde(rename = "ref")]
+    pub reference: FileRef,
+    pub name: String,
+    pub kind: &'static str,
+    pub is_hidden: bool,
+    pub is_read_only: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DirectoryPage {
+    pub items: Vec<DirectoryEntry>,
+    pub next_cursor: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ListDirectoryRequest {
+    #[serde(rename = "ref")]
+    pub reference: FileRef,
+    pub cursor: Option<String>,
+    pub limit: Option<u32>,
+    #[serde(default)]
+    pub show_hidden: bool,
 }

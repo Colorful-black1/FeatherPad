@@ -30,12 +30,42 @@ pub fn lock_parent_chain(path: &Path) -> Result<Vec<File>, AppError> {
         {
             return Err(AppError::new(
                 ErrorCode::OutOfScope,
-                "保存目录已变化或包含链接，已停止写入。",
+                "目录路径已变化或包含链接，已停止访问。",
             ));
         }
         guards.push(file);
     }
     Ok(guards)
+}
+
+#[cfg(windows)]
+pub fn lock_directory(path: &Path) -> Result<File, AppError> {
+    use super::grants::opened_file_path;
+    use std::{
+        fs::OpenOptions,
+        os::windows::fs::{MetadataExt, OpenOptionsExt},
+    };
+    use windows_sys::Win32::Storage::FileSystem::{
+        FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_BACKUP_SEMANTICS, FILE_LIST_DIRECTORY,
+        FILE_READ_ATTRIBUTES, FILE_SHARE_READ, FILE_SHARE_WRITE,
+    };
+    let file = OpenOptions::new()
+        .access_mode(FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES)
+        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
+        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+        .open(path)
+        .map_err(io_error)?;
+    let metadata = file.metadata().map_err(io_error)?;
+    if !metadata.is_dir()
+        || metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+        || opened_file_path(&file)? != path
+    {
+        return Err(AppError::new(
+            ErrorCode::Conflict,
+            "目录已变化或包含链接，请刷新后重试。",
+        ));
+    }
+    Ok(file)
 }
 
 #[cfg(windows)]
@@ -164,6 +194,10 @@ pub fn link_count(_file: &File) -> Result<u32, AppError> {
 }
 #[cfg(not(windows))]
 pub fn lock_parent_chain(_path: &Path) -> Result<Vec<File>, AppError> {
+    Err(unsupported())
+}
+#[cfg(not(windows))]
+pub fn lock_directory(_path: &Path) -> Result<File, AppError> {
     Err(unsupported())
 }
 #[cfg(not(windows))]

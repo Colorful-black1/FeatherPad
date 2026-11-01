@@ -154,14 +154,16 @@ export interface Page<T> { items: T[]; nextCursor: string | null; }
 
 | 命令 | 输入 | 输出 value |
 |---|---|---|
-| `list_directory` | `{ref,cursor?,limit?:number}` | `Page<DirectoryEntry>` |
+| `list_directory` | `{ref,cursor?,limit?:number,showHidden?:boolean}` | `Page<DirectoryEntry>` |
 | `create_entry` | `{parent:FileRef,name,kind:'file'|'directory',requestId}` | `DirectoryEntry` |
 | `rename_entry` | `{ref,newName,expectedRevision?,requestId}` | `{ref:FileRef}` |
 | `trash_entry` | `{ref,expectedRevision?,requestId}` | `{trashed:boolean,receiptId:string}` |
 | `start_watch` | `{refs:FileRef[]}` | `{watchId:string}` |
 | `stop_watch` | `{watchId}` | `{stopped:boolean}` |
 
-limit 默认 200、最大 1000；cursor 不可猜测，目录变更导致失效返回可重载错误，不重复无限分页。名称校验 Windows reserved device names、空白尾点、路径分隔符和空名称，碰撞默认拒绝，不自动覆盖。多选变更返回逐项结果，不宣称原子性。
+limit 默认 200、最大 1000；cursor 绑定授权根/canonical目录、目录revision、隐藏项过滤和零基偏移，不包含可直接使用的本机路径。目录直接子项变化导致旧cursor返回CONFLICT，重载从首分页开始；不重复无限分页。`showHidden`默认false。列表只枚举当前层，文件夹在前、名称自然排序；读取任一条目失败不返回部分伪成功页。`choose_folder`只返回内存grant和安全的根显示名，不授予任意路径IPC。名称校验 Windows reserved device names、空白尾点、路径分隔符和空名称，碰撞默认拒绝，不自动覆盖。多选变更返回逐项结果，不宣称原子性。
+M1/T104实施决策（2026-11-01）：目录打开后只请求根的直接子项，默认200条；展开目录时才请求该层，前端不递归预取。分页cursor由Rust生成，旧的过滤器或目录revision不能复用；页面上的`ref.relativePath`使用授权根内规范化相对路径。隐藏项是显示过滤，不等同于后续搜索ignore规则。失败页显示在原目录行并提供重试，不清空已成功的其他目录缓存。枚举期间Rust以不共享删除的句柄锁住父路径链与目录本身，并复核打开句柄的最终canonical路径，避免检查后目录被换名为越界reparse。
+同一进程内重复选择相同canonical目录时复用既有目录grant，使关闭/重开树后已打开文档仍可定位；复用不扩大既有授权范围。目录树刷新`locate`按相对路径逐层加载，当前文件属于另一授权根时明确提示且不扫描其他根。
 
 **变更命令不可盲目重试。** create/rename/trash 用 requestId 在运行进程中去重、校验 payload；超时先查询目录/receipt。进程崩溃后不提供 exactly-once 保证，UI 先重扫状态。回收站 receipt 是审计标识，不承诺所有系统配置均支持程序化还原；引导用户系统回收站恢复。reparse point 每次解析后验证授权边界，不默认递归跟随。
 

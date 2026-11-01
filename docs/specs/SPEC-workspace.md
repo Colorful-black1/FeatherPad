@@ -1,6 +1,6 @@
 # SPEC-workspace：工作区与资源管理器
 
-> 模块 `workspace`；业务依赖仅 `file-core`。状态：待实现、待验证，未声称用户已批准。树和工作区拥有自己的状态，不反向依赖editor；脏文件保护通过应用编排层注入决策结果。
+> 模块 `workspace`；业务依赖仅 `file-core`。状态：M1/T104已实现单根懒加载树并通过原生验收；其余工作区能力待实现、待验证。树和工作区拥有自己的状态，不反向依赖editor；脏文件保护通过应用编排层注入决策结果。
 
 ## Objective 与范围
 
@@ -36,7 +36,7 @@ type WalkRequest = {
 };
 ```
 
-提供 `openFolder(path, mode)`、`addRoot(path)`、`removeRoot(rootId)`、`reorderRoots(ids)`、`listChildren(rootId, cursor, pageSize≤500)`、`reveal(identity)`、`walk(request)`、`cancel(requestId)`、`resolveRelative(rootId,path)`、`getSearchScope()`、`saveWorkspace(target)`、`loadWorkspace(path)`。返回统一 `Result<T, AppError>`，错误结构沿用file-core，附加 `INVALID_WORKSPACE`、`ROOT_UNAVAILABLE`、`OUTSIDE_ROOT`、`LINK_CYCLE`、`LIMIT_REACHED`；列表游标是不透明值并带扫描generation，过期游标要求刷新。
+提供 `openFolder(path, mode)`、`addRoot(path)`、`removeRoot(rootId)`、`reorderRoots(ids)`、`listChildren(rootId, cursor, pageSize≤1000)`、`reveal(identity)`、`walk(request)`、`cancel(requestId)`、`resolveRelative(rootId,path)`、`getSearchScope()`、`saveWorkspace(target)`、`loadWorkspace(path)`。返回统一 `Result<T, AppError>`，错误结构沿用file-core，附加 `INVALID_WORKSPACE`、`ROOT_UNAVAILABLE`、`OUTSIDE_ROOT`、`LINK_CYCLE`、`LIMIT_REACHED`；列表游标是不透明值并绑定当前目录项revision，过期游标要求刷新。
 
 `walk`异步批次事件包含requestId/generation、rootId、规范identity、展示路径、relativePath、file size、候选编码提示和跳过原因；不把文件正文塞入工作区模型。search-tools自己按file-core读取并核验。消费者可取消并丢弃过期generation；不会回调editor模块。workspace配置变化不直接写editor缓冲。
 
@@ -52,7 +52,7 @@ type WalkRequest = {
 
 ## 资源树与操作（F-WORK-003/004/005/006）
 
-目录懒加载，默认文件夹在前、名称自然排序，保留原大小写；隐藏项开关与搜索排除独立。支持选择、范围选择、键盘展开/折叠、刷新、复制完整/相对路径、在系统资源管理器显示、定位当前文件。超大目录每页≤500条并虚拟化；重复刷新保留已展开身份，不能按索引错选。根/目录读失败显示行内原因和重试，不空白伪成功。
+目录懒加载，默认文件夹在前、名称自然排序，保留原大小写；隐藏项开关与搜索排除独立。支持选择、范围选择、键盘展开/折叠、刷新、复制完整/相对路径、在系统资源管理器显示、定位当前文件。超大目录默认每页200、最大1000条并支持分页/虚拟化；M1/T104通过分页验收，尚未声明整表虚拟化。重复刷新保留已展开身份，不能按索引错选。根/目录读失败显示行内原因和重试，不空白伪成功。
 
 新建文件/目录采用树内输入；校验空名、`CON`等保留名、非法字符、尾点/空格和现存碰撞。创建成功再插入树并选中；新文件进入固定编辑标签。重命名给出后缀提示，更新打开文档路径、最近/收藏显示和监听；应用通过identity映射事件消费，不由workspace导入editor。大小写改名也要走file-core。
 
@@ -85,7 +85,7 @@ type WalkRequest = {
 
 测试层：单元验证规则、去重、根迁移、树reducer和权限边界；集成用真实临时目录/链接/监听（Windows10/11需真实junction）；e2e验证键盘树/拖放/脏文件/历史隐私。长路径/UNC/跨卷/回收站/大目录为手工或专用集成演练，不用模拟结果宣称平台通过。每个feature至少映射一个验收，故障路径需要可复现夹具。
 
-`pnpm test:e2e`仅覆盖Web/mock bridge；真实Tauri/WebView2场景使用待建立的 `pnpm test:desktop -- workspace` 与Rust原生集成测试。命令约定（未搭建/未执行）：`pnpm test:unit -- workspace`、`pnpm test:integration -- workspace`、`pnpm test:e2e -- workspace`、`pnpm test`、`cargo test --manifest-path src-tauri/Cargo.toml workspace`、`cargo fmt --manifest-path src-tauri/Cargo.toml --check`、`cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings`；通用 `pnpm lint`、`pnpm typecheck`、`pnpm build`。
+`pnpm test:e2e`仅覆盖Web/mock bridge；真实Tauri/WebView2目录场景由`pnpm test:desktop`内的`tests/desktop/workspace.ts`与Rust `directories`/显式Release `directory_scale`集成测试组成。目录相关测试已实际执行；其余工作区规则的针对性命令在对应feature实现时补充。通用检查为`pnpm lint`、`pnpm typecheck`、`cargo fmt --manifest-path src-tauri/Cargo.toml --check`、`cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings`。
 
 ## Boundaries 与未决风险
 

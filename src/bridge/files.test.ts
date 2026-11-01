@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { isChosenFiles, isFileRef, isOpenDocument, isSaveAck, isSaveAsAck, isTextChunk } from './files';
+import { isChosenFiles, isChosenFolder, isDirectoryPage, isFileRef, isOpenDocument, isSaveAck, isSaveAsAck, isTextChunk } from './files';
 
 const valid = {
   documentId: 'document-fixture', ref: { grantId: 'fixture-grant', relativePath: '' },
@@ -17,6 +17,22 @@ it('validates individual selection failures without dropping successful grant re
   expect(isChosenFiles({ grants: [valid.ref], failures: [failure, failure] })).toBe(false);
   expect(isChosenFiles({ grants: [valid.ref], failures: [{ ...failure, error: { code: 'UNKNOWN', message: 'bad', retryable: false } }] })).toBe(false);
   expect(isChosenFiles({ grants: [valid.ref] })).toBe(false);
+});
+
+it('validates complete directory pages and folder grants without trusting paths', () => {
+  const folder = { grant: valid.ref, displayName: 'controlled-root' };
+  const entry = {
+    id: 'opaque-entry', ref: { grantId: valid.ref.grantId, relativePath: 'folder/file.txt' },
+    name: 'file.txt', kind: 'file', isHidden: false, isReadOnly: false,
+  };
+  expect(isChosenFolder(folder)).toBe(true);
+  expect(isChosenFolder({ grant: null, displayName: null })).toBe(true);
+  expect(isChosenFolder({ grant: valid.ref, displayName: null })).toBe(false);
+  expect(isDirectoryPage({ items: [entry], nextCursor: 'opaque-cursor' })).toBe(true);
+  expect(isDirectoryPage({ items: [], nextCursor: null })).toBe(true);
+  expect(isDirectoryPage({ items: [{ ...entry, kind: 'device' }], nextCursor: null })).toBe(false);
+  expect(isDirectoryPage({ items: [{ ...entry, ref: { grantId: '', relativePath: '' } }], nextCursor: null })).toBe(false);
+  expect(isDirectoryPage({ items: [], nextCursor: '' })).toBe(false);
 });
 
 it('accepts complete native text records and rejects damaged newline/metadata contracts', () => {

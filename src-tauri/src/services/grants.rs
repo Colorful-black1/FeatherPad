@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::path::{Component, Path, PathBuf};
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum GrantKind {
     File,
     Directory,
@@ -65,6 +65,14 @@ impl GrantRegistry {
                 "所选项目类型不匹配。",
             ));
         }
+        if let Some(existing) = self.grants.iter().find_map(|(grant_id, grant)| {
+            (grant.kind == kind && grant.target == target).then(|| grant_id.clone())
+        }) {
+            return Ok(FileRef {
+                grant_id: existing,
+                relative_path: String::new(),
+            });
+        }
         let grant_id = uuid::Uuid::new_v4().to_string();
         self.grants.insert(grant_id.clone(), Grant { target, kind });
         Ok(FileRef {
@@ -101,6 +109,38 @@ impl GrantRegistry {
             return Err(AppError::new(ErrorCode::InvalidInput, "请选择文本文件。"));
         }
         Ok((file, final_path))
+    }
+
+    pub fn resolve_directory(&self, reference: &FileRef) -> Result<PathBuf, AppError> {
+        validate_reference(reference)?;
+        let grant = self
+            .grants
+            .get(&reference.grant_id)
+            .ok_or_else(out_of_scope)?;
+        if !matches!(grant.kind, GrantKind::Directory) {
+            return Err(out_of_scope());
+        }
+        let candidate = if reference.relative_path.is_empty() {
+            grant.target.clone()
+        } else {
+            grant.target.join(&reference.relative_path)
+        };
+        let target = candidate.canonicalize().map_err(io_error)?;
+        if !grant.contains(&target) || !target.metadata().map_err(io_error)?.is_dir() {
+            return Err(out_of_scope());
+        }
+        Ok(target)
+    }
+
+    pub fn root_display_name(&self, reference: &FileRef) -> Option<String> {
+        let grant = self.grants.get(&reference.grant_id)?;
+        if !matches!(grant.kind, GrantKind::Directory) {
+            return None;
+        }
+        Some(grant.target.file_name().map_or_else(
+            || grant.target.to_string_lossy().into_owned(),
+            |name| name.to_string_lossy().into_owned(),
+        ))
     }
 }
 
