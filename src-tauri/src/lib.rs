@@ -3,6 +3,8 @@ pub mod models;
 pub mod services {
     pub mod files;
     pub mod grants;
+    pub mod identity;
+    pub mod text;
 }
 
 pub fn run() {

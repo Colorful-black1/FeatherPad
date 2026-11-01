@@ -4,6 +4,8 @@
 
 M0实施决策（T003，2026-11-01）：按既有协议先落地choose_files/choose_folder/open_document，不添加任意路径授权或测试专用IPC。授权仅保存在Rust内存；每次读取同时校验路径组件、canonical目标和已打开句柄的Windows最终路径，阻止junction换向逃逸。首个切片只提供有界UTF8只读查看，其他编码/大文件返回明确错误，完整打开策略/文档身份/保存由T101之后扩展；不得提前标记相应功能完成。AppManifest为这三个命令生成精确ACL，仅main本地窗口获权。
 
+M1/T101实施决策（2026-11-01）：Windows身份使用volume serial+128-bit file ID，打开文档持有共享删除的只读句柄作为身份租约，避免已打开文档期间ID复用；不支持该API时显式提示并退化canonical路径。revision纳入身份、原始字节、大小与mtime，不仅比较内容。UTF16 BOM先严格解码再判断binary，非法代理项/奇数字节拒绝有损读取。前端registry在React之外持有唯一CodeMirror状态和版本，React仅订阅标签/dirty等元数据；重复打开同DocumentId只聚焦，不替换已有缓冲。M1对未实现逐行编辑映射的混合换行保持只读，完整编码/换行编辑仍由T201验收。所有线协议字段不变。
+
 ## 1. 一致规则
 
 - TS 字段 camelCase，Rust serde rename_all="camelCase"；命令使用 snake_case。字节数/版本为 JS safe integer；超出范围拒绝。时间为 ISO 8601 UTC 字符串。

@@ -1,17 +1,22 @@
 use super::grants::GrantRegistry;
+use super::{
+    identity::{identify, FileIdentity},
+    text::{decode_basic, normalize_newlines},
+};
 use crate::models::{
     io_error, AppError, ErrorCode, FileMetadata, FileRef, Newline, NewlineMap, OpenDocument,
     TextContent, TextFormat,
 };
 use sha2::{Digest, Sha256};
-use std::{collections::HashMap, io::Read, path::PathBuf};
+use std::{collections::HashMap, fs::File, io::Read};
 
 const NORMAL_LIMIT: u64 = 2 * 1024 * 1024;
 
 #[derive(Default)]
 pub struct FileService {
     pub grants: GrantRegistry,
-    documents: HashMap<PathBuf, String>,
+    // Keep an open handle per document as an identity lease; std File shares delete on Windows.
+    documents: HashMap<FileIdentity, (String, File)>,
 }
 
 impl FileService {
@@ -40,17 +45,8 @@ impl FileService {
                 "读取期间文件已变化，请重新打开。",
             ));
         }
-        let (source, bom) = if let Some(without_bom) = bytes.strip_prefix(&[0xef, 0xbb, 0xbf]) {
-            (without_bom, "utf8")
-        } else {
-            (bytes.as_slice(), "none")
-        };
-        let source = std::str::from_utf8(source).map_err(|_| {
-            AppError::new(
-                ErrorCode::EncodingRequired,
-                "无法按UTF-8读取，请选择合适的编码。",
-            )
-        })?;
+        let decoded = decode_basic(&bytes)?;
+        let source = decoded.text.as_str();
         let controls = source
             .chars()
             .filter(|c| c.is_control() && !matches!(c, '\n' | '\r' | '\t'))
@@ -73,15 +69,26 @@ impl FileService {
             "crlf"
         };
         let mut revision = Sha256::new();
+        let identity = identify(&file, &path);
+        revision.update(identity.revision_tag());
         revision.update(&bytes);
         revision.update(metadata.len().to_le_bytes());
         let modified_at = chrono::DateTime::<chrono::Utc>::from(modified)
             .to_rfc3339_opts(chrono::SecondsFormat::Nanos, true);
         revision.update(&modified_at);
+        let mut warnings = if has_cr {
+            vec!["文件含孤立CR换行，请确认原始格式。".into()]
+        } else {
+            vec![]
+        };
+        if matches!(identity, FileIdentity::Canonical(_)) {
+            warnings.push("文件系统未提供稳定文件标识，当前按规范路径识别。".into());
+        }
         let document_id = self
             .documents
-            .entry(path.clone())
-            .or_insert_with(|| uuid::Uuid::new_v4().to_string())
+            .entry(identity)
+            .or_insert_with(|| (uuid::Uuid::new_v4().to_string(), file))
+            .0
             .clone();
         let display = path.to_string_lossy();
         let display_path = if let Some(unc) = display.strip_prefix("\\\\?\\UNC\\") {
@@ -103,15 +110,11 @@ impl FileService {
                 disk_revision: format!("{:x}", revision.finalize()),
             },
             format: TextFormat {
-                encoding: "utf-8",
-                bom,
+                encoding: decoded.encoding,
+                bom: decoded.bom,
                 line_ending,
             },
-            warnings: if has_cr {
-                vec!["文件含孤立CR换行，请确认原始格式。".into()]
-            } else {
-                vec![]
-            },
+            warnings,
             mode: "normal",
             content: TextContent {
                 kind: "text",
@@ -130,29 +133,4 @@ fn too_large() -> AppError {
         ErrorCode::TooLarge,
         "此文件超过普通文本大小限制，需要大文件打开模式。",
     )
-}
-
-fn normalize_newlines(source: &str) -> (String, Vec<Newline>) {
-    let mut text = String::with_capacity(source.len());
-    let mut endings = Vec::new();
-    let mut chars = source.chars().peekable();
-    while let Some(c) = chars.next() {
-        match c {
-            '\r' => {
-                if chars.peek() == Some(&'\n') {
-                    chars.next();
-                    endings.push(Newline::Crlf);
-                } else {
-                    endings.push(Newline::Cr);
-                }
-                text.push('\n');
-            }
-            '\n' => {
-                endings.push(Newline::Lf);
-                text.push('\n');
-            }
-            _ => text.push(c),
-        }
-    }
-    (text, endings)
 }

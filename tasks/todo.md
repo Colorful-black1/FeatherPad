@@ -33,7 +33,7 @@ Q/R/W/D/B命令已建立；具体通过范围见PROGRESS，命令存在不等于
 
 | 状态/任务 | 依赖 | 功能追踪 | 切片与明确验收 | 主要规划文件 | 验证 |
 |---|---|---|---|---|---|
-| [ ] T101 文档身份与打开 | T005 | F-FILE-001..002,F-FILE-014..015 | 新建/多选打开；同文件别名去重；binary/未知编码不误写 | src/features/editor/documents.ts、src/bridge/files.ts、src-tauri/src/services/files.rs、src-tauri/src/services/identity.rs | Q/R/D：中文/空格/长路径/UTF16/binary/硬链接 |
+| [~] T101 文档身份与打开 | T005 | F-FILE-001..002,F-FILE-014..015 | a原生身份/严格解码；b唯一CM缓冲/新建多选；c原生多选验收；binary/未知编码不误写 | src/features/editor/documents.ts、src/bridge/files.ts、src-tauri/src/services/files.rs、src-tauri/src/services/identity.rs | a：Rust集成8、fmt/clippy exit 0；b/c待验收；首次保存仍由T102完成 |
 | [ ] T102 安全保存闭环 | T101 | F-FILE-003..005,F-FILE-009 | 保存/另存/副本/全部保存，revision串行和迟到Ack正确 | src/features/editor/save.ts、src-tauri/src/services/save.rs、src-tauri/src/models/documents.rs、src/features/editor/SaveDialog.tsx | Q/R/D：锁定/磁盘满/目标碰撞/保存中输入/取消另存 |
 | [ ] T103 大文件模式 | T101 | F-FILE-013 | 2/20/100MiB边界准确，限量预览不可保存，长行可降级 | src-tauri/src/services/open_policy.rs、src/features/editor/LargeFileView.tsx、src/features/editor/editor-policy.ts | R/D：各阈值±1字节及长行；内存观察 |
 | [ ] T104 单根目录树 | T101 | F-WORK-001,F-WORK-003 | 打开根、懒加载/分页/排序/刷新/当前文件定位，空和拒绝态完整 | src/features/workspace/Explorer.tsx、src/features/workspace/store.ts、src-tauri/src/services/directories.rs | Q/R/W/D：空目录、无权限、100k文件首层 |

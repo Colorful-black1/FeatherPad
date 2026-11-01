@@ -45,11 +45,104 @@ fn reads_utf8_bom_and_keeps_each_original_newline_and_document_identity() {
 #[test]
 fn rejects_non_utf8_binary_and_oversize_without_lossy_decoding() {
     for (bytes, expected) in [
-        (vec![0xff, 0xfe, 65, 0], ErrorCode::EncodingRequired),
+        (vec![0x81, 0x40], ErrorCode::EncodingRequired),
+        (vec![0xff, 0xfe, 0, 0xd8], ErrorCode::LossyEncoding),
+        (vec![0xff, 0xfe, 65], ErrorCode::LossyEncoding),
         (vec![b'a', 0, b'b'], ErrorCode::IsBinary),
         (vec![b'a'; 2 * 1024 * 1024 + 1], ErrorCode::TooLarge),
     ] {
         let (mut service, reference) = open_bytes(&bytes);
         assert_eq!(service.open_document(reference).unwrap_err().code, expected);
     }
+}
+
+#[test]
+fn utf16_bom_is_decoded_strictly_before_binary_detection() {
+    for little in [true, false] {
+        let mut bytes = if little {
+            vec![0xff, 0xfe]
+        } else {
+            vec![0xfe, 0xff]
+        };
+        for unit in "中文😀\r\n第二行".encode_utf16() {
+            bytes.extend_from_slice(&if little {
+                unit.to_le_bytes()
+            } else {
+                unit.to_be_bytes()
+            });
+        }
+        let (mut service, reference) = open_bytes(&bytes);
+        let opened = service.open_document(reference).unwrap();
+        assert_eq!(opened.content.text, "中文😀\n第二行");
+        assert_eq!(
+            opened.format.bom,
+            if little { "utf16le" } else { "utf16be" }
+        );
+        assert_eq!(opened.format.line_ending, "crlf");
+    }
+}
+
+#[test]
+fn real_hardlinks_and_case_aliases_share_one_document_but_equal_bytes_do_not() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join(".artifacts")
+        .join("T101")
+        .join(uuid::Uuid::new_v4().to_string());
+    fs::create_dir_all(&root).unwrap();
+    let original = root.join("Original.txt");
+    let alias = root.join("alias.txt");
+    let different = root.join("different.txt");
+    fs::write(&original, "same bytes").unwrap();
+    fs::hard_link(&original, &alias).unwrap();
+    fs::write(&different, "same bytes").unwrap();
+    let mut service = FileService::default();
+    let mut opened = Vec::new();
+    for path in [&original, &alias, &root.join("ORIGINAL.TXT"), &different] {
+        let reference = service
+            .grants
+            .register_selection(path, GrantKind::File)
+            .unwrap();
+        opened.push(service.open_document(reference).unwrap());
+    }
+    assert_eq!(opened[0].document_id, opened[1].document_id);
+    assert_eq!(opened[0].document_id, opened[2].document_id);
+    assert_eq!(
+        opened[0].metadata.disk_revision,
+        opened[1].metadata.disk_revision
+    );
+    assert_ne!(opened[0].document_id, opened[3].document_id);
+    assert_ne!(
+        opened[0].metadata.disk_revision,
+        opened[3].metadata.disk_revision
+    );
+}
+
+#[test]
+fn opens_authorized_unicode_long_path_with_native_identity() {
+    let mut root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join(".artifacts")
+        .join("T101")
+        .join(uuid::Uuid::new_v4().to_string());
+    for _ in 0..7 {
+        root = root.join("controlled-long-path-segment-中文");
+    }
+    // Extended-length prefix ensures fixture setup also exercises a genuine >260 path.
+    let root = PathBuf::from(format!("\\\\?\\{}", root.display()));
+    fs::create_dir_all(&root).unwrap();
+    let file = root.join("中文 emoji😀 fixture.txt");
+    assert!(file.as_os_str().len() > 260);
+    fs::write(&file, "long path fixture").unwrap();
+    let mut service = FileService::default();
+    let reference = service
+        .grants
+        .register_selection(&file, GrantKind::File)
+        .unwrap();
+    assert_eq!(
+        service.open_document(reference).unwrap().content.text,
+        "long path fixture"
+    );
 }
