@@ -23,6 +23,8 @@
 
 ## 当前恢复点（2026-11-01 14:42，Asia/Shanghai）
 
+- T102.c2.d原生另存入口已编译：save_document_as使用真实保存选择器，目标已存在时先capture revision再额外原生覆盖确认，取消返回CANCELLED并缓存；commit前重验。选择器期间不持有源服务锁，成功才绑定；copy同样选择器但不改源。main仅新增精确allow-save-document-as。clippy exit 0，尚未接前端/运行新Release，不能记OS另存验收通过。下一切片前端capture/As Ack/只读策略，再接按钮与原生受控保存/取消测试。
+
 - T102.c2.c缓存准备：普通保存/另存共用512条结果缓存，变体区分Ack/SaveAsAck，As ticket只留key/hash不复制全文；Native picker前先查回放，取消也缓存。InFlight增加As请求入口，相同ID不同快照/intent拒绝、相同在途BUSY。Rust全套37 passed、fmt/clippy exit 0。保存私有目录resolver仅提升到commands内部可复用；继续原生另存IPC，尚无新Release。
 
 - T102.c2.b：新增ExistingDestination，覆盖确认前捕获真实目标revision；通过独立目标writer复用已测试保存核心，保留实时源绑定直到完整成功。文档registry增加身份/规范路径占用查询，其他打开文档目标BUSY，副本同源拒绝，确认期间外部改动CONFLICT。新建提交也检查已有路径占用。初测9/10，唯一失败为fixture混合斜杠与Windows展示路径逐字比较，已改为Path语义比较并增加revision绑定断言；复验后提交。尚未接选择器/确认IPC，继续c2请求缓存与原生入口。

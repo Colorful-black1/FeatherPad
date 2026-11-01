@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Manager};
 use tauri_plugin_dialog::DialogExt;
 pub mod save;
+pub mod save_as;
 
 type SharedFiles = Arc<Mutex<FileService>>;
 

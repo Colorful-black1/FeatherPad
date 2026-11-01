@@ -5,6 +5,7 @@ fn main() {
             "choose_folder",
             "open_document",
             "save_document",
+            "save_document_as",
             "stat_document",
         ]));
     tauri_build::try_build(attributes).expect("FeatherPad build configuration is invalid");

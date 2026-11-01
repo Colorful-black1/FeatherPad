@@ -31,6 +31,7 @@ pub fn run() {
             commands::choose_folder,
             commands::open_document,
             commands::save::save_document,
+            commands::save_as::save_document_as,
             commands::save::stat_document
         ])
         .run(tauri::generate_context!())
