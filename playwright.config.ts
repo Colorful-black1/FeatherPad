@@ -12,7 +12,8 @@ export default defineConfig({
     trace: 'retain-on-failure',
   },
   webServer: {
-    command: 'pnpm dev:web',
+    // Exercise the same built frontend embedded by Tauri, without a dev-module transformation waterfall.
+    command: 'pnpm build:web && pnpm exec vite preview --host 127.0.0.1 --port 1420 --strictPort',
     url: 'http://127.0.0.1:1420',
     reuseExistingServer: !process.env.CI,
   },
