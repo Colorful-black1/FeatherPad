@@ -6,8 +6,11 @@ pub mod services {
     pub mod files;
     pub mod grants;
     pub mod identity;
+    pub mod save;
+    pub mod save_journal;
     pub mod snapshot;
     pub mod text;
+    pub mod windows_file;
 }
 
 pub fn run() {

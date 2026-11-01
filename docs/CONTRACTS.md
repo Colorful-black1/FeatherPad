@@ -10,6 +10,8 @@ M1/T102.a实施决策（2026-11-01）：保存时才冻结正文字符串与CM T
 
 M1/T102.b1实施决策（2026-11-01）：Rust SaveRequest与既有camelCase协议一致，拒绝未知字段；TextFormat改为owned字符串以便Deserialize，输出线协议不变。编码器先验证版本、归一化LF、逐换行数量/版本及encoding/BOM配对，支持严格UTF8/UTF16与显式mixed逐行映射，不支持的编码拒绝。此切片只生成字节，不提供IPC或写盘；前端仍将UTF16/mixed设为只读，不能以编码器测试代替T201编辑映射验收。
 
+T102.b2写入实现约定：原件与目标字节先分别flush到应用私有保存事务目录，唯一receipt manifest记录目标、临时文件、同卷backup、摘要和阶段；记录不写日志、不上传。之后才在目标同目录创建唯一临时文件，核对其实际句柄路径后写正文/flush，替换前重验grant、身份和revision。ReplaceFileW始终指定唯一backup并使用flags=0，失败保留候选；成功读回核对字节/身份再Ack、更新身份索引。硬链接多于1需显式确认只替换当前路径，不能静默断开别名；该确认来自原生交互或可信Rust调用，不由任意路径IPC授权。IPC快照UTF8正文硬上限64MiB、编码后硬上限100MiB，超限明确拒绝且保留内存，不改变打开模式的2/20/100MiB阈值。保存事务/恢复清单的启动扫描与预算由T110完成前不得标G1通过。
+
 ## 1. 一致规则
 
 - TS 字段 camelCase，Rust serde rename_all="camelCase"；命令使用 snake_case。字节数/版本为 JS safe integer；超出范围拒绝。时间为 ISO 8601 UTC 字符串。
