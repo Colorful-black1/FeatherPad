@@ -2,13 +2,13 @@
 
 **快开文件，专心编辑。** 一个免费、离线、面向常用文档、配置和代码文本的轻量桌面编辑器。
 
-本目录是可供agent独立打开的完整产品与开发交接包。**当前交付为方案、UI交互原型、技术与环境文档、实现计划；产品应用尚未开发。** 不把设计演示或未执行的命令视为成品。
+本目录是轻羽桌面编辑器的独立工程。**当前处于M0：Tauri/React工程、CodeMirror只读查看、原生授权服务和测试通路已建立，首个Release已构建；系统选择器完整选取验收未通过，G0尚未通过，编辑/保存等M1–M5功能待实现。** 不把原型、mock或早期Release视为成品。最新状态和证据见 [PROGRESS](tasks/PROGRESS.md)。
 
 ## 立即开始
 
 - 想看界面：双击 [交互原型](design/prototype.html)，无需安装依赖、无需服务器；CSS需与HTML同目录。可试目录/标签、编辑、搜索、命令面板、设置、主题。演示保存不写真实源文件。
 - 想理解产品：先读 [产品方案](docs/PRODUCT.md) 和 [86项完整功能矩阵](docs/FEATURE-MATRIX.md)。
-- 想让AI开发：单独打开 `E:\Codeing\ai-workspace\featherpad`，阅读 [agent规则](AGENTS.md)，复制 [启动/loop提示](docs/AGENT-START.md)，从 [任务清单](tasks/todo.md) 的T000开始。
+- 想继续开发：单独打开 `E:\Codeing\ai-workspace\featherpad`，阅读 [agent规则](AGENTS.md) 与 [PROGRESS](tasks/PROGRESS.md)，从 [任务清单](tasks/todo.md) 的进行中任务恢复，不重建工程。
 - 想核查环境：执行 [环境探针](scripts/Probe-Environment.ps1)，再点源 [开发会话入口](scripts/Enter-Dev.ps1)。这些脚本不安装工具、不修改系统PATH。
 
 ```powershell
@@ -54,7 +54,8 @@ powershell.exe -NoProfile -File .\scripts\Probe-Environment.ps1
 
 ## 环境约束与当前事实
 
-已在本机找到并核查 Node22.13.0、pnpm10.32.1、Rust1.99.1、VS2022 C++工具、Windows SDK和WebView2。本次未安装新工具、未安装产品依赖。Tauri原生编译由M0验证，不能仅凭目录存在宣称通过。
+本机复用 Node22.13.0、pnpm10.32.1、Rust1.99.1、VS2022 C++工具、Windows SDK和WebView2；没有升级全局工具链。项目依赖已在E盘安装，原生编译和运行的实际证据按阶段记录。
+M0实施更新：项目依赖已精确安装并双锁，原生Rust与Tauri编译、Release WebView2离线重载、IPC越界拒绝已实际验证；详细范围见 [M0验收](docs/acceptance/M0.md)。开发使用上述会话入口后运行`pnpm dev`，质量检查使用`powershell.exe -NoProfile -File scripts/check.ps1 -Desktop`。当前早期Release不提供保存；完整v1仍需全部后续阶段。
 
 优先复用 `E:\Codeing` 和默认目录的已有环境；确实缺失时，**所有新增开发工具/SDK/浏览器/安装包/缓存只能放在 `E:\Codeing` 下**，默认 `E:\Codeing\featherpad-dev`。全局Node不切换，系统PATH不修改。
 

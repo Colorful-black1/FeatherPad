@@ -6,6 +6,8 @@ import { createServer } from 'node:net';
 import path from 'node:path';
 
 test('real Tauri WebView2 shell, without a mock bridge', async () => {
+  const verifyChooser = process.env.FEATHERPAD_VERIFY_CHOOSER === '1';
+  if (verifyChooser) test.setTimeout(120_000);
   const profile = process.env.FEATHERPAD_DESKTOP_PROFILE ?? 'release';
   if (profile !== 'release' && profile !== 'debug') throw new Error('Invalid desktop build profile');
   const root = process.cwd();
@@ -26,7 +28,7 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
   // Test-only flags on this child process. No product debug endpoint or test IPC.
   const child = spawn(exe, [], {
     cwd: root,
-    windowsHide: true,
+    windowsHide: !verifyChooser,
     stdio: 'ignore',
     env: {
       ...process.env,
@@ -53,22 +55,51 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
     await expect(page).toHaveTitle('轻羽 FeatherPad');
     await expect(page.getByRole('heading', { name: '快开文件，专心编辑。' })).toBeVisible();
     expect(await page.evaluate(() => Reflect.has(window, '__TAURI_INTERNALS__'))).toBe(true);
-    if (profile === 'release') expect(page.url()).toMatch(/^https?:\/\/tauri\.localhost\//);
+    const rejected = await page.evaluate(async () => {
+      const native = Reflect.get(window, '__TAURI_INTERNALS__') as { invoke: (command: string, args: Record<string, unknown>) => Promise<unknown> };
+      const forged = await native.invoke('open_document', { ref: { grantId: 'not-issued', relativePath: 'secret.txt' } });
+      const malformed = await native.invoke('open_document', { ref: { grantId: null, relativePath: 7 } });
+      let ungrantedPluginRejected = false;
+      try { await native.invoke('plugin:fs|read_text_file', { path: 'ungranted-fixture.txt', options: {} }); }
+      catch { ungrantedPluginRejected = true; }
+      return { forged, malformed, ungrantedPluginRejected };
+    });
+    expect(rejected.forged).toMatchObject({ ok: false, error: { code: 'OUT_OF_SCOPE' } });
+    expect(rejected.malformed).toMatchObject({ ok: false, error: { code: 'INVALID_INPUT' } });
+    expect(rejected.ungrantedPluginRejected).toBe(true);
+    if (profile === 'release') {
+      expect(page.url()).toMatch(/^https?:\/\/tauri\.localhost\//);
+      await context.setOffline(true);
+      await page.reload();
+      await expect(page.getByRole('heading', { name: '快开文件，专心编辑。' })).toBeVisible();
+    }
     const darkButton = page.getByRole('button', { name: '切换到深色主题' });
     if (await darkButton.count() === 0) await page.getByRole('button', { name: '切换到浅色主题' }).click();
     await page.screenshot({ path: path.join(evidence, `native-${profile}-light.png`) });
     await page.getByRole('button', { name: '切换到深色主题' }).click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
     await page.screenshot({ path: path.join(evidence, `native-${profile}-dark.png`) });
+    if (verifyChooser) {
+      const fixture = path.join(dataDir, '中文 fixture.txt');
+      await writeFile(fixture, '原生选择器受控文件\r\nFeatherPad', 'utf8');
+      await writeFile(path.join(evidence, 'chooser-fixture.json'), JSON.stringify({ fixture }));
+      console.log('Native chooser waiting for fixture recorded in .artifacts/T002/chooser-fixture.json');
+      await page.getByRole('button', { name: '打开文件', exact: true }).click();
+      await expect(page.locator('.cm-content')).toContainText('原生选择器受控文件', { timeout: 90_000 });
+      await expect(page.locator('.cm-content')).toHaveAttribute('contenteditable', 'false');
+      await page.screenshot({ path: path.join(evidence, `native-${profile}-file.png`) });
+    }
     await writeFile(path.join(evidence, `native-${profile}.json`), JSON.stringify({
       checkedAt: new Date().toISOString(),
-      scope: 'Real Tauri WebView2, CDP test process; no OS dialog/IME/Windows scaling coverage',
+      scope: 'Real Tauri WebView2, CDP test process; OS chooser requires optional explicit interactive verification; no IME/Windows scaling coverage',
       executable: path.relative(root, exe), sha256: hash, pid: child.pid,
       profile, browserVersion: browser.version(), url: page.url(),
-      checks: ['native-title', 'native-brand', 'tauri-ipc-present', 'light-theme', 'dark-theme'],
+      nativeChooserVerified: verifyChooser,
+      browserOffline: profile === 'release',
+      checks: ['native-title', 'native-brand', 'tauri-ipc-present', 'light-theme', 'dark-theme', 'forged-grant-rejected', 'malformed-ref-rejected', 'ungranted-plugin-rejected'],
     }, null, 2));
   } finally {
-    await browser?.close();
-    child.kill();
+    try { await browser?.close(); }
+    finally { child.kill(); }
   }
 });

@@ -1,3 +1,9 @@
 fn main() {
-    tauri_build::build();
+    let attributes =
+        tauri_build::Attributes::new().app_manifest(tauri_build::AppManifest::new().commands(&[
+            "choose_files",
+            "choose_folder",
+            "open_document",
+        ]));
+    tauri_build::try_build(attributes).expect("FeatherPad build configuration is invalid");
 }

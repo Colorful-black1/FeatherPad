@@ -3,5 +3,5 @@
   "identifier": "main",
   "description": "Local editor window; custom commands validate all grants in Rust.",
   "windows": ["main"],
-  "permissions": []
+  "permissions": ["allow-choose-files", "allow-choose-folder", "allow-open-document"]
 }

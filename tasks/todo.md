@@ -1,7 +1,7 @@
 # 开发任务清单
 
 当前阶段：**M0环境与工程骨架进行中**。`[ ]` 待做，`[~]` 进行中，`[x]` 通过验收。禁止仅因代码存在就打勾；关联 [计划](plan.md)、[进度](PROGRESS.md) 与 [完整功能矩阵](../docs/FEATURE-MATRIX.md)。范围写 `F-FILE-001..005` 表示含端点的连续ID。
-执行更新（2026-11-01）：T000已完成，T001进行中，分为T001.a精确依赖/禁脚本安装与审查、T001.b原生工程/锁文件/质量检查。工程配置不代表后续产品功能通过；完整状态以各任务行及PROGRESS证据为准。
+执行更新（2026-11-01）：T000–T002已完成。T003拆为a授权registry、b有界读取、c typed IPC/ACL、d只读UI和系统选择器验收；a–c及d的Web层已验证，d的OS选取流程未通过。父任务保持进行中，T004/T005不提前打勾。
 
 ## 执行约定
 
@@ -16,7 +16,7 @@
 - **B**：`pnpm build`，运行实际Release产物，记录路径与sha256。
 - **P**：`pnpm bench:app`，固定版本/机器/夹具，10次样本取p95，完整进程树统计。
 
-当前Q/R/W/D/B/P均是**待创建的工程命令**，文档交付不等于执行通过。
+Q/R/W/D/B命令已建立；具体通过范围见PROGRESS，命令存在不等于产品验收通过。P（bench:app）仍待创建。
 
 ## M0 环境与骨架（依赖：无）
 
@@ -25,7 +25,7 @@
 | [x] T000 复核已有环境 | — | F-DESK-013 | 版本/组件实查，复用本机工具；新增目录仅E盘，Rust最小编译成功 | scripts/Probe-Environment.ps1、scripts/Enter-Dev.ps1、scripts/Verify-NativeToolchain.ps1、docs/ENVIRONMENT.md | 2026-11-01 探针及原生编译运行exit 0；见PROGRESS |
 | [x] T001 工程与锁文件 | T000 | F-DESK-013 | T001.a精确依赖/脚本策略；T001.b原生骨架/质量检查；bundler工具缓存到E盘 | package.json、pnpm-lock.yaml、src-tauri/Cargo.toml、src-tauri/Cargo.lock、pnpm-workspace.yaml | 最终冻结离线安装、TS/lint/Web构建、Rust fmt/clippy/test exit 0；audit仅1条开发工具moderate已记录可达性；见M0验收 |
 | [x] T002 壳层和品牌 | T001 | app-shell | 轻羽标题、布局、主题token和焦点框；亮暗/缩放可用 | src/app/App.tsx、src/shared/ui/Shell.tsx、src/styles/{tokens,app}.css、src/main.tsx | TS/lint、2项Web测试、1项真实Tauri WebView2测试exit 0；原生内容区1200×800截图；CSS200%通过，OS缩放留T114 |
-| [ ] T003 最小IPC与授权 | T001 | F-DESK-013 | typed返回/统一错误、原生选择授权、拒绝越界 | src/bridge/files.ts、src/shared/contracts/files.ts、src-tauri/src/commands/files.rs、src-tauri/src/services/grants.rs、src-tauri/capabilities/default.json | Q/R；越界fixture、恶意路径失败，真实读受控文件 |
+| [~] T003 最小IPC与授权 | T001 | F-DESK-013 | a授权/b有界读取/c typed IPC与ACL已验证；d只读UI已实现，OS选取流程待验收 | src/bridge/、src/shared/contracts/files.ts、src-tauri/src/{commands,models}.rs、services/{grants,files}.rs、capabilities/main.json | 3项TS单测、5项Rust原生、4项Web、Release原生IPC拒绝路径通过；系统选择器三次因CU激活失败超时exit 1，未计通过 |
 | [ ] T004 测试与证据通路 | T002,T003 | F-DESK-013 | Web与原生测试明确区分；建立fixture隔离与测试脚本 | vitest.config.ts、playwright.config.ts、tests/desktop/config.ts、tests/fixtures/README.md、scripts/check.ps1 | 各跑一个有意义的正/负例；确认测试失败能阻断 |
 | [ ] T005 G0真实Release | T004 | F-DESK-013 | 真正窗口可启动；断网无dev server也运行 | tasks/PROGRESS.md、docs/ENVIRONMENT.md、scripts/build.ps1 | Q/R/B、原生启动证据；G0通过后继续 |
 
