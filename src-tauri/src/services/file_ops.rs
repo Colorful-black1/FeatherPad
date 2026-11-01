@@ -9,7 +9,7 @@ use super::{
 };
 use crate::models::{
     io_error, AppError, CreateEntryRequest, DirectoryEntry, EntryKind, ErrorCode, FileRef,
-    RenameEntryRequest, RenameEntryResult, RenamedDocument,
+    RenameEntryRequest, RenameEntryResult, RenamedDocument, TrashEntryResult,
 };
 use sha2::{Digest, Sha256};
 use std::{
@@ -19,17 +19,20 @@ use std::{
 };
 
 const MAX_COMPLETED_OPERATIONS: usize = 256;
+const MAX_TRASH_REQUESTS: usize = 10_000;
 
 #[derive(Clone)]
-enum CompletedEntryOperation {
+pub(super) enum CompletedEntryOperation {
     Created(DirectoryEntry),
     Renamed(RenameEntryResult),
+    Trashed(Result<TrashEntryResult, AppError>),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum EntryOperationKind {
+pub(super) enum EntryOperationKind {
     Create,
     Rename,
+    Trash,
 }
 
 #[derive(Clone)]
@@ -45,16 +48,38 @@ type ReopenedDocuments = (Vec<RenamedDocument>, Vec<(String, DocumentLease)>);
 pub struct EntryOperationHistory {
     completed: HashMap<String, RecordedEntryOperation>,
     order: VecDeque<String>,
+    trash_seen: HashMap<String, String>,
 }
 
 impl EntryOperationHistory {
-    fn replay(
+    pub(super) fn replay(
         &self,
         request_id: &str,
         kind: EntryOperationKind,
         fingerprint: &str,
     ) -> Result<Option<CompletedEntryOperation>, AppError> {
         let Some(recorded) = self.completed.get(request_id) else {
+            if let Some(previous) = self.trash_seen.get(request_id) {
+                return Err(
+                    if kind != EntryOperationKind::Trash || previous != fingerprint {
+                        AppError::new(
+                            ErrorCode::InvalidInput,
+                            "同一回收请求标识对应了不同内容，已拒绝重放。",
+                        )
+                    } else {
+                        AppError::new(
+                            ErrorCode::Conflict,
+                            "此回收请求已处理，详细回执已过期；不会重复执行，请刷新后检查。",
+                        )
+                    },
+                );
+            }
+            if kind == EntryOperationKind::Trash && self.trash_seen.len() >= MAX_TRASH_REQUESTS {
+                return Err(AppError::new(
+                    ErrorCode::Busy,
+                    "本次会话的回收请求已达到安全上限，请重启应用后重新确认。",
+                ));
+            }
             return Ok(None);
         };
         if recorded.kind != kind || recorded.fingerprint != fingerprint {
@@ -66,13 +91,17 @@ impl EntryOperationHistory {
         Ok(Some(recorded.result.clone()))
     }
 
-    fn record(
+    pub(super) fn record(
         &mut self,
         request_id: String,
         kind: EntryOperationKind,
         fingerprint: String,
         result: CompletedEntryOperation,
     ) {
+        if kind == EntryOperationKind::Trash {
+            self.trash_seen
+                .insert(request_id.clone(), fingerprint.clone());
+        }
         self.completed.insert(
             request_id.clone(),
             RecordedEntryOperation {
@@ -387,7 +416,7 @@ fn rename_fingerprint(request: &RenameEntryRequest) -> String {
     format!("{:x}", hash.finalize())
 }
 
-fn validate_request_id(request_id: &str) -> Result<(), AppError> {
+pub(super) fn validate_request_id(request_id: &str) -> Result<(), AppError> {
     if uuid::Uuid::parse_str(request_id).is_err() {
         return Err(AppError::new(
             ErrorCode::InvalidInput,
@@ -407,7 +436,7 @@ fn validate_target_path(path: &Path) -> Result<(), AppError> {
     Ok(())
 }
 
-fn validate_revision(revision: &str) -> Result<(), AppError> {
+pub(super) fn validate_revision(revision: &str) -> Result<(), AppError> {
     if revision.len() != 64 || !revision.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return Err(AppError::new(
             ErrorCode::InvalidInput,

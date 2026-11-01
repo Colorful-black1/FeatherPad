@@ -158,7 +158,8 @@ export interface Page<T> { items: T[]; nextCursor: string | null; }
 | `list_directory` | `{ref,cursor?,limit?:number,showHidden?:boolean}` | `Page<DirectoryEntry>` |
 | `create_entry` | `{parent:FileRef,name,kind:'file'|'directory',requestId}` | `DirectoryEntry` |
 | `rename_entry` | `{ref,newName,expectedRevision?,requestId}` | `{entry:DirectoryEntry,renamedDocuments:{documentId,ref,displayPath}[]}` |
-| `trash_entry` | `{ref,expectedRevision?,requestId}` | `{trashed:boolean,receiptId:string}` |
+| `get_trash_impact` | `{ref,expectedRevision}` | `{ref,displayPath,kind,revision,identity,affectedDocuments:{documentId,displayPath,canSnapshot}[]}` |
+| `trash_entry` | `{ref,expectedRevision,expectedIdentity,requestId,affectedDocumentIds,snapshots:SaveRequest[]}` | `{trashed:true,receiptId,missingDocumentIds,drafts:{documentId,documentVersion,receiptId}[]}` |
 | `start_watch` | `{refs:FileRef[]}` | `{watchId:string}` |
 | `stop_watch` | `{watchId}` | `{stopped:boolean}` |
 
@@ -173,6 +174,8 @@ M1/T105.a实施决策（2026-11-01）：`create_entry`只接受目录授权内�
 文件改名直接更新已有lease路径；目录改名前先释放其后代文件lease，移动后从新路径逐个重新打开，核对FileIdentity与最终路径，再恢复原DocumentId。重新打开或注册失败会尝试将目录移回原名并重绑旧路径；回卷或重绑失败须明确报告，不返回成功。成功结果返回新`DirectoryEntry`及受影响的`documentId/ref/displayPath`列表，应用端据此更新标签路径但保留原缓冲、undo与dirty；未打开文档不发生内存映射。创建/改名成功后刷新当前目录及直属上级目录的revision。requestId在进程内成功去重并绑定完整payload，同ID异payload拒绝，失败不伪装已提交。
 
 T105.b2草稿实施决策（2026-11-01，存储核心已验证、尚未接回收编排）：删除前快照使用本地状态目录的`recovery/<receiptId>/`，独立于保存事务。schemaVersion=1的manifest包含reason=before-trash、documentId、bufferVersion、原始路径与sourceRevision、encoding/BOM、newlineMap、UTF-8归一化正文的字节数/SHA256和创建时间。正文先排他写入`body.bin`并flush，manifest后写并flush，随后读回摘要和schema核验才确认保护成功；缺失/损坏不自动删除唯一副本。单正文64MiB、恢复目录总256MiB预算，持有`.recovery.lock`的OS文件锁后才核算及写入，并发请求不能同时消耗剩余配额；超限拒绝新保护且回收编排必须停止。receipt严格UUID，读取不接受路径；body/manifest及目录链拒绝reparse。该快照不清dirty、不写源文件；T110后续接启动扫描/认领/热退出/冗余清理，并将既有保存事务纳入空间管理，本切片不宣称会话恢复完成。
+
+T105.b2回收编排决策（实施中）：impact与执行只接受目录grant内的非根、非链接引用和必需expectedRevision。impact另返回真实Windows文件identity的摘要，执行必须提供expectedIdentity；普通元数据相同的路径替换也不能沿用旧确认，原生PreDeleteItem会再次核对该身份。Rust按真实lease路径确定所有受影响文档，包含经独立file grant打开的同路径后代；执行携带完整affectedDocumentIds，且为每份完整缓冲提供快照（clean也保护），分块/限量预览不伪造全文快照。列表变化、重复/额外/缺失快照或快照校验失败均在回收前拒绝。依次落盘并读回所有快照后才释放后代lease并调用原生回收；任一失败保留源，若已释放lease则按原引用和FileIdentity重开。成功只返回opaque receipt及缺失文档ID，系统回收路径不穿越IPC。requestId绑定完整payload，在FileService互斥锁内缓存成功和失败结果，未知传输结果只能重用原始请求核对；同ID异payload拒绝，不能对新出现的同名文件重复回收。详细结果缓存256项，回收请求另留会话内摘要tombstone；详细回执过期后拒绝执行旧请求，最多接纳10,000个回收请求，达到上限拒绝新请求，已有请求仍可核对。应用私有状态目录及其祖先/后代不能由该入口回收。
 
 watch 事件：`filesystem_changed {watchId, sequence, entries:[{ref,kind,diskRevision?}],overflow:boolean}`。去抖、合并、自写标记仅做优化；overflow 和窗口重新聚焦后 stat 兜底，不能只依赖事件判断源文件安全。
 

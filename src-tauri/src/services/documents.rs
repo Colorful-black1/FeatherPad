@@ -18,6 +18,7 @@ pub(super) struct DetachedDocument {
     pub id: String,
     pub identity: FileIdentity,
     pub path: PathBuf,
+    pub reference: FileRef,
 }
 
 #[derive(Default)]
@@ -74,6 +75,16 @@ impl DocumentRegistry {
 
     pub fn get(&self, id: &str) -> Option<&DocumentLease> {
         self.documents.get(id)
+    }
+
+    pub(super) fn under<'a>(
+        &'a self,
+        root: &'a Path,
+    ) -> impl Iterator<Item = (&'a str, &'a DocumentLease)> {
+        self.documents
+            .iter()
+            .filter(move |(_, lease)| lease.path.starts_with(root))
+            .map(|(id, lease)| (id.as_str(), lease))
     }
 
     pub fn rebase_under(
@@ -135,6 +146,7 @@ impl DocumentRegistry {
                     id,
                     identity: document.identity,
                     path: document.path,
+                    reference: document.reference,
                 });
             }
         }

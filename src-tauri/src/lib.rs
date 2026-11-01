@@ -19,6 +19,7 @@ pub mod services {
     pub mod stream_snapshot;
     pub mod targets;
     pub mod text;
+    pub mod trash;
     pub mod windows_file;
     pub mod windows_trash;
 }

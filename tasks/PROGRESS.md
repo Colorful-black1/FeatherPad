@@ -21,6 +21,15 @@
 | 2026-11-01 / T002 | app-shell | React Shell/App/token/CSS、Web及原生测试 | typecheck/lint exit 0；Web 2 passed；真实WebView2 debug 1 passed | Web与原生范围分开，未测OS对话框 | .artifacts/T002/及docs/acceptance/M0.md | T002通过；下一T003 |
 | 2026-11-01 / T003.a–d（进行中） | F-DESK-013 | Rust models/grants/files/commands、AppManifest ACL、TS contracts/bridge、CodeMirror只读UI、测试与脚本 | typecheck/lint/TS单测3、Rust原生5、Web4、Release smoke1均exit 0；check.ps1 -Desktop exit 0；交互选择器三次超时，后次显式exit 1 | 原生Rust磁盘+junction，真实Release IPC/WebView2，Web mock独立 | docs/acceptance/M0.md；.artifacts/T003；.artifacts/T002/native-release.json | T003未完成OS选取验收，G0不勾选 |
 
+## T105.b2 原生回收编排完成（2026-11-01，IPC/UI待接）
+
+- F-FILE-017/F-WORK-005的原生编排切片：新增services/trash.rs与trash_tests.rs，models增加impact/执行/回执DTO，documents提供后代lease查询与原引用恢复信息；file_ops共用结果缓存，windows_trash补预览identity绑定及可失败的STA线程创建。未开放生产删除IPC或UI。
+- impact按真实lease路径包括独立file grant打开的后代，执行严格复核完整文档集合和每份完整缓冲快照。全部快照校验/落盘/读回成功后才释放后代句柄调用真实Shell；失败按原grant/ref/FileIdentity重绑，成功返回缺失文档ID与草稿receipt。拒绝应用私有状态目录及祖先/后代。
+- 额外绑定Windows identity摘要：同名、同大小、相同mtime乃至相同字节的替换对象也不能使用旧确认；原生删除前回调再次核对identity。成功/失败均按requestId/payload缓存，256项详细回执过期后仍由会话摘要tombstone阻止旧请求重做；10,000个回收意图上限保护内存，已有请求继续可核对。
+- 真实Shell编排5项通过（.artifacts/T105-trash-service-final.log）：dirty正文已真实保护且原字节进入回收站；新同名文件不受重复请求影响，详细缓存过期也不会重复删除已还原文件；目录新增打开后代使旧确认拒绝、缺快照拒绝，补齐后真实回收并还原；共享锁失败后原DocumentId/ref重绑，解除锁后同请求仍只回放失败；存储失败/身份/未知grant/越界/根拒绝保源；同名同mtime同字节新FileIdentity拒绝。测试仅操作受控UUID fixture及本次返回的精确回收项。
+- cargo clippy --locked --offline --all-targets -- -D warnings exit0；cargo test --locked --offline为88 passed、1个100k基准ignored，exit0（.artifacts/T105-trash-service-rust.log）；cargo build/fmt检查见提交前最终结果。Rust原生范围，未冒称Tauri删除或新的Web/Release验收。
+- 下一步：get_trash_impact/trash_entry最小ACL与typed bridge；删除期间复用保存互斥许可；保存/保护草稿/取消确认、失败保树、缺失缓冲可另存与真实Release验收。T105仍[~]；T107/T110/G1及以后仍未完成。
+
 ## T105.b2 草稿存储核心完成（2026-11-01，回收编排待接）
 
 - 功能追踪：F-FILE-017/F-WORK-005删除前保护的存储部分，尚非T105或T110完整验收。新增`services/recovery.rs`与`tests/recovery.rs`，通过lib接入；规格先同步CONTRACTS。不新增IPC、路径权限或依赖。

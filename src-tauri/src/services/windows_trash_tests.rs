@@ -105,6 +105,7 @@ fn actual_permanent_delete_proposal_is_vetoed_before_source_mutation() {
     let error = perform(
         &source,
         &revision(&source),
+        None,
         FOF_SILENT | FOF_NOCONFIRMATION | FOF_NOERRORUI | FOFX_EARLYFAILURE,
     )
     .unwrap_err();

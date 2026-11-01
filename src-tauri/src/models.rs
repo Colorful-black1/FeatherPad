@@ -362,3 +362,60 @@ pub struct RenameEntryResult {
     pub entry: DirectoryEntry,
     pub renamed_documents: Vec<RenamedDocument>,
 }
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TrashImpactRequest {
+    #[serde(rename = "ref")]
+    pub reference: FileRef,
+    pub expected_revision: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrashDocument {
+    pub document_id: String,
+    pub display_path: String,
+    pub can_snapshot: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrashImpact {
+    #[serde(rename = "ref")]
+    pub reference: FileRef,
+    pub display_path: String,
+    pub kind: &'static str,
+    pub revision: String,
+    pub identity: String,
+    pub affected_documents: Vec<TrashDocument>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TrashEntryRequest {
+    #[serde(rename = "ref")]
+    pub reference: FileRef,
+    pub expected_revision: String,
+    pub expected_identity: String,
+    pub request_id: String,
+    pub affected_document_ids: Vec<String>,
+    pub snapshots: Vec<SaveRequest>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrashDraftReceipt {
+    pub document_id: String,
+    pub document_version: u64,
+    pub receipt_id: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrashEntryResult {
+    pub trashed: bool,
+    pub receipt_id: String,
+    pub missing_document_ids: Vec<String>,
+    pub drafts: Vec<TrashDraftReceipt>,
+}

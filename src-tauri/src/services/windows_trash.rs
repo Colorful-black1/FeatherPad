@@ -11,16 +11,56 @@ pub struct RecycleReceipt {
 
 #[cfg(windows)]
 pub fn recycle(path: &Path, expected_revision: &str) -> Result<RecycleReceipt, AppError> {
+    recycle_on_thread(path, expected_revision, None)
+}
+
+#[cfg(windows)]
+pub fn entry_identity(path: &Path, revision: &str) -> Result<String, AppError> {
+    native::entry_identity(path, revision)
+}
+
+#[cfg(windows)]
+pub fn recycle_checked(
+    path: &Path,
+    revision: &str,
+    identity: &str,
+) -> Result<RecycleReceipt, AppError> {
+    recycle_on_thread(path, revision, Some(identity.to_owned()))
+}
+
+#[cfg(windows)]
+fn recycle_on_thread(
+    path: &Path,
+    expected_revision: &str,
+    identity: Option<String>,
+) -> Result<RecycleReceipt, AppError> {
     let path = path.to_owned();
     let revision = expected_revision.to_owned();
     // A dedicated thread guarantees STA initialization without changing Tauri's thread apartment.
-    std::thread::spawn(move || native::recycle(&path, &revision))
+    std::thread::Builder::new()
+        .name("featherpad-recycle".into())
+        .spawn(move || native::recycle(&path, &revision, identity.as_deref()))
+        .map_err(|_| unavailable())?
         .join()
         .map_err(|_| AppError::new(ErrorCode::Internal, "回收结果未确认，请刷新目录后检查。"))?
 }
 
 #[cfg(not(windows))]
 pub fn recycle(_path: &Path, _expected_revision: &str) -> Result<RecycleReceipt, AppError> {
+    Err(unavailable())
+}
+
+#[cfg(not(windows))]
+pub fn entry_identity(_path: &Path, _revision: &str) -> Result<String, AppError> {
+    Err(unavailable())
+}
+
+#[cfg(not(windows))]
+pub fn recycle_checked(
+    _path: &Path,
+    _revision: &str,
+    _identity: &str,
+) -> Result<RecycleReceipt, AppError> {
     Err(unavailable())
 }
 
@@ -66,9 +106,21 @@ mod native {
         FILE_READ_ATTRIBUTES, FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE,
     };
 
-    pub(super) fn recycle(path: &Path, revision: &str) -> Result<RecycleReceipt, AppError> {
+    pub(super) fn recycle(
+        path: &Path,
+        revision: &str,
+        identity: Option<&str>,
+    ) -> Result<RecycleReceipt, AppError> {
         let _com = Apartment::new()?;
-        perform(path, revision, recycle_flags())
+        perform(path, revision, identity, recycle_flags())
+    }
+
+    pub(super) fn entry_identity(path: &Path, revision: &str) -> Result<String, AppError> {
+        use sha2::{Digest, Sha256};
+        Ok(format!(
+            "{:x}",
+            Sha256::digest(Source::inspect(path, revision)?.identity.revision_tag())
+        ))
     }
 
     fn recycle_flags() -> FILEOPERATION_FLAGS {
@@ -370,11 +422,21 @@ mod native {
     fn perform(
         path: &Path,
         revision: &str,
+        identity: Option<&str>,
         flags: FILEOPERATION_FLAGS,
     ) -> Result<RecycleReceipt, AppError> {
         let canonical = path.canonicalize().map_err(io_error)?;
         let _parents = windows_file::lock_parent_chain(&canonical)?;
         let source = Source::inspect(path, revision)?;
+        if identity.is_some_and(|expected| {
+            use sha2::{Digest, Sha256};
+            format!("{:x}", Sha256::digest(source.identity.revision_tag())) != expected
+        }) {
+            return Err(AppError::new(
+                ErrorCode::Conflict,
+                "回收目标身份已变化，请重新确认。",
+            ));
+        }
         let item = shell_item(&source.path).map_err(|_| unavailable())?;
         let outcome = Arc::new(Mutex::new(Outcome::default()));
         let sink: IFileOperationProgressSink = RecycleSink {
