@@ -36,7 +36,7 @@ export function App() {
     try {
       const selection = await files.chooseFiles(true);
       if (!selection.ok) { setError(selection.error.message); return; }
-      const failures: string[] = [];
+      const failures = selection.value.failures.map(failure => `第 ${failure.selectionIndex + 1} 个所选文件：${failure.error.message}`);
       setAutoFocus(true);
       for (const reference of selection.value.grants) {
         const result = await files.open(reference);

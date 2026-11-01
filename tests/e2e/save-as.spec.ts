@@ -48,7 +48,7 @@ test('Web mock: a read-only complete document becomes editable after saving else
   await page.addInitScript(() => {
     Reflect.set(window, '__TAURI_INTERNALS__', { invoke: async (command: string, args: { documentId: string; documentVersion: number }) => {
       const metadata = { displayPath: 'readonly.txt', sizeBytes: 4, modifiedAt: '2026-11-01T00:00:00Z', isReadOnly: true, diskRevision: 'original' };
-      if (command === 'choose_files') return { ok: true, value: { grants: [{ grantId: 'original-grant', relativePath: '' }] } };
+      if (command === 'choose_files') return { ok: true, value: { grants: [{ grantId: 'original-grant', relativePath: '' }], failures: [] } };
       if (command === 'open_document') return { ok: true, value: { documentId: 'readonly-document', ref: { grantId: 'original-grant', relativePath: '' }, metadata,
         format: { encoding: 'utf-8', bom: 'none', lineEnding: 'lf' }, warnings: [], mode: 'normal', content: { kind: 'text', text: 'text', newlineMap: { documentVersion: 0, endings: [] } } } };
       if (command === 'save_document_as') return { ok: true, value: { documentId: args.documentId, ref: { grantId: 'writable-grant', relativePath: '' },

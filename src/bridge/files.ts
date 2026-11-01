@@ -1,8 +1,20 @@
-import type { DocumentId, FileRef, OpenDocument, SaveAck, SaveAsAck, SaveAsRequest, SaveRequest } from '../shared/contracts/files';
-import { callCommand, isRecord } from './invoke';
+import type { ChosenFiles, DocumentId, FileRef, OpenDocument, SaveAck, SaveAsAck, SaveAsRequest, SaveRequest } from '../shared/contracts/files';
+import { callCommand, isAppError, isRecord } from './invoke';
 
 const nonemptyString = (value: unknown): value is string => typeof value === 'string' && value.length > 0;
 const safeCount = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+
+function isSelectionFailure(value: unknown): value is ChosenFiles['failures'][number] {
+  return isRecord(value) && safeCount(value.selectionIndex) && isAppError(value.error);
+}
+
+export function isChosenFiles(value: unknown): value is ChosenFiles {
+  if (!isRecord(value) || !Array.isArray(value.grants) || !value.grants.every(isFileRef)
+    || !Array.isArray(value.failures) || !value.failures.every(isSelectionFailure)) return false;
+  const count = value.grants.length + value.failures.length;
+  return value.failures.every(failure => failure.selectionIndex < count)
+    && new Set(value.failures.map(failure => failure.selectionIndex)).size === value.failures.length;
+}
 
 export function isFileMetadata(value: unknown): value is OpenDocument['metadata'] {
   return isRecord(value) && nonemptyString(value.displayPath) && safeCount(value.sizeBytes)
@@ -46,8 +58,7 @@ export function isOpenDocument(value: unknown): value is OpenDocument {
 }
 
 export const files = {
-  chooseFiles: (multiple = false) => callCommand('choose_files', { multiple }, (value): value is { grants: FileRef[] } =>
-    isRecord(value) && Array.isArray(value.grants) && value.grants.every(isFileRef)),
+  chooseFiles: (multiple = false) => callCommand('choose_files', { multiple }, isChosenFiles),
   chooseFolder: () => callCommand('choose_folder', {}, (value): value is { grant: FileRef | null } =>
     isRecord(value) && (value.grant === null || isFileRef(value.grant))),
   open: (ref: FileRef) => callCommand('open_document', { ref }, isOpenDocument),

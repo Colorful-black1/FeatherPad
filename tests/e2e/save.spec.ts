@@ -6,7 +6,7 @@ test('Web mock: delayed save Ack keeps newer input dirty, next save uses its rev
     Reflect.set(window, 'fixtureSaves', saves);
     Reflect.set(window, '__TAURI_INTERNALS__', {
       invoke: async (command: string, args: { text: string; documentVersion: number; expectedDiskRevision: string }) => {
-        if (command === 'choose_files') return { ok: true, value: { grants: [{ grantId: 'fixture', relativePath: '' }] } };
+        if (command === 'choose_files') return { ok: true, value: { grants: [{ grantId: 'fixture', relativePath: '' }], failures: [] } };
         if (command === 'open_document') return { ok: true, value: {
           documentId: 'fixture-document', ref: { grantId: 'fixture', relativePath: '' },
           metadata: { displayPath: 'save fixture.txt', sizeBytes: 8, modifiedAt: '2026-11-01T00:00:00Z', isReadOnly: false, diskRevision: 'rev-0' },

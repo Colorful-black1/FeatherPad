@@ -21,7 +21,14 @@
 | 2026-11-01 / T002 | app-shell | React Shell/App/token/CSS、Web及原生测试 | typecheck/lint exit 0；Web 2 passed；真实WebView2 debug 1 passed | Web与原生范围分开，未测OS对话框 | .artifacts/T002/及docs/acceptance/M0.md | T002通过；下一T003 |
 | 2026-11-01 / T003.a–d（进行中） | F-DESK-013 | Rust models/grants/files/commands、AppManifest ACL、TS contracts/bridge、CodeMirror只读UI、测试与脚本 | typecheck/lint/TS单测3、Rust原生5、Web4、Release smoke1均exit 0；check.ps1 -Desktop exit 0；交互选择器三次超时，后次显式exit 1 | 原生Rust磁盘+junction，真实Release IPC/WebView2，Web mock独立 | docs/acceptance/M0.md；.artifacts/T003；.artifacts/T002/native-release.json | T003未完成OS选取验收，G0不勾选 |
 
-## 当前恢复点（2026-11-01 16:05，Asia/Shanghai）
+## 当前恢复点（2026-11-01 16:13，Asia/Shanghai）
+
+- F-FILE-002授权单项失败补正已接完整UI/bridge：choose_files返回成功grant与零基选择序号/安全AppError，guard拒绝坏索引/重复索引/坏错误；App先收集授权失败再逐项open其余成功项，失败不清已有正文。Rust真实授权有效/缺失/有效仍读出两份，转换/类型失败逐项反馈，取消两个空数组；Web混合授权/open失败仍打开两份，全部授权失败保已有dirty草稿、随后取消清提示。没有路径IPC/测试后门，没有回传系统原始路径。
+- 本修复检查：typecheck/lint/TS31 exit 0；全Web12 exit 0，新增全部失败场景后定向documents3 exit 0（共13个独立Web场景，未声称该命令一次全量13）；Rust全套39、fmt --check、clippy --all-targets -D warnings exit 0；pnpm build、真实Release桌面综合1 exit 0。原生GUI验证正常选择器→新DTO→真实打开/保存/全部保存回归；授权失败分支由Rust真实文件测试+Web UI分别证明，没有声称OS对话框精确注入了缺失项。
+- 当前Release为9935360 bytes，SHA256 `81349CFF6D7FE0A7CF68A4035C4596D7E6468CEEF61BA4D117FD1633A45CBF74`，`.artifacts/T102/native-release.json`含该hash及nativeSaveAllVerified等true。既有保存/另存/副本/批次真实磁盘结果回归通过；WebView2 156.0.4314.58，浏览器offline重载。无新依赖/工具安装。全部保存已提交`1a80eb9`，授权Rust切片`fe4186b`。
+- 下一仍T102：原生已存在目标覆盖/取消/碰撞GUI验收、普通CtrlS硬链接确认、真实磁盘满/强杀；T110事务扫描/预算与恢复/关闭保护尚未完成。T102/G1及完整v1均未通过；不要重做已完成的全部保存或授权单项失败修复。
+
+## T102.c3恢复点（历史，2026-11-01 16:05）
 
 - F-FILE-002补正第一切片：先更新CONTRACTS，再把choose_files的collect整批失败改为GrantRegistry逐项收集成功grant及`{selectionIndex,error}`；取消两个空列表，不回传原始失败路径。受控Windows授权测试5 passed（新增2：有效/缺失/有效仍可读两份，转换/类型失败与取消），clippy --all-targets -D warnings exit 0，cargo fmt已执行。此时前端尚未显示failures，继续桥接guard/UI与回归，不提前记完整修复或新Release。
 - T102.c3/F-FILE-005全部保存已实现：`save-all.ts`固定开始时dirty文档列表，复用SaveCoordinator逐项保存，不预复制全部正文；单项失败继续其他独立项，原生路径取消/停止后续保存则等当前真实结果后停止。`SaveAllResults.tsx`逐项列成功/失败/取消/未处理与总体进度，支持点击定位文档、关闭回焦；实时显示保存后仍有的新输入及全部当前dirty计数，不伪报全局已保存。App接真实入口并阻止批次期间其他手动保存快捷键；CSS让200%结果列表可滚动且关闭按钮固定可见。规格先记录了批次/取消语义，无新增IPC/依赖。

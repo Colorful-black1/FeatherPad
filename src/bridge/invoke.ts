@@ -8,7 +8,7 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function isAppError(value: unknown): value is AppError {
+export function isAppError(value: unknown): value is AppError {
   return isRecord(value) && errorCodes.some(code => code === value.code)
     && typeof value.message === 'string' && typeof value.retryable === 'boolean';
 }

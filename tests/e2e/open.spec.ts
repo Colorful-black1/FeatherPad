@@ -4,7 +4,7 @@ test('Web mock verifies native bridge requests and read-only CodeMirror renderin
   await page.addInitScript(() => {
     Reflect.set(window, '__TAURI_INTERNALS__', {
       invoke: async (command: string) => {
-        if (command === 'choose_files') return { ok: true, value: { grants: [{ grantId: 'fixture-grant', relativePath: '' }] } };
+        if (command === 'choose_files') return { ok: true, value: { grants: [{ grantId: 'fixture-grant', relativePath: '' }], failures: [] } };
         if (command === 'open_document') return { ok: true, value: {
           documentId: 'fixture-document', ref: { grantId: 'fixture-grant', relativePath: '' },
           metadata: { displayPath: '中文 fixture.txt', sizeBytes: 12, modifiedAt: '2026-11-01T00:00:00Z', isReadOnly: true, diskRevision: 'fixture-revision' },

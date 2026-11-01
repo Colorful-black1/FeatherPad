@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { isFileRef, isOpenDocument, isSaveAck, isSaveAsAck } from './files';
+import { isChosenFiles, isFileRef, isOpenDocument, isSaveAck, isSaveAsAck } from './files';
 
 const valid = {
   documentId: 'document-fixture', ref: { grantId: 'fixture-grant', relativePath: '' },
@@ -7,6 +7,17 @@ const valid = {
   format: { encoding: 'utf-8', bom: 'none', lineEnding: 'lf' }, warnings: [], mode: 'normal',
   content: { kind: 'text', text: 'a\nb', newlineMap: { documentVersion: 0, endings: ['lf'] } },
 };
+
+it('validates individual selection failures without dropping successful grant references', () => {
+  const failure = { selectionIndex: 1, error: { code: 'NOT_FOUND', message: 'Controlled missing selection', retryable: false } };
+  expect(isChosenFiles({ grants: [valid.ref, valid.ref], failures: [failure] })).toBe(true);
+  expect(isChosenFiles({ grants: [], failures: [] })).toBe(true);
+  expect(isChosenFiles({ grants: [valid.ref], failures: [{ ...failure, selectionIndex: -1 }] })).toBe(false);
+  expect(isChosenFiles({ grants: [valid.ref], failures: [{ ...failure, selectionIndex: 2 }] })).toBe(false);
+  expect(isChosenFiles({ grants: [valid.ref], failures: [failure, failure] })).toBe(false);
+  expect(isChosenFiles({ grants: [valid.ref], failures: [{ ...failure, error: { code: 'UNKNOWN', message: 'bad', retryable: false } }] })).toBe(false);
+  expect(isChosenFiles({ grants: [valid.ref] })).toBe(false);
+});
 
 it('accepts complete native text records and rejects damaged newline/metadata contracts', () => {
   expect(isOpenDocument(valid)).toBe(true);

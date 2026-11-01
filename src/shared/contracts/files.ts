@@ -16,6 +16,10 @@ export interface AppError {
 }
 export type ResultEnvelope<T> = { ok: true; value: T } | { ok: false; error: AppError };
 export interface FileRef { grantId: GrantId; relativePath: string }
+export interface ChosenFiles {
+  grants: FileRef[];
+  failures: { selectionIndex: number; error: AppError }[];
+}
 export interface TextFormat {
   encoding: string;
   bom: 'none' | 'utf8' | 'utf16le' | 'utf16be';

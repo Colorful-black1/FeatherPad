@@ -12,7 +12,8 @@ test('Web mock: multi-open isolates failures, retains buffers/undo and sends no 
         calls.push({ command, args });
         if (command === 'choose_files') {
           selections++;
-          return { ok: true, value: { grants: (selections === 1 ? ['first', 'denied', 'second'] : ['first']).map(grantId => ({ grantId, relativePath: '' })) } };
+          return { ok: true, value: { grants: (selections === 1 ? ['first', 'denied', 'second'] : ['first']).map(grantId => ({ grantId, relativePath: '' })),
+            failures: selections === 1 ? [{ selectionIndex: 1, error: { code: 'NOT_FOUND', message: '受控选择项已消失', retryable: false } }] : [] } };
         }
         if (command === 'open_document') {
           const id = args.ref?.grantId;
@@ -32,6 +33,7 @@ test('Web mock: multi-open isolates failures, retains buffers/undo and sends no 
   await page.getByRole('button', { name: '打开文件', exact: true }).click();
   await expect(page.getByRole('tab')).toHaveCount(2);
   await expect(page.getByRole('alert')).toContainText('受控文件无权限');
+  await expect(page.getByRole('alert')).toContainText('第 2 个所选文件：受控选择项已消失');
   await expect(page.locator('.cm-content')).toHaveText('second original');
   const first = page.getByRole('tab', { name: /中文 fixture/ });
   await first.click();
@@ -87,4 +89,30 @@ test('new document keyboard input stays usable at 200 percent zoom', async ({ pa
   await expect(page.getByRole('button', { name: '打开文件', exact: true })).toBeInViewport();
   await expect(page.locator('.cm-editor')).toBeInViewport();
   await page.screenshot({ path: '.artifacts/T101/documents-zoom200.png' });
+});
+
+test('Web mock: all selection grants failing leaves existing content intact and an empty cancellation clears the notice', async ({ page }) => {
+  await page.addInitScript(() => {
+    let selections = 0;
+    Reflect.set(window, '__TAURI_INTERNALS__', { invoke: async (command: string) => {
+      if (command !== 'choose_files') throw new Error('Failed selections must not reach open_document');
+      selections++;
+      return { ok: true, value: { grants: [], failures: selections === 1 ? [
+        { selectionIndex: 0, error: { code: 'NOT_FOUND', message: '受控文件已消失', retryable: false } },
+        { selectionIndex: 1, error: { code: 'PERMISSION_DENIED', message: '受控授权失败', retryable: false } },
+      ] : [] } };
+    } });
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: '新建文本', exact: true }).click();
+  await page.keyboard.insertText('已有草稿😀仍保留');
+  await page.getByRole('button', { name: '打开文件', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('第 1 个所选文件：受控文件已消失');
+  await expect(page.getByRole('alert')).toContainText('第 2 个所选文件：受控授权失败');
+  await expect(page.getByRole('tab')).toHaveCount(1);
+  await expect(page.locator('.cm-content')).toHaveText('已有草稿😀仍保留');
+  await expect(page.getByRole('status')).toContainText('未保存修改');
+  await page.getByRole('button', { name: '打开文件', exact: true }).click();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(page.locator('.cm-content')).toHaveText('已有草稿😀仍保留');
 });
