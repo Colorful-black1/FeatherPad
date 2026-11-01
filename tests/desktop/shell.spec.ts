@@ -14,6 +14,7 @@ import { verifyNativeLargeFiles } from './large-files';
 import { verifyNativeWorkspace } from './workspace';
 import { verifyNativeEditor } from './editor';
 import { verifyNativeSearch } from './search';
+import { verifyNativeDiskFull } from './disk-full';
 
 const runFile = promisify(execFile);
 
@@ -35,6 +36,8 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
   let nativeWorkspaceObservation: Awaited<ReturnType<typeof verifyNativeWorkspace>> | null = null;
   let nativeEditorObservation: Awaited<ReturnType<typeof verifyNativeEditor>>;
   let nativeSearchObservation: Awaited<ReturnType<typeof verifyNativeSearch>> | null = null;
+  let nativeDiskFullObservation: Awaited<ReturnType<typeof verifyNativeDiskFull>> | null = null;
+  const cleanupTasks: (() => Promise<void>)[] = [];
   const chooserRoot = path.join(root, '.artifacts', 'T002');
   await mkdir(evidence, { recursive: true });
   await mkdir(workspaceEvidence, { recursive: true });
@@ -247,6 +250,15 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
             timeout: 25_000,
           });
         }
+        async function openFaultFile(target: string, faultRoot: string, faultToken: string) {
+          await writeFile(manifest, JSON.stringify({ ...selectionRecord, action: 'open-fault',
+            faultRoot, faultToken,
+            fixtures: [{ path: target, sha256: createHash('sha256').update(await readFile(target)).digest('hex') }] }));
+          await runFile('powershell.exe', ['-NoProfile', '-File', helper, '-Manifest', manifest], {
+            windowsHide: true,
+            timeout: 25_000,
+          });
+        }
         await page.keyboard.press('Control+s');
         await expect(page.getByRole('status')).toContainText('正在保存');
         await chooseDestination('cancel');
@@ -312,6 +324,7 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
           await runFile('powershell.exe', ['-NoProfile', '-File', helper, '-Manifest', manifest], { windowsHide: true, timeout: 45_000 });
         }, evidence, child.pid!);
         nativeSearchObservation = await verifyNativeSearch(page, dataDir, openControlledFile, searchEvidence);
+        nativeDiskFullObservation = await verifyNativeDiskFull(page, dataDir, evidence, openFaultFile, cleanupTasks);
       }
       if (chooserAutomation !== 'native-controls') {
         expect(createHash('sha256').update(await readFile(second)).digest('hex')).toBe(fixtureRecords[1]?.sha256);
@@ -350,6 +363,8 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
       nativeEditorObservation,
       nativeSearchVerified: nativeSearchObservation !== null,
       nativeSearchObservation,
+      nativeDiskFullVerified: nativeDiskFullObservation !== null,
+      nativeDiskFullObservation,
       forcedExit,
       chooserAutomation: verifyChooser ? chooserAutomation : 'disabled-explicitly',
       browserOffline: profile === 'release',
@@ -357,6 +372,9 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
     }, null, 2));
   } finally {
     try { if (browser?.isConnected()) await browser.close(); }
-    finally { if (child.exitCode === null && child.signalCode === null) child.kill(); }
+    finally {
+      if (child.exitCode === null && child.signalCode === null) child.kill();
+      await Promise.allSettled(cleanupTasks.map(cleanup => cleanup()));
+    }
   }
 });

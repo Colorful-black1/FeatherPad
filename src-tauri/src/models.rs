@@ -48,14 +48,25 @@ pub fn io_error(error: std::io::Error) -> AppError {
             "文件被其他程序锁定，请关闭占用后重试或另存。",
         );
     }
-    let code = match error.kind() {
-        std::io::ErrorKind::NotFound => ErrorCode::NotFound,
-        std::io::ErrorKind::PermissionDenied => ErrorCode::PermissionDenied,
-        std::io::ErrorKind::StorageFull => ErrorCode::DiskFull,
-        _ => ErrorCode::Internal,
+    let (code, message) = match error.kind() {
+        std::io::ErrorKind::NotFound => {
+            (ErrorCode::NotFound, "所选文件不存在，可能已被移动或删除。")
+        }
+        std::io::ErrorKind::PermissionDenied => (
+            ErrorCode::PermissionDenied,
+            "没有权限访问所选文件，请检查文件或目录权限。",
+        ),
+        std::io::ErrorKind::StorageFull => (
+            ErrorCode::DiskFull,
+            "磁盘空间不足，保存未完成；当前正文仍保留，请释放空间后重试或另存。",
+        ),
+        _ => (
+            ErrorCode::Internal,
+            "无法访问所选文件，请检查文件是否存在及访问权限。",
+        ),
     };
     // OS error strings may contain sensitive paths. Never send them verbatim.
-    AppError::new(code, "无法访问所选文件，请检查文件是否存在及访问权限。")
+    AppError::new(code, message)
 }
 
 #[derive(Debug, Serialize)]
@@ -71,6 +82,18 @@ impl<T> From<Result<T, AppError>> for ResultEnvelope<T> {
             Ok(value) => Self::Success { ok: true, value },
             Err(error) => Self::Failure { ok: false, error },
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{io_error, ErrorCode};
+
+    #[test]
+    fn windows_disk_full_error_maps_to_actionable_error() {
+        let error = io_error(std::io::Error::from_raw_os_error(112));
+        assert_eq!(error.code, ErrorCode::DiskFull);
+        assert!(error.message.contains("磁盘空间不足"));
     }
 }
 

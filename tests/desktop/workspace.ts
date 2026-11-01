@@ -97,7 +97,7 @@ export async function verifyNativeWorkspace(
     });
     rootAclChanged = true;
     await page.getByRole('button', { name: '刷新目录树', exact: true }).click();
-    await expect(deniedTree.getByRole('alert')).toContainText('无法访问所选文件');
+    await expect(deniedTree.getByRole('alert')).toContainText('没有权限访问所选文件');
     await runFile('icacls.exe', [deniedRoot, '/remove:d', account], { windowsHide: true, timeout: 15_000 });
     await runFile('icacls.exe', [deniedRoot, '/reset'], { windowsHide: true, timeout: 15_000 });
     rootAclChanged = false;
@@ -131,7 +131,7 @@ export async function verifyNativeWorkspace(
     await tree.getByRole('treeitem', { name: 'empty', exact: true }).click();
     await expect(tree.getByText('此文件夹为空', { exact: true })).toBeVisible();
     await tree.getByRole('treeitem', { name: 'denied', exact: true }).click();
-    await expect(tree.getByRole('alert')).toContainText('无法访问所选文件');
+    await expect(tree.getByRole('alert')).toContainText('没有权限访问所选文件');
     await runFile('icacls.exe', [denied, '/remove:d', account], { windowsHide: true, timeout: 15_000 });
     await runFile('icacls.exe', [denied, '/reset'], { windowsHide: true, timeout: 15_000 });
     aclChanged = false;

@@ -19,35 +19,51 @@ if (-not $manifestPath.StartsWith($artifactRoot + '\', [StringComparison]::Ordin
 }
 $record = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
 $action = if ($record.action) { [string]$record.action } else { 'open' }
-if ($action -notin @('open', 'open-folder', 'open-degraded', 'open-large-chunk', 'open-head-preview', 'save', 'cancel', 'overwrite', 'confirm-system', 'inspect-overwrite', 'confirm-overwrite', 'reject-overwrite', 'inspect-hardlink', 'confirm-hardlink', 'reject-hardlink')) { throw 'Unexpected native chooser action.' }
+if ($action -notin @('open', 'open-fault', 'open-folder', 'open-degraded', 'open-large-chunk', 'open-head-preview', 'save', 'cancel', 'overwrite', 'confirm-system', 'inspect-overwrite', 'confirm-overwrite', 'reject-overwrite', 'inspect-hardlink', 'confirm-hardlink', 'reject-hardlink')) { throw 'Unexpected native chooser action.' }
 $fixtures = @($record.fixtures)
 if (($action -eq 'cancel' -and $fixtures.Count -ne 0) -or ($action -ne 'cancel' -and ($fixtures.Count -lt 1 -or $fixtures.Count -gt 8)) -or ($action -notin @('open', 'cancel') -and $fixtures.Count -ne 1)) { throw 'Unexpected chooser fixture count.' }
 $verified = @()
 foreach ($fixture in $fixtures) {
     $fixturePath = [IO.Path]::GetFullPath([string]$fixture.path)
-    if (-not $fixturePath.StartsWith($artifactRoot + '\webview2-', [StringComparison]::OrdinalIgnoreCase)) {
-        throw 'Fixture is outside the generated WebView test directory.'
-    }
-    if ($action -eq 'save') {
-        if (Test-Path -LiteralPath $fixturePath) { throw 'Controlled new save destination already exists.' }
-        $item = Get-Item -LiteralPath (Split-Path -Parent $fixturePath)
-        if (-not $item.PSIsContainer) { throw 'Controlled destination parent is not a directory.' }
-    } else {
+    if ($action -eq 'open-fault') {
+        $faultRoot = [IO.Path]::GetFullPath([string]$record.faultRoot).TrimEnd('\')
+        if ($faultRoot -notmatch '^\\\\wsl\.localhost\\Ubuntu\\mnt\\featherpad-fault-[0-9a-f]{32}$') {
+            throw 'Fault filesystem root is outside the owned WSL mount.'
+        }
+        if (-not $fixturePath.StartsWith($faultRoot + '\', [StringComparison]::OrdinalIgnoreCase)) {
+            throw 'Fault fixture is outside the owned WSL mount.'
+        }
+        if (-not $record.faultToken -or
+            (Get-Content -LiteralPath (Join-Path $faultRoot 'fixture.token') -Raw -Encoding UTF8).Trim() -ne [string]$record.faultToken) {
+            throw 'Fault fixture ownership token mismatch.'
+        }
         $item = Get-Item -LiteralPath $fixturePath
-        if ($action -eq 'open-folder') {
-            if (-not $item.PSIsContainer) { throw 'Unexpected non-directory workspace fixture.' }
-        } elseif ($action -eq 'open-degraded') {
-            if ($item.Length -ne 2097153 -or $item.PSIsContainer) { throw 'Unexpected controlled degraded fixture size/type.' }
-        } elseif ($action -eq 'open-large-chunk') {
-            if ($item.Length -ne 20971520 -or $item.PSIsContainer) { throw 'Unexpected controlled chunked fixture size/type.' }
-        } elseif ($action -eq 'open-head-preview') {
-            if ($item.Length -ne 104857601 -or $item.PSIsContainer) { throw 'Unexpected controlled head-preview fixture size/type.' }
-        } elseif ($item.Length -gt 1024 -or $item.PSIsContainer) { throw 'Unexpected chooser fixture.' }
-    }
-    $ancestor = $item
-    while ($ancestor.FullName -ne $projectRoot) {
-        if (($ancestor.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'Fixture path contains a reparse point.' }
-        $ancestor = Get-Item -LiteralPath (Split-Path -Parent $ancestor.FullName)
+        if ($item.PSIsContainer -or $item.Length -gt 1024) { throw 'Unexpected fault fixture type/size.' }
+    } else {
+        if (-not $fixturePath.StartsWith($artifactRoot + '\webview2-', [StringComparison]::OrdinalIgnoreCase)) {
+            throw 'Fixture is outside the generated WebView test directory.'
+        }
+        if ($action -eq 'save') {
+            if (Test-Path -LiteralPath $fixturePath) { throw 'Controlled new save destination already exists.' }
+            $item = Get-Item -LiteralPath (Split-Path -Parent $fixturePath)
+            if (-not $item.PSIsContainer) { throw 'Controlled destination parent is not a directory.' }
+        } else {
+            $item = Get-Item -LiteralPath $fixturePath
+            if ($action -eq 'open-folder') {
+                if (-not $item.PSIsContainer) { throw 'Unexpected non-directory workspace fixture.' }
+            } elseif ($action -eq 'open-degraded') {
+                if ($item.Length -ne 2097153 -or $item.PSIsContainer) { throw 'Unexpected controlled degraded fixture size/type.' }
+            } elseif ($action -eq 'open-large-chunk') {
+                if ($item.Length -ne 20971520 -or $item.PSIsContainer) { throw 'Unexpected controlled chunked fixture size/type.' }
+            } elseif ($action -eq 'open-head-preview') {
+                if ($item.Length -ne 104857601 -or $item.PSIsContainer) { throw 'Unexpected controlled head-preview fixture size/type.' }
+            } elseif ($item.Length -gt 1024 -or $item.PSIsContainer) { throw 'Unexpected chooser fixture.' }
+        }
+        $ancestor = $item
+        while ($ancestor.FullName -ne $projectRoot) {
+            if (($ancestor.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'Fixture path contains a reparse point.' }
+            $ancestor = Get-Item -LiteralPath (Split-Path -Parent $ancestor.FullName)
+        }
     }
     $fixtureHash = $null
     if ($action -notin @('open-folder', 'save', 'cancel')) {
@@ -284,7 +300,7 @@ public static class FeatherPadChooserControls {
     }
 }
 "@
-if ($action -in @('open', 'open-folder', 'open-degraded', 'open-large-chunk', 'open-head-preview', 'save', 'cancel', 'overwrite')) {
+if ($action -in @('open', 'open-fault', 'open-folder', 'open-degraded', 'open-large-chunk', 'open-head-preview', 'save', 'cancel', 'overwrite')) {
     [FeatherPadChooserControls]::Select([int]$record.processId, $selectionText, ($action -eq 'cancel'), ($action -in @('save', 'overwrite')), ($action -eq 'open-folder'), ($action -eq 'overwrite'))
 } else {
     $buttonId = if ($action -in @('inspect-overwrite', 'inspect-hardlink')) { 0 } elseif ($action -in @('reject-overwrite', 'reject-hardlink')) { 7 } else { 6 }

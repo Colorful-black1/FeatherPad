@@ -4,8 +4,8 @@
 
 - 产品名称：**轻羽 FeatherPad**。
 - 当前交付：完整产品方案、86项功能矩阵、模块规格、UI规范与离线交互原型、技术/本机环境文档、M0–M5实现计划、57个开发任务、agent执行入口。
-- 产品代码：**M0/G0、M1/T101、T103、T104、T106及T108通过；T102仅真实磁盘满待权限补验**。真实Release保存/另存/副本/批次/覆盖/硬链接/进程终止、<20MiB正常/降级编辑、20MiB分块只读、>100MiB显式预览、单根懒加载目录树、CodeMirror编辑/语言/系统中文IME，以及文件内搜索替换和只读保护均已验证；恢复和其余M1项仍未完成，G1未通过，更不是完整v1。
-- 下一项：**T102 剩余真实磁盘满证据**。该缺口使T105/T107仍不满足依赖；先寻找不同于已被权限策略拒绝的64MiB VHD探针的受控方案，再推进其余M1与M2–M5。
+- 产品代码：**M0/G0、M1/T101、T102、T103、T104、T106及T108通过**。真实Release保存/另存/副本/批次/覆盖/硬链接/进程终止、真实小容量满盘安全失败、<20MiB正常/降级编辑、20MiB分块只读、>100MiB显式预览、单根懒加载目录树、CodeMirror编辑/语言/系统中文IME，以及文件内搜索替换和只读保护均已验证；恢复和其余M1项仍未完成，G1未通过，更不是完整v1。
+- 下一项：**T105 树内变更**，其T102/T104依赖已满足；T107的T102/T106依赖也已满足。先完成树内新建/重命名/回收站删除，再推进标签关闭保护、恢复与G1。
 - 本次交付检查：详见 [DELIVERY-CHECK](../docs/DELIVERY-CHECK.md)，不代表产品关卡G0–G5通过。
 
 ## 已核查环境
@@ -21,7 +21,18 @@
 | 2026-11-01 / T002 | app-shell | React Shell/App/token/CSS、Web及原生测试 | typecheck/lint exit 0；Web 2 passed；真实WebView2 debug 1 passed | Web与原生范围分开，未测OS对话框 | .artifacts/T002/及docs/acceptance/M0.md | T002通过；下一T003 |
 | 2026-11-01 / T003.a–d（进行中） | F-DESK-013 | Rust models/grants/files/commands、AppManifest ACL、TS contracts/bridge、CodeMirror只读UI、测试与脚本 | typecheck/lint/TS单测3、Rust原生5、Web4、Release smoke1均exit 0；check.ps1 -Desktop exit 0；交互选择器三次超时，后次显式exit 1 | 原生Rust磁盘+junction，真实Release IPC/WebView2，Web mock独立 | docs/acceptance/M0.md；.artifacts/T003；.artifacts/T002/native-release.json | T003未完成OS选取验收，G0不勾选 |
 
-## T108 文件内搜索替换完成（最新，2026-11-01）
+## T102 安全保存闭环完成（最新，2026-11-01）
+
+- F-FILE-003、F-FILE-004、F-FILE-005、F-FILE-009完成。此前已验收保存/另存/副本/全部保存/已有目标覆盖/硬链接确认、保存事务强杀，以及真实Tauri提交后Ack前终止；本轮补齐真实满盘故障，故T102不再保留磁盘满阻塞。
+- `tests/desktop/disk-full.ts`在本机已有Ubuntu WSL2中创建唯一UUID命名的16MiB `tmpfs`，Linux端填满后真实返回`ENOSPC`；该文件经`\\wsl.localhost`由真实OS选择器和Tauri Release打开。编辑后CtrlS在`write-temporary`阶段失败，UI显示恢复receipt与阶段，编辑器及当前输入保持dirty，源文件SHA256不变。
+- 测试随后按receipt读取E盘私有保存事务：`manifest.json`、`body.bin`和`original.bin`存在，body摘要与manifest一致、original摘要与源文件一致，`original.bin`文本等于满盘前源文件。测试结束先终止Tauri，再lazy detach并删除WSL挂载，未残留`featherpad-fault-*`挂载或目录。
+- `scripts/Select-ControlledFixture.ps1`新增仅测试用的`open-fault`动作：只接受manifest绑定的`\\wsl.localhost\Ubuntu\mnt\featherpad-fault-<32hex>`根、UUID ownership token、真实Tauri PID/父worker/exe hash及源hash，不增加生产IPC或任意路径授权入口。
+- 限制：Windows WSL 9P把底层`ENOSPC`映射为`ERROR_GEN_FAILURE (31)`，不是原生NTFS磁盘满的`ERROR_DISK_FULL (112)`。为隔离该限制，`io_error`新增Windows 112→`DISK_FULL`及“磁盘空间不足”专用文案的Rust单测；本次原生证据仍然证明真实满盘时的数据安全，但不宣称已完成物理NTFS小卷演练或断电恢复。
+- 实际检查：`pnpm typecheck`、`pnpm lint` exit0；`pnpm test:unit` 74 passed；`pnpm test:integration`为Rust 68 passed且100k benchmark显式ignored；`pnpm test:e2e` 27 passed；`pnpm build` exit0；`pnpm test:desktop` 1 passed（1.1分钟）；`cargo fmt --check`、`cargo clippy --locked --offline --all-targets -- -D warnings`、`node scripts/validate-docs.mjs`与`git diff --check`均exit0。
+- 原生证据：`.artifacts/T102/native-release.json`的`nativeDiskFullVerified:true`；observation记录`backingFilesystemFullVerified`、`sourceFileUnchanged`、`editorBufferPreservedAndDirty`、`recoveryReceiptFound`、`recoveryBodyMatchesIntendedText`及`recoveryOriginalMatchesSource`均为true，failureStage为`write-temporary`。`.artifacts/T102/native-release-disk-full.png`已视觉检查。
+- 当前Release：`src-tauri/target/release/featherpad.exe`，10,366,976 bytes，SHA256 `9DFA0600EA304BE2DD352106A5C08E431A7E87F82FE45280CC885C2F03ABAD93`。主JS chunk仍609.67kB（gzip 196.96kB），保留Vite警告。下一项T105；T107依赖已满足，恢复/G1以后仍未完成。
+
+## T108 文件内搜索替换完成（此前切片，2026-11-01）
 
 - F-SEARCH-001、F-SEARCH-002、F-SEARCH-003完成。CtrlF在当前CodeMirror文档打开非模态面板，支持字面/安全正则、大小写、Unicode字母/数字/下划线整词边界、显式选区范围、上下导航、环绕提示、高亮、当前定位、总数和匹配摘要；Enter/Shift+Enter导航，Escape关闭后保留查询并恢复编辑器焦点。
 - 搜索在本地module worker执行，5秒watchdog限制病态输入；新查询立即终止旧worker并丢弃旧generation。受控病态正则场景从输入新查询到新结果显示为25.64ms，低于250ms取消目标。单文档最多保留10,000处，超出明确截断；模式上限按UTF-8字节执行10KiB。未来不适合交叉语义的`\b`/`\B`、look-around和回溯引用会明确拒绝并引导使用“整词”，不静默扩大JS `RegExp`语义。
@@ -30,7 +41,7 @@
 - 只读文件可查找和导航，替换输入及按钮禁用并显示“只读文档仅支持查找”。选区随缓冲版本变化时安全重置全文，不继续使用旧offset。
 - 实际检查：`pnpm typecheck`、`pnpm lint` exit0；`pnpm test:unit` 74 passed；`pnpm test:integration`为Rust 67 passed且100k benchmark显式ignored；`pnpm test:e2e` 27 passed；`pnpm build` exit0；`pnpm test:desktop` 1 passed（56.8秒）。最终`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、文档校验与`git diff --check`见提交前检查。
 - 原生证据：`.artifacts/T102/native-release.json`的`nativeSearchVerified:true`；`nativeSearchObservation`记录Unicode/大小写、整词、导航和环绕、非法正则、捕获组替换、全部替换单次undo、选区范围及只读查找均为true。真实只读fixture SHA256在测试后保持`5CF5863A08ECF95927A508F08CF2493DEED211022497D3A7478EB7D1BBB79F1F`。`.artifacts/T108/native-search-editable.png`、`native-search-readonly.png`及Web `search-web.png`已视觉检查。Web取消证据为`.artifacts/T108/cancellation-web.json`。
-- 当前Release：`src-tauri/target/release/featherpad.exe`，10,367,488 bytes，SHA256 `09C3842A4BA28ACF752EA0AE05741886E7E7385BDAA25F0511233DFDEED4E039`。构建主JS chunk为609.67kB（gzip 196.96kB），保留Vite 500kB警告，未提高阈值。T102真实磁盘满、T105/T107、恢复、G1及以后仍未完成。
+- T108验收时Release为10,367,488 bytes、SHA256 `09C3842A4BA28ACF752EA0AE05741886E7E7385BDAA25F0511233DFDEED4E039`。该hash已被上方T102最终Release取代；T108证据本身未过期。T108通过时T102仍待验，后续由上方完成。
 
 ## T106 真实编辑内核完成（此前切片，2026-11-01）
 
@@ -49,7 +60,7 @@
 - 100k真实目录首版Release首分页为3,204ms，超过既定300ms硬预算，未降阈值。改用`FindFirstFileExW`、`FindExInfoBasic`和`FIND_FIRST_EX_LARGE_FETCH`，旧文件系统对basic级别不支持时回退标准级别；加入路径锁后最终首分页159.669ms、200项并正常发cursor。原生UI另用205项真实子目录验证首屏200、加载更多后205。
 - 本切片实际检查：`pnpm typecheck`、`pnpm lint`、`pnpm test:unit`（38）、`pnpm test:integration`、`cargo test`（66 passed，1个100k benchmark为显式ignored）、`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`pnpm test:e2e`（17）、`pnpm build`、`pnpm test:desktop`（1，55.2秒）均exit0；100k Release benchmark exit0。没有新增依赖或工具。审查补正后在最终Release上重跑静态/单元/E2E/构建/原生综合和Release基准。
 - 原生证据：`.artifacts/T102/native-release.json`的`nativeWorkspaceVerified:true`，observation记录lazyNestedLoad/pagination/hiddenFilter/emptyRoot/permissionDeniedRootAndRetry/currentFileLocate/refresh/keyboardNavigation/dirtyDocumentPreservedOnRootReplacement/junctionBoundaryRejected均为true；`.artifacts/T104/native-workspace-tree.png`已视觉检查，显示中文根/目录、当前文件、只读/链接标记和dirty编辑。`.artifacts/T104/directory-scale.json`记录100k文件、200项、159.669ms/budget300ms。Web E2E仍是明确mock，只证明同一前端交互；原生根、NTFS ACL、真实文件、真实IPC和OS文件夹选择器另验。
-- 当前Release：`src-tauri/target/release/featherpad.exe`，10,176,000 bytes，SHA256 `BF73C9C9E7DCA54E511D37DB8198F68FAFB3E067FD68BE142B80D8EA1E4AEA41`。实现采用分页而非虚拟化，因此不声明超大目录整表渲染通过。下一项T106；T102真实磁盘满仍阻塞T105，不重复权限策略已拒绝的VHD探针，G1仍未通过。
+- T104验收时Release为10,176,000 bytes、SHA256 `BF73C9C9E7DCA54E511D37DB8198F68FAFB3E067FD68BE142B80D8EA1E4AEA41`。实现采用分页而非虚拟化，因此不声明超大目录整表渲染通过。
 
 ## T103 大文件模式完成（历史切片，2026-11-01）
 
@@ -58,7 +69,7 @@
 - 真实边界证据：Rust实际文件覆盖2MiB−1/2MiB/2MiB+1、20MiB−1/20MiB/20MiB+1、100MiB/100MiB+1；并发真实写入使读取跨过20MiB和100MiB上限均得到TOO_LARGE，未越限增长得到CONFLICT；另用“初次观察为可编辑大小、实际文件已增长”的路径验证自动分块重判。流式20MiB摘要与既有全文件快照一致且只保留小窗口；100MiB扫描保留零正文窗口，末尾UTF-8窗口精确。原生Release打开受控20MiB文件后可前/后分页，单页<64KiB+16字符，源文件SHA256不变；100MiB+1文件自动打开被拒，用户明确选择后显示前1MiB预览且保存/另存禁用，源文件SHA256不变。
 - 本切片实际检查：typecheck/lint、TS33、全Web16（分块下一页只显示新页、上一页恢复且保存入口禁用；Web mock与原生证据独立）、Rust全套61、`cargo fmt --check`、`cargo clippy --all-targets -D warnings`、Release build及真实桌面综合1（43.0秒）均exit0。没有新增依赖/工具。原生截图`native-release-large-chunk.png`显示第1页65,536字节/20,971,520字节及上一/下一按钮，`native-release-head-preview.png`显示截断前1MiB；均已视觉检查。`native-release.json`记录nativeLargeChunkReadonlyVerified=true、nativeHeadPreviewVerified=true。
 - 当前Release：10,088,960 bytes，SHA256 `1472127164a831ac654bd3985b757b6da14ef02ed5fc1cd936ce5b8747257633`。Win11/WebView2 156.0.4314.58、浏览器offline重载。单次开发机观测：20MiB分块首屏上界1,116.8ms（含受控原生选择器自动化），100MiB打开到预览选项上界1,596.4ms，用户预览动作361.2ms；该长流程进程树私有工作集约348–444MiB。计时不是10次p95/目标机结论，内存也高于SPEC的180MiB目标，故不标M5性能通过，后续bench:app与常驻预算继续复核。
-- T104其后已由上方最新切片完成。T102真实磁盘满仍因New-VHD权限缺口[~]，不重复同一探针；T110恢复/关闭保护和G1仍待完成。
+- T104和T102磁盘满此后已由上方最新切片完成。以下T102/T103各节保留实施时的历史状态；当前结论、最终Hash和下一项以上页记录为准。
 
 ## T103.a 完整降级编辑（历史切片）
 

@@ -1,7 +1,7 @@
 # 开发任务清单
 
 当前阶段：**M0/G0已通过，开始M1**。`[ ]` 待做，`[~]` 进行中，`[x]` 通过验收。禁止仅因代码存在就打勾；关联 [计划](plan.md)、[进度](PROGRESS.md) 与 [完整功能矩阵](../docs/FEATURE-MATRIX.md)。范围写 `F-FILE-001..005` 表示含端点的连续ID。
-执行更新（2026-11-01）：T000–T005/G0、T101、T103、T104、T106与T108通过；T102除真实磁盘满外已完成。T106已用真实Release验证CodeMirror事务编辑、选区/字数、undo/redo、缩进、语言高亮、括号配对/匹配、剪贴板，以及Windows微软拼音候选窗提交；T108已用共享TS/Rust夹具和真实Release验证Unicode/大小写/整词、选区范围、零长度、非法式、捕获组、全部替换单次undo与只读保护。T105/T107仍依赖未完成T102；下一工作优先解除真实磁盘满缺口，G1尚未通过，不代表MVP或完整v1。
+执行更新（2026-11-01）：T000–T005/G0、T101、T102、T103、T104、T106与T108通过。T102已加入真实16MiB WSL2 `tmpfs`满盘场景：Release保存停在`write-temporary`，源文件不变、缓冲保持dirty、恢复正文和原件一致；Windows 9P错误31与NTFS错误112映射限制已明确记录。T106已用真实Release验证CodeMirror事务编辑、选区/字数、undo/redo、缩进、语言高亮、括号配对/匹配、剪贴板，以及Windows微软拼音候选窗提交；T108已用共享TS/Rust夹具和真实Release验证Unicode/大小写/整词、选区范围、零长度、非法式、捕获组、全部替换单次undo与只读保护。下一项T105，T107当前依赖也已满足；G1尚未通过，不代表MVP或完整v1。
 
 ## 执行约定
 
@@ -34,7 +34,7 @@ Q/R/W/D/B命令已建立；具体通过范围见PROGRESS，命令存在不等于
 | 状态/任务 | 依赖 | 功能追踪 | 切片与明确验收 | 主要规划文件 | 验证 |
 |---|---|---|---|---|---|
 | [x] T101 文档身份与打开 | T005 | F-FILE-001..002,F-FILE-014..015 | a原生身份/严格解码；b唯一CM缓冲/新建多选；c原生多选验收；binary/未知编码不误写 | src/features/editor/documents.ts、src/bridge/files.ts、src-tauri/src/services/{files,identity,grants}.rs | 初验check.ps1 -Desktop exit 0；授权单项失败补正后TS31/Rust39/Web全量12+定向3/真实Release1及typecheck/lint/fmt/clippy/build exit 0；真实授权保其他成功项，Web失败不清buffer。见M1验收；手动编码/只读试开由T103/T201追踪 |
-| [~] T102 安全保存闭环 | T101 | F-FILE-003..005,F-FILE-009 | 保存/另存/副本/全部保存/覆盖/硬链接已验；新增保存进程终止，真实磁盘满待权限 | src/features/editor/{save,save-all}.ts、src-tauri/src/commands/save.rs、src-tauri/src/services/{save,save_requests,create_file,save_as}.rs、tests/desktop/forced-exit.ts | 最新Rust46/fmt/clippy、typecheck/lint/真实Release1 exit0；Rust替换前/提交后强杀+放行正控，真实Tauri提交后Ack前终止再核对磁盘。历史TS31/Web13/构建保留。64MiB VHD创建权限拒绝，磁盘满不标通过；先推进T103，见M1验收 |
+| [x] T102 安全保存闭环 | T101 | F-FILE-003..005,F-FILE-009 | 保存/另存/副本/全部保存/覆盖/硬链接、进程终止与真实满盘安全失败 | src/features/editor/{save,save-all}.ts、src-tauri/src/commands/save.rs、src-tauri/src/services/{save,save_requests,create_file,save_as}.rs、tests/desktop/{forced-exit,disk-full}.ts | typecheck/lint、TS74、Rust68+1 ignored、Web27、Release build、真实桌面1（1.1分钟）exit0；真实16MiB WSL2 tmpfs满盘在write-temporary安全失败，源哈希/dirty/恢复body+original均正确；Win11 NTFS 112→DISK_FULL有单测。9P错误31限制见M1验收 |
 | [x] T103 大文件模式 | T101 | F-FILE-013 | 完整<20MiB降级/长行、≥20MiB单页分块、>100MiB显式前1MiB预览、动态增长重判、片段保存/As/Copy后端拒绝 | src-tauri/src/services/{open_policy,files,stream_snapshot}.rs、src/features/editor/{LargeFileView,EditorDocument}.tsx | TS33/Web16/Rust61/clippy/fmt/typecheck/lint/build exit0；真实Release1 exit0。原生20MiB分块前后页、100MiB+1显式预览、哈希不变；测量首屏上界1.12s/预览动作0.36s，进程树348–444MiB超M5目标，M5继续复核。见M1验收 |
 | [x] T104 单根目录树 | T101 | F-WORK-001,F-WORK-003 | 打开根、懒加载/分页/排序/刷新/当前文件定位，空和拒绝态完整 | src/features/workspace/Explorer.tsx、src/features/workspace/store.ts、src-tauri/src/services/directories.rs | typecheck/lint、TS38、Rust66（100k基准另跑）、Web17、Release build、真实桌面1（55.2秒）exit0；原生空/无权限根恢复、205项分页、刷新保展开、junction拒绝、dirty保留；100k首分页159.669ms<300ms。见M1验收 |
 | [ ] T105 树内变更 | T102,T104 | F-FILE-017,F-WORK-004..005 | 新建/重命名/回收站，dirty决策、保留名/碰撞/失败无假成功 | src/features/workspace/file-actions.ts、src/features/workspace/EntryInput.tsx、src-tauri/src/services/file_ops.rs | Q/R/D：失败不移除树项、无永久删除回退 |
