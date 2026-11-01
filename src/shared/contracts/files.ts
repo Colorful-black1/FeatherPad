@@ -36,6 +36,15 @@ export interface SaveAck {
   savedAt: string;
   sizeBytes: number;
 }
+export interface SaveAsRequest extends Omit<SaveRequest, 'expectedDiskRevision'> {
+  readonly intent?: 'save-as' | 'copy';
+}
+export interface SaveAsAck {
+  documentId: DocumentId;
+  ref: FileRef;
+  metadata: OpenDocument['metadata'];
+  ack: SaveAck;
+}
 export interface OpenDocument {
   documentId: DocumentId;
   ref: FileRef;

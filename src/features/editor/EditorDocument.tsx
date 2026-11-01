@@ -7,6 +7,7 @@ export function EditorDocument({ registry, id, autoFocus }: { registry: Document
   const parent = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
   const document = registry.getDocument(id);
+  const readOnlyReason = document?.summary.readOnlyReason;
   useEffect(() => {
     const record = registry.getDocument(id);
     if (!parent.current || !record) return;
@@ -30,7 +31,7 @@ export function EditorDocument({ registry, id, autoFocus }: { registry: Document
       registry.setScroll(id, view.scrollDOM.scrollTop, view.scrollDOM.scrollLeft);
       view.destroy();
     };
-  }, [id, registry, autoFocus]);
+  }, [id, registry, autoFocus, readOnlyReason]);
   if (!document) return null;
   return <section className="document-view" role="tabpanel" id={`panel-${id}`} aria-labelledby={`tab-${id}`} tabIndex={-1}>
     <header className="document-heading"><span>{document.summary.displayPath ?? document.summary.title}</span><span>{document.summary.readOnlyReason ? '只读' : '文本'}</span></header>

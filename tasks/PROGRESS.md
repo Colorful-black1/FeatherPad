@@ -23,6 +23,8 @@
 
 ## 当前恢复点（2026-11-01 14:42，Asia/Shanghai）
 
+- T102.c2.e前端快照/绑定已验证：保存状态逻辑移到`document-save-state.ts`，registry保持唯一CM所有权；新增As快照/baseSource和Ack绑定检查，copy不能更新源baseline，mixed按原逐行映射捕获。CodeMirror editability用Compartment更新，另存到可写UTF8后可继续编辑且不清undo/选区。typecheck/lint/TS22 exit 0（新增5项），旧17项保存/queue回归通过。前端接口增加SaveAsRequest/Ack；下一按钮/快捷键/bridge与原生新建保存/取消验收。
+
 - T102.c2.d原生另存入口已编译：save_document_as使用真实保存选择器，目标已存在时先capture revision再额外原生覆盖确认，取消返回CANCELLED并缓存；commit前重验。选择器期间不持有源服务锁，成功才绑定；copy同样选择器但不改源。main仅新增精确allow-save-document-as。clippy exit 0，尚未接前端/运行新Release，不能记OS另存验收通过。下一切片前端capture/As Ack/只读策略，再接按钮与原生受控保存/取消测试。
 
 - T102.c2.c缓存准备：普通保存/另存共用512条结果缓存，变体区分Ack/SaveAsAck，As ticket只留key/hash不复制全文；Native picker前先查回放，取消也缓存。InFlight增加As请求入口，相同ID不同快照/intent拒绝、相同在途BUSY。Rust全套37 passed、fmt/clippy exit 0。保存私有目录resolver仅提升到commands内部可复用；继续原生另存IPC，尚无新Release。

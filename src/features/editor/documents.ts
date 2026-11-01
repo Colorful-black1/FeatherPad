@@ -1,6 +1,9 @@
 import type { EditorState, Text, Transaction } from '@codemirror/state';
-import type { DocumentId, OpenDocument, ResultEnvelope, SaveAck, SaveRequest, TextFormat } from '../../shared/contracts/files';
+import type { DocumentId, OpenDocument, ResultEnvelope, SaveAck, SaveAsAck, TextFormat } from '../../shared/contracts/files';
 import { createEditorState } from './editor-state';
+import { captureExisting, captureDestination, acknowledgeExisting, acknowledgeDestination, readOnlyReason,
+  type CapturedSave, type CapturedSaveAs } from './document-save-state';
+export type { CapturedSave, CapturedSaveAs } from './document-save-state';
 
 export interface DocumentSummary {
   id: DocumentId;
@@ -12,7 +15,7 @@ export interface DocumentSummary {
   readOnlyReason: string | null;
 }
 
-interface ManagedDocument {
+export interface ManagedDocument {
   summary: DocumentSummary;
   state: EditorState;
   savedText: Text;
@@ -25,11 +28,6 @@ interface ManagedDocument {
 interface RegistrySnapshot {
   documents: readonly DocumentSummary[];
   activeId: DocumentId | null;
-}
-
-export interface CapturedSave {
-  readonly request: SaveRequest;
-  readonly savedText: Text;
 }
 
 function failure(code: 'NOT_FOUND' | 'CONFLICT' | 'READ_ONLY' | 'UNSUPPORTED', message: string): ResultEnvelope<never> {
@@ -72,16 +70,14 @@ export class DocumentRegistry {
   openDocument(document: OpenDocument): DocumentId {
     const id = document.documentId;
     if (!this.documents.has(id)) {
-      const readOnlyReason = document.metadata.isReadOnly ? '文件为只读'
-        : document.format.lineEnding === 'mixed' ? '混合换行暂以只读方式打开'
-          : document.format.encoding !== 'utf-8' ? '此编码暂以只读方式打开' : null;
-      const state = createEditorState(document.content.text, readOnlyReason !== null);
+      const reason = readOnlyReason(document.metadata, document.format);
+      const state = createEditorState(document.content.text, reason !== null);
       const { content, ...source } = document;
       this.documents.set(id, {
         summary: {
           id, title: document.metadata.displayPath.split(/[\\/]/).pop() || document.metadata.displayPath,
           displayPath: document.metadata.displayPath, format: document.format,
-          version: content.newlineMap.documentVersion, dirty: false, readOnlyReason,
+          version: content.newlineMap.documentVersion, dirty: false, readOnlyReason: reason,
         },
         state, savedText: state.doc, savedVersion: content.newlineMap.documentVersion, source, originalNewlines: content.newlineMap,
         scroll: { top: 0, left: 0 },
@@ -102,41 +98,23 @@ export class DocumentRegistry {
   }
 
   captureSave(id: DocumentId): ResultEnvelope<CapturedSave> {
-    const document = this.documents.get(id);
-    if (!document) return failure('NOT_FOUND', '文档已关闭。');
-    if (document.summary.readOnlyReason) return failure('READ_ONLY', document.summary.readOnlyReason);
-    if (!document.source) return failure('UNSUPPORTED', '此文档尚无文件路径，请使用另存为。');
-    const { version, format } = document.summary;
-    // Mixed/CR documents stay read-only until transaction-aware newline mapping is available.
-    const ending = format.lineEnding === 'lf' ? 'lf' : 'crlf';
-    const request: SaveRequest = Object.freeze({
-      documentId: id, requestId: crypto.randomUUID(), documentVersion: version,
-      expectedDiskRevision: document.source.metadata.diskRevision,
-      text: document.state.doc.toString(), format: Object.freeze({ ...format }),
-      newlineMap: Object.freeze({ documentVersion: version, endings: Object.freeze(Array.from({ length: document.state.doc.lines - 1 }, () => ending)) }),
-    });
-    return { ok: true, value: Object.freeze({
-      savedText: document.state.doc,
-      request,
-    }) };
+    return captureExisting(this.documents.get(id));
   }
 
   acknowledgeSave(captured: CapturedSave, ack: SaveAck): ResultEnvelope<{ dirty: boolean }> {
-    const { request, savedText } = captured;
-    const document = this.documents.get(request.documentId);
-    if (!document) return failure('NOT_FOUND', '文档已关闭。');
-    if (!document.source || document.source.metadata.diskRevision !== request.expectedDiskRevision
-      || ack.documentVersion !== request.documentVersion || ack.documentVersion < document.savedVersion
-      || ack.documentVersion > document.summary.version) return failure('CONFLICT', '保存回执与当前文档版本不匹配。');
-    document.savedText = savedText;
-    document.savedVersion = ack.documentVersion;
-    document.source = {
-      ...document.source,
-      metadata: { ...document.source.metadata, diskRevision: ack.diskRevision, modifiedAt: ack.savedAt, sizeBytes: ack.sizeBytes },
-    };
-    document.summary = { ...document.summary, dirty: !document.state.doc.eq(savedText) };
-    this.publish(this.snapshot.activeId);
-    return { ok: true, value: { dirty: document.summary.dirty } };
+    const result = acknowledgeExisting(this.documents.get(captured.request.documentId), captured, ack);
+    if (result.ok) this.publish(this.snapshot.activeId);
+    return result;
+  }
+
+  captureSaveAs(id: DocumentId, intent: 'save-as' | 'copy' = 'save-as'): ResultEnvelope<CapturedSaveAs> {
+    return captureDestination(this.documents.get(id), intent);
+  }
+
+  acknowledgeSaveAs(captured: CapturedSaveAs, ack: SaveAsAck): ResultEnvelope<{ dirty: boolean }> {
+    const result = acknowledgeDestination(this.documents.get(captured.request.documentId), captured, ack);
+    if (result.ok) this.publish(this.snapshot.activeId);
+    return result;
   }
 
   commit(id: DocumentId, transactions: readonly Transaction[]): ResultEnvelope<{ version: number }> {
