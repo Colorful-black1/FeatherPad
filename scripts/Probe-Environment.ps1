@@ -13,7 +13,14 @@ Add-PathCheck 'cargo' 'C:\Users\abcd\.cargo\bin\cargo.exe'
 Add-PathCheck 'git' 'C:\Program Files\Git\cmd\git.exe'
 Add-PathCheck 'msvc-init' 'E:\Codeing\sdks\vs2022\VC\Auxiliary\Build\vcvars64.bat'
 Add-PathCheck 'windows-sdk' 'C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0'
-Add-PathCheck 'webview2' 'C:\Program Files (x86)\Microsoft\EdgeWebView\Application\156.0.4314.50'
+$webviewRoot = 'C:\Program Files (x86)\Microsoft\EdgeWebView\Application'
+$webviewVersion = Get-ChildItem -LiteralPath $webviewRoot -Directory -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -match '^\d+\.\d+\.\d+\.\d+$' -and
+        (Test-Path -LiteralPath (Join-Path $_.FullName 'msedgewebview2.exe')) } |
+    Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1
+$webviewExecutable = if ($webviewVersion) { Join-Path $webviewVersion.FullName 'msedgewebview2.exe' }
+    else { Join-Path $webviewRoot 'msedgewebview2.exe' }
+Add-PathCheck 'webview2' $webviewExecutable
 $versions = [ordered]@{}
 $versionProbes = @(
     @{ Name = 'node'; Exe = 'E:\Codeing\nvm\v22.13.0\node.exe'; Args = @('--version') },

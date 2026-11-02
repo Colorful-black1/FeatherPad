@@ -19,7 +19,7 @@
 | VS 2022 Build Tools | `E:\Codeing\sdks\vs2022` | 17.14.37614.0；vswhere 确认 C++ x86/x64 组件 | 复用 |
 | MSVC 工具集 | `E:\Codeing\sdks\vs2022\VC\Tools\MSVC\14.44.35207` | 目录存在；vcvars64.bat 存在 | 项目会话使用开发环境，不另装完整 VS |
 | Windows SDK | `C:\Program Files (x86)\Windows Kits\10` | Include/10.0.26100.0 存在 | 复用；最终以实际原生构建为准 |
-| WebView2 | `C:\Program Files (x86)\Microsoft\EdgeWebView\Application\156.0.4314.50` | 运行时目录存在 | 首次 Tauri 启动验证；不重复安装 |
+| WebView2 | `C:\Program Files (x86)\Microsoft\EdgeWebView\Application\156.0.4314.58` | 2026-11-02复查exe存在 | 探针从已有版本目录选择有效exe，不重复安装；运行验证范围仍见原生验收证据 |
 | Chrome / Edge | 标准 Program Files 目录 | 两个 exe 路径均已找到 | 原型验证可复用；不下载测试浏览器 |
 | Python | `E:\Codeing\python\python.exe` | 命令发现，未核查版本 | 产品不需要；不因习惯新增 Python 依赖 |
 

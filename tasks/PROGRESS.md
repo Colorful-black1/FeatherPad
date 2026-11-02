@@ -14,6 +14,11 @@
 
 ## 实施证据（未来逐任务追加）
 
+### 2026-11-02 恢复开发环境复查
+
+- 首次Probe-Environment.ps1 exit1：仅WebView2固定旧目录156.0.4314.50不存在；读取标准安装目录确认已有156.0.4314.58/msedgewebview2.exe。修正探针为选择已有数字版本目录内真实exe，保留缺失时失败，不安装/升级任何工具。
+- 点源Enter-Dev.ps1后复跑powershell.exe -NoProfile -File scripts/Probe-Environment.ps1 -AsJson，exit0；证据.artifacts/T107-environment-probe.json。ENVIRONMENT表同步实际已有版本，历史原生运行证据不变。
+
 | 日期 / 任务 | 功能ID | 变更文件 | 命令 / exit code | mock或原生 | 证据 | 结论 / 下一步 |
 |---|---|---|---|---|---|---|
 | 2026-11-01 / T000 | F-DESK-013 | 环境/原生探针脚本及记录 | Probe-Environment/Verify-NativeToolchain exit 0 | 原生MSVC，非Tauri | `.artifacts/T000/result.json`：编译/运行均0；exe SHA256=11671D0B9073AA77425DF8C9E50FE8BEF00DA1E08E88CA6428D52287ADA53F44 | 已复用所有工具；下一T001 |
