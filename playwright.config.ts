@@ -1,8 +1,10 @@
 import { defineConfig } from '@playwright/test';
+import { testRunId } from './test-evidence';
 
 export default defineConfig({
   testDir: './tests/e2e',
-  outputDir: '.artifacts/playwright-results',
+  outputDir: `.artifacts/playwright-results/${testRunId}`,
+  metadata: { evidenceRunId: testRunId },
   forbidOnly: true,
   retries: 0,
   use: {

@@ -13,7 +13,7 @@ try {
     & cargo clippy --manifest-path src-tauri/Cargo.toml --locked --offline --all-targets -- -D warnings
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     if ($Desktop) {
-        & $env:FEATHERPAD_NODE_EXE $env:FEATHERPAD_PNPM_SCRIPT test:desktop
+        & $env:FEATHERPAD_NODE_EXE $env:FEATHERPAD_PNPM_SCRIPT test:desktop:all
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     }
 } finally { Pop-Location }

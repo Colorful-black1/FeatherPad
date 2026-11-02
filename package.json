@@ -18,7 +18,8 @@
     "test:unit": "vitest run src",
     "test:integration": "powershell.exe -NoProfile -File scripts/Test-Integration.ps1",
     "test:e2e": "playwright test",
-    "test:desktop": "playwright test --config desktop.config.ts",
+    "test:desktop": "playwright test --config desktop.config.ts --project smoke",
+    "test:desktop:all": "playwright test --config desktop.config.ts --project regression",
     "test": "pnpm test:unit && pnpm test:integration",
     "tauri": "tauri"
   },

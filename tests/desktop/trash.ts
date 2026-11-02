@@ -46,7 +46,7 @@ async function protectedDraft(dataDir: string, source: string, text: string) {
 
 export async function verifyNativeTrash(page: Page, dataDir: string, root: string, chooseDestination: ChooseDestination,
   grant: { grantId: string; relativePath: string }) {
-  const evidence = path.resolve('.artifacts/T105');
+  const evidence = path.join(dataDir, 'evidence', 'trash');
   await mkdir(evidence, { recursive: true });
   const token = randomUUID();
   const name = `trash-lock-${token}.txt`;

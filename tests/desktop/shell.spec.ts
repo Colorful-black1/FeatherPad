@@ -15,26 +15,34 @@ import { verifyNativeWorkspace } from './workspace';
 import { verifyNativeEditor } from './editor';
 import { verifyNativeSearch } from './search';
 import { verifyNativeDiskFull } from './disk-full';
+import { runFocusedNativeScenario } from './scenarios';
+import { evidenceRunId, isNativeScenario } from '../../test-evidence';
 
 const runFile = promisify(execFile);
 
 test('real Tauri WebView2 shell, without a mock bridge', async () => {
-  const verifyChooser = process.env.FEATHERPAD_VERIFY_CHOOSER !== '0';
+  const scenario: unknown = test.info().project.metadata.scenario;
+  if (!isNativeScenario(scenario)) throw new Error('Native scenario must be selected explicitly');
+  const runId = evidenceRunId(test.info().config.metadata.evidenceRunId);
+  const verifyChooser = !['smoke', 'editor'].includes(scenario) && process.env.FEATHERPAD_VERIFY_CHOOSER !== '0';
+  if (scenario === 'regression' && !verifyChooser) throw new Error('Full native regression requires the chooser scenarios');
   const chooserAutomation = process.env.FEATHERPAD_CHOOSER_AUTOMATION ?? 'native-controls';
   if (chooserAutomation !== 'native-controls' && chooserAutomation !== 'manual') throw new Error('Invalid chooser automation mode');
+  if (scenario === 'regression' && chooserAutomation !== 'native-controls') throw new Error('Full native regression requires all controlled chooser checks');
   if (verifyChooser) test.setTimeout(240_000);
   const profile = process.env.FEATHERPAD_DESKTOP_PROFILE ?? 'release';
   if (profile !== 'release' && profile !== 'debug') throw new Error('Invalid desktop build profile');
   const root = process.cwd();
   const exe = path.join(root, 'src-tauri', 'target', profile, 'featherpad.exe');
   const hash = createHash('sha256').update(await readFile(exe)).digest('hex');
-  const evidence = path.join(root, '.artifacts', 'T102');
-  const workspaceEvidence = path.join(root, '.artifacts', 'T104');
-  const editorEvidence = path.join(root, '.artifacts', 'T106');
-  const searchEvidence = path.join(root, '.artifacts', 'T108');
+  const evidenceRoot = path.join(root, '.artifacts', 'native', runId, scenario);
+  const evidence = path.join(evidenceRoot, 'files');
+  const workspaceEvidence = path.join(evidenceRoot, 'workspace');
+  const editorEvidence = path.join(evidenceRoot, 'editor');
+  const searchEvidence = path.join(evidenceRoot, 'search');
   let nativeLargeFileObservation: Awaited<ReturnType<typeof verifyNativeLargeFiles>> | null = null;
   let nativeWorkspaceObservation: Awaited<ReturnType<typeof verifyNativeWorkspace>> | null = null;
-  let nativeEditorObservation: Awaited<ReturnType<typeof verifyNativeEditor>>;
+  let nativeEditorObservation: Awaited<ReturnType<typeof verifyNativeEditor>> | null = null;
   let nativeSearchObservation: Awaited<ReturnType<typeof verifyNativeSearch>> | null = null;
   let nativeDiskFullObservation: Awaited<ReturnType<typeof verifyNativeDiskFull>> | null = null;
   const cleanupTasks: (() => Promise<void>)[] = [];
@@ -122,6 +130,19 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
     await page.getByRole('button', { name: '切换到深色主题' }).click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
     await page.screenshot({ path: path.join(evidence, `native-${profile}-dark.png`) });
+    if (!['smoke', 'editor', 'saving', 'regression'].includes(scenario)) {
+      if (!verifyChooser || chooserAutomation !== 'native-controls') throw new Error('Focused native scenarios require the controlled native chooser');
+      const nativeUrl = page.url();
+      const browserVersion = browser.version();
+      const observation = await runFocusedNativeScenario(scenario, { page, child, dataDir,
+        executable: exe, executableSha256: hash, evidence, cleanupTasks });
+      await writeFile(path.join(evidenceRoot, `native-${profile}.json`), JSON.stringify({
+        checkedAt: new Date().toISOString(), scenario, executable: exe, sha256: hash, dataDir,
+        browserVersion, url: nativeUrl, scope: 'Selected real native capability only; other scenarios not run', observation,
+      }, null, 2));
+      console.log(`Native evidence: ${path.relative(root, evidenceRoot)}`);
+      return;
+    }
     if (verifyChooser) {
       const fixture = path.join(dataDir, '中文 fixture.txt');
       const second = path.join(dataDir, '第二份 emoji😀.txt');
@@ -130,13 +151,13 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
       await writeFile(fixture, `原生选择器受控文件\r\n${marker}`, 'utf8');
       await writeFile(second, secondMarker, 'utf8');
       const fixtureRecords = await Promise.all([fixture, second].map(async file => ({ path: file, sha256: createHash('sha256').update(await readFile(file)).digest('hex') })));
-      const manifest = path.join(chooserRoot, 'chooser-fixture.json');
+      const manifest = path.join(dataDir, 'chooser-fixture.json');
       const selectionRecord = { fixtures: fixtureRecords, processId: child.pid, workerProcessId: process.pid,
         executable: exe, executableSha256: hash };
       await writeFile(manifest, JSON.stringify(selectionRecord));
       const helper = path.join(root, 'scripts', 'Select-ControlledFixture.ps1');
       if (chooserAutomation === 'native-controls') {
-        const invalidManifest = path.join(chooserRoot, 'chooser-invalid-worker.json');
+        const invalidManifest = path.join(dataDir, 'chooser-invalid-worker.json');
         await writeFile(invalidManifest, JSON.stringify({ ...selectionRecord, workerProcessId: 0 }));
         await expect(runFile('powershell.exe', ['-NoProfile', '-File', helper, '-Manifest', invalidManifest], { windowsHide: true, timeout: 10_000 }))
           .rejects.toMatchObject({ code: 1, stderr: expect.stringContaining('Test process identity mismatch') });
@@ -305,26 +326,28 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
           await writeFile(path.join(evidence, `native-${profile}-hardlink-${++hardlinkStep}-${action}.json`), result.stdout.trim());
         }
         await verifyNativeHardlinks(page, dataDir, hardlinkAction, evidence);
-        await verifyNativeDegradedEditing(page, dataDir, async target => {
-          await writeFile(manifest, JSON.stringify({ ...selectionRecord, action: 'open-degraded',
-            fixtures: [{ path: target, sha256: createHash('sha256').update(await readFile(target)).digest('hex') }] }));
-          await runFile('powershell.exe', ['-NoProfile', '-File', helper, '-Manifest', manifest], { windowsHide: true, timeout: 25_000 });
-        }, evidence);
-        nativeWorkspaceObservation = await verifyNativeWorkspace(page, dataDir, async target => {
-          await writeFile(manifest, JSON.stringify({ ...selectionRecord, action: 'open-folder',
-            fixtures: [{ path: target }] }));
-          await runFile('powershell.exe', ['-NoProfile', '-File', helper, '-Manifest', manifest], {
-            windowsHide: true,
-            timeout: 25_000,
-          });
-        }, workspaceEvidence, chooseDestination);
-        nativeLargeFileObservation = await verifyNativeLargeFiles(page, dataDir, async (target, action) => {
-          await writeFile(manifest, JSON.stringify({ ...selectionRecord, action,
-            fixtures: [{ path: target, sha256: createHash('sha256').update(await readFile(target)).digest('hex') }] }));
-          await runFile('powershell.exe', ['-NoProfile', '-File', helper, '-Manifest', manifest], { windowsHide: true, timeout: 45_000 });
-        }, evidence, child.pid!);
-        nativeSearchObservation = await verifyNativeSearch(page, dataDir, openControlledFile, searchEvidence);
-        nativeDiskFullObservation = await verifyNativeDiskFull(page, dataDir, evidence, openFaultFile, cleanupTasks);
+        if (scenario === 'regression') {
+          await verifyNativeDegradedEditing(page, dataDir, async target => {
+            await writeFile(manifest, JSON.stringify({ ...selectionRecord, action: 'open-degraded',
+              fixtures: [{ path: target, sha256: createHash('sha256').update(await readFile(target)).digest('hex') }] }));
+            await runFile('powershell.exe', ['-NoProfile', '-File', helper, '-Manifest', manifest], { windowsHide: true, timeout: 25_000 });
+          }, evidence);
+          nativeWorkspaceObservation = await verifyNativeWorkspace(page, dataDir, async target => {
+            await writeFile(manifest, JSON.stringify({ ...selectionRecord, action: 'open-folder',
+              fixtures: [{ path: target }] }));
+            await runFile('powershell.exe', ['-NoProfile', '-File', helper, '-Manifest', manifest], {
+              windowsHide: true,
+              timeout: 25_000,
+            });
+          }, workspaceEvidence, chooseDestination);
+          nativeLargeFileObservation = await verifyNativeLargeFiles(page, dataDir, async (target, action) => {
+            await writeFile(manifest, JSON.stringify({ ...selectionRecord, action,
+              fixtures: [{ path: target, sha256: createHash('sha256').update(await readFile(target)).digest('hex') }] }));
+            await runFile('powershell.exe', ['-NoProfile', '-File', helper, '-Manifest', manifest], { windowsHide: true, timeout: 45_000 });
+          }, evidence, child.pid!);
+          nativeSearchObservation = await verifyNativeSearch(page, dataDir, openControlledFile, searchEvidence);
+          nativeDiskFullObservation = await verifyNativeDiskFull(page, dataDir, evidence, openFaultFile, cleanupTasks);
+        }
       }
       if (chooserAutomation !== 'native-controls') {
         expect(createHash('sha256').update(await readFile(second)).digest('hex')).toBe(fixtureRecords[1]?.sha256);
@@ -332,14 +355,15 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
       expect(createHash('sha256').update(await readFile(fixture)).digest('hex')).not.toBe(fixtureRecords[0]?.sha256);
       await page.screenshot({ path: path.join(evidence, `native-${profile}-documents.png`) });
     }
-    nativeEditorObservation = await verifyNativeEditor(page, editorEvidence);
+    if (scenario === 'editor' || scenario === 'regression') nativeEditorObservation = await verifyNativeEditor(page, editorEvidence);
     const browserVersion = browser.version();
     const nativeUrl = page.url();
-    const forcedExit = verifyChooser && chooserAutomation === 'native-controls'
+    const forcedExit = scenario === 'regression' && verifyChooser && chooserAutomation === 'native-controls'
       ? await verifyNativeForcedExit(page, child, dataDir) : null;
-    await writeFile(path.join(evidence, `native-${profile}.json`), JSON.stringify({
+    await writeFile(path.join(evidenceRoot, `native-${profile}.json`), JSON.stringify({
       checkedAt: new Date().toISOString(),
-      scope: 'Real Tauri/OS chooser/IPC/disk writes; test-only Ack delivery delay, no fake results/grants/IO; CDP composition input, no OS IME candidate window or Windows scaling coverage',
+      scenario, dataDir,
+      scope: 'Real Tauri/WebView2 selected scenario; capability flags reflect executed checks; test-only Ack delivery delays preserve real native results; OS IME and Windows scaling are separate checks',
       executable: path.relative(root, exe), sha256: hash, pid: child.pid,
       profile, browserVersion, url: nativeUrl,
       nativeChooserVerified: verifyChooser,
@@ -353,9 +377,9 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
       nativeExistingOverwriteVerified: verifyChooser && chooserAutomation === 'native-controls',
       nativeHardlinkConsentVerified: verifyChooser && chooserAutomation === 'native-controls',
       nativeForcedExitVerified: forcedExit !== null,
-      nativeDegradedEditingVerified: verifyChooser && chooserAutomation === 'native-controls',
-      nativeLargeChunkReadonlyVerified: verifyChooser && chooserAutomation === 'native-controls',
-      nativeHeadPreviewVerified: verifyChooser && chooserAutomation === 'native-controls',
+      nativeDegradedEditingVerified: scenario === 'regression' && verifyChooser && chooserAutomation === 'native-controls',
+      nativeLargeChunkReadonlyVerified: nativeLargeFileObservation !== null,
+      nativeHeadPreviewVerified: nativeLargeFileObservation !== null,
       nativeLargeFileObservation,
       nativeWorkspaceVerified: nativeWorkspaceObservation !== null,
       nativeWorkspaceObservation,
@@ -370,6 +394,7 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
       browserOffline: profile === 'release',
       checks: ['native-title', 'native-brand', 'tauri-ipc-present', 'light-theme', 'dark-theme', 'forged-grant-rejected', 'malformed-ref-rejected', 'forged-save-rejected', 'malformed-save-rejected', 'unknown-stat-rejected', 'ipc-destination-path-rejected', 'ungranted-plugin-rejected'],
     }, null, 2));
+    console.log(`Native evidence: ${path.relative(root, evidenceRoot)}`);
   } finally {
     try { if (browser?.isConnected()) await browser.close(); }
     finally {

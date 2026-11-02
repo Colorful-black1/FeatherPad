@@ -9,11 +9,11 @@
 
 验证简称（M0实际建立脚本后使用）：
 
-- **Q**：`pnpm typecheck`、`pnpm lint`、对应 `pnpm test:unit` / `pnpm test:integration`；所有命令检查exit code。
-- **R**：`cargo fmt --manifest-path src-tauri/Cargo.toml --check`、`cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings`、`cargo test --manifest-path src-tauri/Cargo.toml`。
-- **W**：`pnpm test:e2e`（Web mock，只验证UI/bridge调用）。
-- **D**：真实Windows Tauri：`pnpm test:desktop`，并执行任务指定的手动场景；不可用时在PROGRESS记录原因及原生人工证据，不能声称自动化已通过。
-- **B**：`pnpm build`，运行实际Release产物，记录路径与sha256。
+- **Q**：受影响模块的类型/lint/行为检查；如`pnpm exec vitest run src/features/editor/close.test.ts`、`pnpm exec eslint src/features/editor/close.ts`。全局`pnpm typecheck`仅在共享契约/跨模块类型受影响时执行；所有命令检查exit code。
+- **R**：受影响Rust包/测试目标的fmt/clippy/test；如`cargo test --manifest-path src-tauri/Cargo.toml --test discard_recovery`，不随普通TS/UI修改重跑全部Rust测试。
+- **W**：受影响Web用例（如`pnpm test:e2e tests/e2e/trash.spec.ts`；mock只证明UI/bridge），M阶段再全量。
+- **D**：`pnpm test:desktop`只跑原生smoke；按能力用`pnpm exec playwright test --config desktop.config.ts --project workspace`等选择`saving/workspace/editor/search`；专项为`large-files/disk-full/forced-exit`。`pnpm test:desktop:all`保留原完整综合场景供M阶段。未实际执行的新入口/场景保持待验，不用smoke代替相关原生IO。
+- **B**：普通相邻T可合并`pnpm build`及Release验收，高风险T完成必须有相关真实Release；记录产物hash及覆盖范围，已有同构建有效证据直接复用。
 - **P**：`pnpm bench:app`，固定版本/机器/夹具，10次样本取p95，完整进程树统计。
 
 Q/R/W/D/B命令已建立；具体通过范围见PROGRESS，命令存在不等于产品验收通过。P（bench:app）仍待创建。

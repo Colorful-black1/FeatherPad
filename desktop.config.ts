@@ -1,8 +1,11 @@
 import { defineConfig } from '@playwright/test';
+import { nativeScenarios, testRunId } from './test-evidence';
 
 export default defineConfig({
   testDir: './tests/desktop',
-  outputDir: '.artifacts/desktop-results',
+  outputDir: `.artifacts/desktop-results/${testRunId}`,
+  metadata: { evidenceRunId: testRunId },
+  projects: nativeScenarios.map(name => ({ name, testMatch: 'shell.spec.ts', metadata: { scenario: name } })),
   workers: 1,
   forbidOnly: true,
   retries: 0,

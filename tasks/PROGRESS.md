@@ -37,6 +37,15 @@
 - close.ts复用SaveCoordinator逐文档队列：核对关闭版本，保存失败/路径取消/迟到Ack后有新输入均保留；最终清理/释放期间readonly fence，放弃失败推进恢复版本且保正文/undo/磁盘基线；释放未知则保只读未绑定副本，成功另存恢复绑定。removeClosed清理view映射/metrics/异步语言引用，激活右邻/左邻/欢迎；未暴露关闭UI。
 - typecheck/lint exit0（.artifacts/T107-close-core-typecheck.log、T107-close-core-lint.log）；TS100 passed（.artifacts/T107-close-core-unit.log），含13个关闭行为正反例。该批检查启动于用户验收策略调整前，后续小切片改为定向测试；当前Rust和真实Release沿用b3有效证据，不宣称本切片UI/新Release已验。下一步标签模型、TabStrip和CloseDialog，再按受影响场景收尾。
 
+### 用户验收策略修订与原生场景入口（2026-11-02）
+
+- AGENTS/QUALITY-GATES和todo验证简称同步用户8条策略：切片定向，T按完整功能汇总/提交，高风险T必须相关真实Release，普通相邻T可合并，M整体回归；专项不随普通UI重复，既有有效证据复用，未验保持待验，历史产物只列清理清单。
+- 原生按project选择smoke/saving/workspace/editor/search，专项large-files/disk-full/forced-exit；regression保留原完整综合流程及全部原断言。pnpm test:desktop默认smoke，pnpm test:desktop:all用于明确整体回归，check.ps1 -Desktop仍调用整体入口。focused路由复用原有能力验证函数；强杀入口只补其所需的独立受控命名文件，不依赖无关的大文件/满盘/硬链接流程。
+- 两份Playwright配置的outputDir和原生证据/控制清单/回收截图改为每次独立目录。旧.artifacts/T102/native-release.json及原目录未删；运行前后hash核对一致，后续search运行也保留smoke结果。根test-evidence.ts生成运行ID并校验目录片段，控制选择器仍校验fixture范围、父进程和exe摘要，没有扩大系统权限。
+- 定向eslint及共享测试配置typecheck exit0；原生9个入口--list可发现，默认仅1个smoke（.artifacts/T107-native-routing-lint.log、T107-native-routing-typecheck.log、T107-native-scenarios-list.log、T107-native-smoke-list.log）。列表发现不代表已验收。
+- 复用b3现有Release（SHA256 6A0C4525C824C39D0A804FA25CE70CB4A5E286F79D2D5568E1CCF7CFF1412E41），没有重新构建：新smoke实际1 passed（1.9秒），search独立实际1 passed（5.1秒）；日志.artifacts/T107-native-routing-smoke.log与T107-native-routing-search.log。证据分别为.artifacts/native/2026-11-02T02-10-21-880Z-819a488b-6e3d-40cb-a0c5-861b4c37aaae/smoke、2026-11-02T02-10-48-700Z-937b7abe-1abe-4bf1-83fb-d84e9c4ac910/search。smoke的保存/大文件/满盘/强杀等未执行标志均false；search记录仅本场景observation，不借用全量通过标志。
+- 其余新入口的独立运行仍待验，原综合b3证据有效保留；没有重跑Rust、大文件、100k、满盘、强杀、性能或完整桌面。此轮是测试调度变更，不宣称T107.c用户流程/新Release通过。下一步继续T107标签与关闭UI，收尾以相关原生场景验收。
+
 ## T107.b3 放弃恢复严格IPC及Release验收（2026-11-02，进行中）
 
 - discard_recovery只接受documentId/throughVersion，返回相同ID/版本及discarded=true；严格DTO拒绝path、多余字段、负数/非整数，核心拒绝非规范UUID和超过JS安全整数的版本。app内部派生恢复根，main最小allow-discard-recovery，先取与保存/回收/释放共用许可；不在该入口释放原生lease或清理save-transactions歧义保存候选。
