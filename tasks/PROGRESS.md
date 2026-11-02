@@ -19,6 +19,12 @@
 - 首次Probe-Environment.ps1 exit1：仅WebView2固定旧目录156.0.4314.50不存在；读取标准安装目录确认已有156.0.4314.58/msedgewebview2.exe。修正探针为选择已有数字版本目录内真实exe，保留缺失时失败，不安装/升级任何工具。
 - 点源Enter-Dev.ps1后复跑powershell.exe -NoProfile -File scripts/Probe-Environment.ps1 -AsJson，exit0；证据.artifacts/T107-environment-probe.json。ENVIRONMENT表同步实际已有版本，历史原生运行证据不变。
 
+### 2026-11-02 原生确认自动化修复
+
+- T107首次pnpm test:desktop exit1，在既有overwrite.ts保存副本成功提示处失败；源/副本目标字节仍为各自原文，错误快照显示仍在保存。日志.artifacts/T107-release-desktop.log及.artifacts/T107-first-desktop-error.md保留，未把失败当新功能通过。
+- Select-ControlledFixture.ps1原先只PostMessage(BM_CLICK)即记为commandInvoked，不能证明未激活确认窗接受选择。改为对已校验进程/内容/按钮的UI Automation InvokePattern调用，并在5秒内验证该确认窗消失，失败明确报错；不扩大fixture范围、进程授权或操作类型。
+- 同一Release产物完整重跑pnpm test:desktop exit0，1 passed（1.2分钟），.artifacts/T107-release-desktop-second.log；既有覆盖/取消/外部冲突/副本，以及真实硬链接确认和本轮释放用例均执行到。没有增加测试重试、放宽超时或用mock代替。
+
 | 日期 / 任务 | 功能ID | 变更文件 | 命令 / exit code | mock或原生 | 证据 | 结论 / 下一步 |
 |---|---|---|---|---|---|---|
 | 2026-11-01 / T000 | F-DESK-013 | 环境/原生探针脚本及记录 | Probe-Environment/Verify-NativeToolchain exit 0 | 原生MSVC，非Tauri | `.artifacts/T000/result.json`：编译/运行均0；exe SHA256=11671D0B9073AA77425DF8C9E50FE8BEF00DA1E08E88CA6428D52287ADA53F44 | 已复用所有工具；下一T001 |
@@ -32,6 +38,14 @@
 - 新增真实Windows测试release_document.rs：关闭前独占打开失败、释放后成功；硬链接仍共享新DocumentId；源字节和已落盘中文emoji草稿保留；两次打开同一大文件所得旧句柄均失效，新句柄及其他文档正常；非法ID拒绝，未知UUID正常no-op。cargo test --locked --offline --test release_document exit0，3 passed，日志.artifacts/T107-release-service.log。
 - cargo clippy --locked --offline --all-targets -- -D warnings exit0（.artifacts/T107-release-core-clippy.log）；cargo test --locked --offline exit0（.artifacts/T107-release-core-rust.log，92 passed、1个100k benchmark ignored）。cargo fmt已执行；本切片未改TS/UI，未冒称新Tauri/Release关闭验收。已按正确性、资源边界、幂等、独立文档影响自审，无新依赖。
 - 下一步：release_document严格DTO/最小ACL/typed bridge、逐文档保存许可；再接单预览/固定/关闭UI及持久化放弃标记。T107整体仍[~]，T110/G1及后续阶段未完成。
+
+### T107.a2 资源释放IPC已验（2026-11-02）
+
+- ReleaseDocumentRequest严格DTO、Result及commands入口、AppManifest/handler/仅main窗口的allow-release-document已接；不接受path/discard/recoveryPath/requestId。入口先取得共用逐文档许可，保存/回收在途返回BUSY；未命名/缺失的未知原生lease正常返回released=false。TS共享契约及bridge严格校验boolean回执，未直接暴露任何恢复删除入口。
+- scripts/check.ps1 exit0：typecheck/lint、TS85、Rust93 passed/1个100k benchmark ignored、Web31、fmt/clippy；.artifacts/T107-release-check.log。4项release_document原生服务/DTO测试通过；独立TS guard拒绝缺字段/字符串/数字/空值回执。pnpm audit --audit-level high exit0，仍为1条既有开发工具moderate，日志.artifacts/T107-release-audit.log。
+- pnpm build exit0（.artifacts/T107-release-build.log）；Release 10,875,392 bytes，SHA256 CA7DFC3E93B5D060F6372C0A8E746AB6B36CE3D54278DA6E5C915C503E9087FA。Vite主chunk628.51kB/gzip202.39kB警告保留。真实pnpm test:desktop第二次exit0（上方记录首轮自动化故障及修复）。
+- 原生真实范围：hardlinks.ts在真实保存确认窗打开时调用release_document得到BUSY，随后取消/保存仍正常；release.ts使用真实目录grant打开独立受控文件，拒绝伪路径/非法ID、释放重试/未知ID返回false、旧stat变NOT_FOUND、另一文档继续有效；同一20MiB文件两份旧handle在重开新ID后仍拒绝、新handle可读32字节；原文字节未变。四项nativeRelease*字段在.artifacts/T102/native-release.json的nativeWorkspaceObservation均true。Rust另证明原生lease真关闭与草稿正文不变。
+- 本轮只验资源释放IPC，不是标签/脏关闭UI或启动恢复验收；下一步T107.b持久化放弃标记与对应快照清理，再接标签预览/固定和保存/放弃/取消。已按输入、许可顺序、幂等、独立文档及证据范围自审；未新增依赖/安装工具。
 
 ## T105 树内变更完成（2026-11-02，M1/G1仍未完成）
 

@@ -295,8 +295,20 @@ public static class FeatherPadChooserControls {
         if (buttonId == 0) return; // Inspect only, to place a real external write after revision capture.
         if (buttonId != 6 && buttonId != 7) throw new InvalidOperationException("Unexpected confirmation choice.");
         var button = buttonId == 6 ? yes[0] : no[0]; RequireOwned(button, processId);
-        // DirectUI buttons have ID zero; BM_CLICK lets their real parent route the actual choice.
-        if (!PostCommand(button, 0x00f5, IntPtr.Zero, IntPtr.Zero)) throw new InvalidOperationException("Native confirmation click could not be posted.");
+        // UI Automation routes the semantic choice even when CDP has the editor focused.
+        // Posting BM_CLICK alone only proves queueing, not that an inactive dialog accepted it.
+        var choice = AutomationElement.FromHandle(button);
+        if (choice.Current.ProcessId != processId || !choice.Current.IsEnabled)
+            throw new InvalidOperationException("Confirmation choice accessibility owner or state changed.");
+        var invoke = choice.GetCurrentPattern(InvokePattern.Pattern) as InvokePattern;
+        if (invoke == null) throw new InvalidOperationException("Confirmation choice lacks InvokePattern.");
+        var originalTitle = Text(dialog);
+        invoke.Invoke();
+        var closeDeadline = DateTime.UtcNow.AddSeconds(5);
+        while (IsWindow(dialog) && IsWindowVisible(dialog) && Text(dialog) == originalTitle && DateTime.UtcNow < closeDeadline)
+            Thread.Sleep(50);
+        if (IsWindow(dialog) && IsWindowVisible(dialog) && Text(dialog) == originalTitle)
+            throw new InvalidOperationException("Owned confirmation did not close after the verified choice.");
     }
 }
 "@

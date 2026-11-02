@@ -42,6 +42,7 @@ pub fn run() {
             commands::file_ops::get_trash_impact,
             commands::file_ops::trash_entry,
             commands::open_document,
+            commands::release_document,
             commands::read_document_chunk,
             commands::save::save_document,
             commands::save_as::save_document_as,

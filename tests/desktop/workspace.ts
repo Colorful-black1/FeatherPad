@@ -4,6 +4,7 @@ import { mkdir, readFile, readdir, rm, stat, symlink, unlink, writeFile } from '
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { verifyNativeTrash } from './trash';
+import { verifyNativeRelease } from './release';
 
 const runFile = promisify(execFile);
 
@@ -319,6 +320,7 @@ export async function verifyNativeWorkspace(
 
     await page.screenshot({ path: path.join(evidence, 'native-workspace-tree.png') });
     const trash = await verifyNativeTrash(page, dataDir, root, chooseDestination, grant);
+    const release = await verifyNativeRelease(page, root, grant);
     return {
       rootName,
       lazyNestedLoadVerified: true,
@@ -342,6 +344,7 @@ export async function verifyNativeWorkspace(
       nativeDirectoryRenameKeepsDocumentIdAndDirtyBuffer: true,
       nativeDirectoryRenameSaveUsesUpdatedPath: true,
       ...trash,
+      ...release,
       scope: `${trash.scope}; folder dialog, NTFS ACL and junction; 100k direct-child performance measured separately`,
     };
   } finally {

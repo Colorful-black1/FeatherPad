@@ -173,3 +173,18 @@ fn invalid_identifiers_fail_and_unleased_drafts_are_normal_noops() {
         .release_document(&uuid::Uuid::new_v4().to_string())
         .unwrap());
 }
+
+#[test]
+fn release_request_cannot_select_a_path_or_discard_recovery() {
+    use featherpad_lib::models::ReleaseDocumentRequest;
+    let id = uuid::Uuid::new_v4().to_string();
+    assert!(serde_json::from_value::<ReleaseDocumentRequest>(
+        serde_json::json!({"documentId": id})
+    )
+    .is_ok());
+    for extra in ["path", "recoveryPath", "discard", "requestId"] {
+        let mut value = serde_json::json!({"documentId": id});
+        value[extra] = serde_json::json!("not accepted");
+        assert!(serde_json::from_value::<ReleaseDocumentRequest>(value).is_err());
+    }
+}

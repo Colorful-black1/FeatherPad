@@ -9,6 +9,7 @@ fn main() {
             "get_trash_impact",
             "trash_entry",
             "open_document",
+            "release_document",
             "read_document_chunk",
             "save_document",
             "save_document_as",

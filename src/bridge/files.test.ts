@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { isChosenFiles, isChosenFolder, isDirectoryPage, isFileRef, isOpenDocument, isRenameEntryResult, isSaveAck, isSaveAsAck, isTextChunk, isTrashImpact, isTrashEntryResult } from './files';
+import { isChosenFiles, isChosenFolder, isDirectoryPage, isFileRef, isOpenDocument, isReleaseDocumentResult, isRenameEntryResult, isSaveAck, isSaveAsAck, isTextChunk, isTrashImpact, isTrashEntryResult } from './files';
 
 const valid = {
   documentId: 'document-fixture', ref: { grantId: 'fixture-grant', relativePath: '' },
@@ -7,6 +7,14 @@ const valid = {
   format: { encoding: 'utf-8', bom: 'none', lineEnding: 'lf' }, warnings: [], mode: 'normal',
   content: { kind: 'text', text: 'a\nb', newlineMap: { documentVersion: 0, endings: ['lf'] } },
 };
+
+it('accepts released and already-unleased results but rejects an ambiguous release receipt', () => {
+  expect(isReleaseDocumentResult({ released: true })).toBe(true);
+  expect(isReleaseDocumentResult({ released: false })).toBe(true);
+  for (const value of [null, {}, { released: 'true' }, { released: null }, { released: 1 }]) {
+    expect(isReleaseDocumentResult(value)).toBe(false);
+  }
+});
 
 it('rejects malformed or duplicate trash impacts and inconsistent missing-document receipts', () => {
   const document = { documentId: 'document-fixture', displayPath: 'file.txt', canSnapshot: true };

@@ -1,7 +1,8 @@
 use crate::{
     models::{
         AppError, ChosenFiles, ChosenFolder, DirectoryPage, ErrorCode, ListDirectoryRequest,
-        OpenDocument, ReadChunkRequest, ResultEnvelope, TextChunk,
+        OpenDocument, ReadChunkRequest, ReleaseDocumentRequest, ReleaseDocumentResult,
+        ResultEnvelope, TextChunk,
     },
     services::{
         files::{FileService, OpenRequestMode},
@@ -155,6 +156,44 @@ pub async fn open_document(
     .await
     .unwrap_or_else(|_| Err(internal_error()))
     .into()
+}
+
+#[tauri::command]
+pub async fn release_document(
+    app: AppHandle,
+    request: Request<'_>,
+) -> Result<ResultEnvelope<ReleaseDocumentResult>, ()> {
+    let value = match request.body() {
+        InvokeBody::Json(value) => value.clone(),
+        _ => {
+            return Ok(Err(AppError::new(
+                ErrorCode::InvalidInput,
+                "文档释放请求必须为JSON对象。",
+            ))
+            .into())
+        }
+    };
+    let service = app.state::<SharedFiles>().inner().clone();
+    let active = app
+        .state::<Arc<crate::services::save_requests::InFlightSaves>>()
+        .inner()
+        .clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let request: ReleaseDocumentRequest = serde_json::from_value(value)
+            .map_err(|_| AppError::new(ErrorCode::InvalidInput, "文档释放请求格式无效。"))?;
+        let _permit = active.reserve_documents(
+            std::slice::from_ref(&request.document_id),
+            &uuid::Uuid::new_v4().to_string(),
+        )?;
+        let released = service
+            .lock()
+            .map_err(|_| internal_error())?
+            .release_document(&request.document_id)?;
+        Ok(ReleaseDocumentResult { released })
+    })
+    .await
+    .unwrap_or_else(|_| Err(internal_error()));
+    Ok(result.into())
 }
 
 #[tauri::command]

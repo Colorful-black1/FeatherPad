@@ -1,4 +1,4 @@
-import type { ChosenFiles, ChosenFolder, CreateEntryRequest, DirectoryEntry, DirectoryPage, DocumentId, FileRef, ListDirectoryRequest, OpenDocument, ReadChunkRequest, RenameEntryRequest, RenameEntryResult, SaveAck, SaveAsAck, SaveAsRequest, SaveRequest, TextChunk, TrashEntryRequest, TrashEntryResult, TrashImpact, TrashImpactRequest } from '../shared/contracts/files';
+import type { ChosenFiles, ChosenFolder, CreateEntryRequest, DirectoryEntry, DirectoryPage, DocumentId, FileRef, ListDirectoryRequest, OpenDocument, ReadChunkRequest, ReleaseDocumentResult, RenameEntryRequest, RenameEntryResult, SaveAck, SaveAsAck, SaveAsRequest, SaveRequest, TextChunk, TrashEntryRequest, TrashEntryResult, TrashImpact, TrashImpactRequest } from '../shared/contracts/files';
 import { callCommand, isAppError, isRecord } from './invoke';
 
 const nonemptyString = (value: unknown): value is string => typeof value === 'string' && value.length > 0;
@@ -140,6 +140,10 @@ export function isTextChunk(value: unknown): value is TextChunk {
     && typeof value.hasMore === 'boolean';
 }
 
+export function isReleaseDocumentResult(value: unknown): value is ReleaseDocumentResult {
+  return isRecord(value) && typeof value.released === 'boolean';
+}
+
 export const files = {
   chooseFiles: (multiple = false) => callCommand('choose_files', { multiple }, isChosenFiles),
   chooseFolder: () => callCommand('choose_folder', {}, isChosenFolder),
@@ -149,6 +153,7 @@ export const files = {
   trashImpact: (request: TrashImpactRequest) => callCommand('get_trash_impact', { ...request }, isTrashImpact),
   trashEntry: (request: TrashEntryRequest) => callCommand('trash_entry', { ...request }, isTrashEntryResult),
   open: (ref: FileRef, mode?: 'head-preview') => callCommand('open_document', mode ? { ref, mode } : { ref }, isOpenDocument),
+  release: (documentId: DocumentId) => callCommand('release_document', { documentId }, isReleaseDocumentResult),
   readChunk: (request: ReadChunkRequest) => callCommand('read_document_chunk', { ...request }, isTextChunk),
   save: (request: SaveRequest) => callCommand('save_document', { ...request }, isSaveAck),
   saveAs: (request: SaveAsRequest) => callCommand('save_document_as', { ...request }, isSaveAsAck),

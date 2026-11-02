@@ -282,6 +282,18 @@ pub struct OpenDocument {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReleaseDocumentRequest {
+    pub document_id: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReleaseDocumentResult {
+    pub released: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ReadChunkRequest {
     pub document_id: String,
     pub handle_id: String,

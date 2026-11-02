@@ -103,6 +103,8 @@ export type OpenDocument = OpenDocumentBase & (
     };
   }
 );
+export interface ReleaseDocumentResult { released: boolean }
+
 export interface ReadChunkRequest {
   documentId: DocumentId;
   handleId: string;
