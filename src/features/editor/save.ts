@@ -20,10 +20,20 @@ export class SaveCoordinator {
     return this.enqueue(id, () => this.performDestination(id, intent));
   }
 
-  private enqueue<T>(id: DocumentId, run: () => Promise<ResultEnvelope<T>>): Promise<ResultEnvelope<T>> {
+  exclusive<T>(id: DocumentId, run: (save: () => Promise<ResultEnvelope<SaveAck>>) => Promise<ResultEnvelope<T>>): Promise<ResultEnvelope<T>> {
+    return this.enqueue(id, () => run(() => this.perform(id)), true);
+  }
+
+  forgetClosed(id: DocumentId) {
+    if (this.registry.getDocument(id)) return;
+    this.uncertain.delete(id);
+    this.uncertainDestinations.delete(id);
+  }
+
+  private enqueue<T>(id: DocumentId, run: () => Promise<ResultEnvelope<T>>, continueAfterFailure = false): Promise<ResultEnvelope<T>> {
     const previous = this.pending.get(id);
     // Capture after the previous Ack so the next request uses its new disk revision.
-    const scheduled = (previous ?? Promise.resolve(null)).then(result => result && !result.ok ? result : run());
+    const scheduled = (previous ?? Promise.resolve(null)).then(result => result && !result.ok && !continueAfterFailure ? result : run());
     this.pending.set(id, scheduled);
     void scheduled.then(() => { if (this.pending.get(id) === scheduled) this.pending.delete(id); });
     return scheduled;

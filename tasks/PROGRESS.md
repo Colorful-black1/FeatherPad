@@ -32,6 +32,11 @@
 | 2026-11-01 / T002 | app-shell | React Shell/App/token/CSS、Web及原生测试 | typecheck/lint exit 0；Web 2 passed；真实WebView2 debug 1 passed | Web与原生范围分开，未测OS对话框 | .artifacts/T002/及docs/acceptance/M0.md | T002通过；下一T003 |
 | 2026-11-01 / T003.a–d（进行中） | F-DESK-013 | Rust models/grants/files/commands、AppManifest ACL、TS contracts/bridge、CodeMirror只读UI、测试与脚本 | typecheck/lint/TS单测3、Rust原生5、Web4、Release smoke1均exit 0；check.ps1 -Desktop exit 0；交互选择器三次超时，后次显式exit 1 | 原生Rust磁盘+junction，真实Release IPC/WebView2，Web mock独立 | docs/acceptance/M0.md；.artifacts/T003；.artifacts/T002/native-release.json | T003未完成OS选取验收，G0不勾选 |
 
+## T107.c1 关闭编排模型简记（2026-11-02，UI待接）
+
+- close.ts复用SaveCoordinator逐文档队列：核对关闭版本，保存失败/路径取消/迟到Ack后有新输入均保留；最终清理/释放期间readonly fence，放弃失败推进恢复版本且保正文/undo/磁盘基线；释放未知则保只读未绑定副本，成功另存恢复绑定。removeClosed清理view映射/metrics/异步语言引用，激活右邻/左邻/欢迎；未暴露关闭UI。
+- typecheck/lint exit0（.artifacts/T107-close-core-typecheck.log、T107-close-core-lint.log）；TS100 passed（.artifacts/T107-close-core-unit.log），含13个关闭行为正反例。该批检查启动于用户验收策略调整前，后续小切片改为定向测试；当前Rust和真实Release沿用b3有效证据，不宣称本切片UI/新Release已验。下一步标签模型、TabStrip和CloseDialog，再按受影响场景收尾。
+
 ## T107.b3 放弃恢复严格IPC及Release验收（2026-11-02，进行中）
 
 - discard_recovery只接受documentId/throughVersion，返回相同ID/版本及discarded=true；严格DTO拒绝path、多余字段、负数/非整数，核心拒绝非规范UUID和超过JS安全整数的版本。app内部派生恢复根，main最小allow-discard-recovery，先取与保存/回收/释放共用许可；不在该入口释放原生lease或清理save-transactions歧义保存候选。

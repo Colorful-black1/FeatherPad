@@ -2,7 +2,7 @@ import type { EditorState, Text, Transaction } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
 import type { DocumentId, OpenDocument, RenamedDocument, ResultEnvelope, SaveAck, SaveAsAck, SaveRequest, TextFormat, TrashEntryResult } from '../../shared/contracts/files';
 import { createEditorState, reconfigureBracketMatching, reconfigureCloseBrackets, reconfigureIndentation,
-  reconfigureLanguage, setSearchHighlights, type IndentWidth } from './editor-state';
+  reconfigureLanguage, reconfigureReadOnly, setSearchHighlights, type IndentWidth } from './editor-state';
 import { countCharacters, editorMetrics, type EditorMetrics } from './editor-metrics';
 import { detectLanguage, type LanguageId } from './editor-language';
 import { captureExisting, captureDestination, acknowledgeExisting, acknowledgeDestination, readOnlyReason,
@@ -18,6 +18,7 @@ export interface DocumentSummary {
   dirty: boolean;
   missing: boolean;
   recoveryProtected: boolean;
+  closing: boolean;
   readOnlyReason: string | null;
   canSaveAs: boolean;
   indentWidth: IndentWidth;
@@ -38,6 +39,8 @@ export interface ManagedDocument {
   fragment: Exclude<OpenDocument['content'], { kind: 'text' }> | null;
   scroll: { top: number; left: number };
   characterCount: number;
+  hasRecoveryData: boolean;
+  releaseUncertain: boolean;
 }
 
 export interface BufferChange {
@@ -51,7 +54,7 @@ interface RegistrySnapshot {
   activeId: DocumentId | null;
 }
 
-function failure(code: 'NOT_FOUND' | 'CONFLICT' | 'READ_ONLY' | 'UNSUPPORTED' | 'INVALID_INPUT', message: string): ResultEnvelope<never> {
+function failure(code: 'NOT_FOUND' | 'CONFLICT' | 'READ_ONLY' | 'UNSUPPORTED' | 'INVALID_INPUT' | 'BUSY', message: string): ResultEnvelope<never> {
   return { ok: false, error: { code, message, retryable: false } };
 }
 
@@ -103,14 +106,14 @@ export class DocumentRegistry {
     const summary: DocumentSummary = {
       id, title: `无标题 ${++this.untitledCount}`, displayPath: null,
       format: { encoding: 'utf-8', bom: 'none', lineEnding: 'crlf' },
-      version: 0, dirty: false, missing: false, recoveryProtected: false, readOnlyReason: null,
+      version: 0, dirty: false, missing: false, recoveryProtected: false, closing: false, readOnlyReason: null,
       canSaveAs: true, indentWidth: 4, languageId: 'plaintext', languageSource: 'auto',
       languageRevision: 0, bracketMatching: true, closeBrackets: true,
     };
     this.documents.set(id, {
       summary, state, savedText: state.doc, savedVersion: 0, source: null,
       originalNewlines: { documentVersion: 0, endings: [] }, fragment: null, scroll: { top: 0, left: 0 },
-      characterCount: 0,
+      characterCount: 0, hasRecoveryData: false, releaseUncertain: false,
     });
     this.publishMetrics(id, state, 0);
     this.publish(id);
@@ -148,13 +151,13 @@ export class DocumentRegistry {
         summary: {
           id, title: document.metadata.displayPath.split(/[\\/]/).pop() || document.metadata.displayPath,
           displayPath: document.metadata.displayPath, format: document.format,
-          version: newlineMap.documentVersion, dirty: false, missing: false, recoveryProtected: false, readOnlyReason: reason,
+          version: newlineMap.documentVersion, dirty: false, missing: false, recoveryProtected: false, closing: false, readOnlyReason: reason,
           canSaveAs: fragment === null, indentWidth: 4, languageId, languageSource: 'auto',
           languageRevision: 0, bracketMatching: true, closeBrackets: true,
         },
         state, savedText: state.doc, savedVersion: newlineMap.documentVersion, source,
         originalNewlines: newlineMap, fragment, scroll: { top: 0, left: 0 },
-        characterCount: countCharacters(initialText),
+        characterCount: countCharacters(initialText), hasRecoveryData: false, releaseUncertain: false,
       });
       this.scheduleLanguage(id);
       this.publishMetrics(id, state, this.documents.get(id)!.characterCount);
@@ -166,6 +169,58 @@ export class DocumentRegistry {
 
   activate(id: DocumentId) {
     if (this.documents.has(id) && this.snapshot.activeId !== id) this.publish(id);
+  }
+
+  beginClose(id: DocumentId, version: number): ResultEnvelope<{ version: number }> {
+    const document = this.documents.get(id);
+    if (!document) return failure('NOT_FOUND', '文档已关闭。');
+    if (document.summary.closing) return failure('BUSY', '文档正在关闭，请等待。');
+    if (document.summary.version !== version) return failure('CONFLICT', '文档已有新修改，请重新确认关闭。');
+    if (!Number.isSafeInteger(version) || version >= Number.MAX_SAFE_INTEGER) return failure('INVALID_INPUT', '文档版本无法安全关闭，请先保留副本。');
+    document.state = reconfigureReadOnly(document.state, true);
+    document.summary = { ...document.summary, closing: true };
+    this.publish(this.snapshot.activeId);
+    return { ok: true, value: { version } };
+  }
+
+  cancelClose(id: DocumentId, discardedThrough: number | null) {
+    const document = this.documents.get(id);
+    if (!document) return;
+    const previousVersion = document.summary.version;
+    const version = discardedThrough === null ? previousVersion : Math.max(previousVersion, discardedThrough + 1);
+    document.summary = { ...document.summary, closing: false, version,
+      recoveryProtected: discardedThrough === null ? document.summary.recoveryProtected : false };
+    if (document.originalNewlines.documentVersion === previousVersion) {
+      document.originalNewlines = { ...document.originalNewlines, documentVersion: version };
+    }
+    document.state = reconfigureReadOnly(document.state, document.summary.readOnlyReason !== null);
+    this.publish(this.snapshot.activeId);
+  }
+
+  retainUncertainRelease(id: DocumentId) {
+    const document = this.documents.get(id);
+    if (!document) return;
+    document.releaseUncertain = true;
+    if (!document.fragment) document.source = null;
+    document.summary = { ...document.summary, readOnlyReason: document.fragment
+      ? '关闭结果尚未确认，已暂停分页；请重试关闭后重新打开。'
+      : '关闭结果尚未确认，内容仍保留；请重试关闭或另存为。' };
+  }
+
+  removeClosed(id: DocumentId, version: number): ResultEnvelope<{ closed: true }> {
+    const document = this.documents.get(id);
+    if (!document) return failure('NOT_FOUND', '文档已关闭。');
+    if (!document.summary.closing || document.summary.version !== version) return failure('CONFLICT', '关闭版本已变化，正文仍保留。');
+    const ids = [...this.documents.keys()];
+    const index = ids.indexOf(id);
+    this.documents.delete(id);
+    this.views.delete(id); // EditorDocument owns destruction of the mounted view.
+    this.metrics.delete(id);
+    this.metricsListeners.delete(id);
+    this.languageGenerations.delete(id);
+    const activeId = this.snapshot.activeId === id ? ids[index + 1] ?? ids[index - 1] ?? null : this.snapshot.activeId;
+    this.publish(activeId);
+    return { ok: true, value: { closed: true } };
   }
 
   setScroll(id: DocumentId, top: number, left: number) {
@@ -340,6 +395,7 @@ export class DocumentRegistry {
       const document = this.documents.get(id);
       if (!document) continue;
       const draft = result.drafts.find(item => item.documentId === id);
+      if (draft) document.hasRecoveryData = true;
       if (!document.fragment) document.source = null;
       document.summary = { ...document.summary, missing: true,
         dirty: document.fragment ? document.summary.dirty : true,
@@ -357,6 +413,7 @@ export class DocumentRegistry {
     // Validate the entire batch before committing any part of it.
     for (const transaction of transactions) {
       if (transaction.startState !== state) return failure('CONFLICT', '文档版本已变化，请重试操作。');
+      if (transaction.docChanged && document.summary.closing) return failure('BUSY', '文档正在关闭，这次修改尚未接受。');
       if (transaction.docChanged && document.summary.readOnlyReason) return failure('READ_ONLY', document.summary.readOnlyReason);
       if (transaction.docChanged) {
         transaction.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {

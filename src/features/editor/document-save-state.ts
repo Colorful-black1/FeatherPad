@@ -91,6 +91,7 @@ export function acknowledgeDestination(document: ManagedDocument | undefined, ca
   document.state = reconfigureReadOnly(document.state, reason !== null);
   document.savedText = savedText;
   document.savedVersion = result.ack.documentVersion;
+  document.releaseUncertain = false;
   document.source = { documentId: request.documentId, ref: result.ref, metadata: result.metadata,
     format: { ...request.format }, warnings: current?.warnings ?? [], mode: current?.mode ?? 'normal' };
   if (request.newlineMap) document.originalNewlines = { documentVersion: request.documentVersion, endings: [...request.newlineMap.endings] };
