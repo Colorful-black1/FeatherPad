@@ -15,6 +15,15 @@ use std::{
 };
 
 pub const MAX_RECOVERY_BYTES: u64 = 256 * 1024 * 1024;
+const MAX_BUFFER_VERSION: u64 = 9_007_199_254_740_991;
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct DiscardMarker {
+    schema_version: u32,
+    document_id: String,
+    through_version: u64,
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -81,6 +90,7 @@ impl RecoveryStore {
         let root = self.root.canonicalize().map_err(io_error)?;
         let _parents = windows_file::lock_parent_chain(&root.join("pending"))?;
         let _quota = quota_guard(&root)?;
+        require_recoverable(&root, &request.document_id, request.document_version)?;
         let required = request.text.len() as u64 + encoded_manifest.len() as u64;
         if storage_bytes(&root)?.saturating_add(required) > MAX_RECOVERY_BYTES {
             return Err(AppError::new(
@@ -93,7 +103,7 @@ impl RecoveryStore {
         // A visible manifest is written only after the complete body has been flushed.
         write_new_verified(&directory.join("body.bin"), request.text.as_bytes())?;
         write_new_verified(&directory.join("manifest.json"), &encoded_manifest)?;
-        let recovered = self.load(&receipt_id)?;
+        let recovered = self.load_locked(&receipt_id)?;
         if recovered.text != request.text {
             return Err(invalid());
         }
@@ -101,6 +111,15 @@ impl RecoveryStore {
     }
 
     pub fn load(&self, receipt_id: &str) -> Result<RecoveredDraft, AppError> {
+        reject_reparse_chain(&self.root)?;
+        let root = self.root.canonicalize().map_err(io_error)?;
+        let _parents = windows_file::lock_parent_chain(&root.join("pending"))?;
+        let _quota = quota_guard(&root)?;
+        self.load_locked(receipt_id)
+    }
+
+    // Caller holds the store lock, so discard cannot race a load or a completed snapshot write.
+    fn load_locked(&self, receipt_id: &str) -> Result<RecoveredDraft, AppError> {
         if uuid::Uuid::parse_str(receipt_id)
             .ok()
             .map(|id| id.to_string())
@@ -147,7 +166,45 @@ impl RecoveryStore {
             return Err(invalid());
         }
         encode_snapshot(&request)?;
+        require_recoverable(&root, &request.document_id, request.document_version)?;
         Ok(RecoveredDraft { manifest, text })
+    }
+
+    pub fn discard_through(&self, document_id: &str, through_version: u64) -> Result<(), AppError> {
+        validate_document_version(document_id, through_version)?;
+        self.ensure_root()?;
+        let root = self.root.canonicalize().map_err(io_error)?;
+        let _parents = windows_file::lock_parent_chain(&root.join("pending"))?;
+        let _quota = quota_guard(&root)?;
+        if discarded_version(&root, document_id)?.is_some_and(|version| version >= through_version)
+        {
+            return Ok(());
+        }
+        let marker = DiscardMarker {
+            schema_version: 1,
+            document_id: document_id.to_owned(),
+            through_version,
+        };
+        let bytes = serde_json::to_vec(&marker).map_err(|_| invalid())?;
+        if storage_bytes(&root)?.saturating_add(bytes.len() as u64) > MAX_RECOVERY_BYTES {
+            return Err(AppError::new(
+                ErrorCode::DiskFull,
+                "恢复存储已满，放弃标记未落盘，文档尚未关闭。",
+            ));
+        }
+        let directory = root.join(format!("discarded-{document_id}"));
+        match fs::create_dir(&directory) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(error) => return Err(io_error(error)),
+        }
+        let path = directory.join(format!("{through_version}.json"));
+        let _directory = windows_file::lock_parent_chain(&path)?;
+        write_new_verified(&path, &bytes)?;
+        if discarded_version(&root, document_id)? != Some(through_version) {
+            return Err(invalid());
+        }
+        Ok(())
     }
 
     fn ensure_root(&self) -> Result<(), AppError> {
@@ -158,6 +215,64 @@ impl RecoveryStore {
         fs::create_dir_all(&self.root).map_err(io_error)?;
         reject_reparse_chain(&self.root)
     }
+}
+
+fn validate_document_version(document_id: &str, version: u64) -> Result<(), AppError> {
+    if version > MAX_BUFFER_VERSION
+        || uuid::Uuid::parse_str(document_id)
+            .ok()
+            .map(|id| id.to_string())
+            .as_deref()
+            != Some(document_id)
+    {
+        return Err(invalid());
+    }
+    Ok(())
+}
+
+fn discarded_version(root: &Path, document_id: &str) -> Result<Option<u64>, AppError> {
+    validate_document_version(document_id, 0)?;
+    let directory = root.join(format!("discarded-{document_id}"));
+    reject_reparse_chain(&directory)?;
+    match fs::symlink_metadata(&directory) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(io_error(error)),
+        Ok(metadata) if !metadata.is_dir() => return Err(invalid()),
+        Ok(_) => {}
+    }
+    let _directory = windows_file::lock_directory(&directory)?;
+    let mut latest = None;
+    for (index, entry) in fs::read_dir(&directory).map_err(io_error)?.enumerate() {
+        if index >= 100_000 {
+            return Err(invalid());
+        }
+        let path = entry.map_err(io_error)?.path();
+        let marker: DiscardMarker =
+            serde_json::from_slice(&read_bounded(&path, 4096)?).map_err(|_| invalid())?;
+        validate_document_version(&marker.document_id, marker.through_version)?;
+        if marker.schema_version != 1
+            || marker.document_id != document_id
+            || path.file_name().and_then(|name| name.to_str())
+                != Some(format!("{}.json", marker.through_version).as_str())
+        {
+            return Err(invalid());
+        }
+        latest = Some(latest.map_or(marker.through_version, |previous: u64| {
+            previous.max(marker.through_version)
+        }));
+    }
+    Ok(latest)
+}
+
+fn require_recoverable(root: &Path, document_id: &str, version: u64) -> Result<(), AppError> {
+    validate_document_version(document_id, version)?;
+    if discarded_version(root, document_id)?.is_some_and(|discarded| version <= discarded) {
+        return Err(AppError::new(
+            ErrorCode::NotFound,
+            "该版本已明确放弃，不再写入或恢复。",
+        ));
+    }
+    Ok(())
 }
 
 fn quota_guard(root: &Path) -> Result<std::fs::File, AppError> {

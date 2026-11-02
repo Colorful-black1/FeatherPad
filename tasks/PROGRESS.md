@@ -32,6 +32,14 @@
 | 2026-11-01 / T002 | app-shell | React Shell/App/token/CSS、Web及原生测试 | typecheck/lint exit 0；Web 2 passed；真实WebView2 debug 1 passed | Web与原生范围分开，未测OS对话框 | .artifacts/T002/及docs/acceptance/M0.md | T002通过；下一T003 |
 | 2026-11-01 / T003.a–d（进行中） | F-DESK-013 | Rust models/grants/files/commands、AppManifest ACL、TS contracts/bridge、CodeMirror只读UI、测试与脚本 | typecheck/lint/TS单测3、Rust原生5、Web4、Release smoke1均exit 0；check.ps1 -Desktop exit 0；交互选择器三次超时，后次显式exit 1 | 原生Rust磁盘+junction，真实Release IPC/WebView2，Web mock独立 | docs/acceptance/M0.md；.artifacts/T003；.artifacts/T002/native-release.json | T003未完成OS选取验收，G0不勾选 |
 
+## T107.b1 放弃恢复标记核心（2026-11-02，进行中）
+
+- recovery.rs增加以规范documentId/JS安全整数throughVersion绑定的不可变tombstone，排他写入并flush、读回验证，旧版本重复放弃不降低上界。标记、读取和快照持久化共用OS文件锁；load拒绝已放弃版本，迟到persist同样拒绝，新的更高版本仍可保护。源路径不参与标记寻址，目录预算/100k枚举界限和reparse拒绝继续生效；损坏标记保留副本并停止恢复，不默认忽略。
+- discard_recovery.rs新增5项原生文件验证：重建store仍不复活/迟到写拒绝、其他文档保留/更高版本可用、损坏标记与非法输入、逻辑预算/不可写路径、活锁互斥、tombstone目录junction无穿透。首次4/5通过，junction夹具因向cmd传入混合斜杠路径而未创建成功，改为逐段PathBuf后5/5通过；原始.artifacts/T107-discard-marker-tests.log及第二次日志保留，没有放宽生产校验。
+- 初次完整Rust回归在既有trash_tests.rs的只读impact预览发生目录枚举/复查revision不一致（.artifacts/T107-discard-marker-rust.log，exit101），同一用例隔离执行通过（.artifacts/T107-directory-preview-isolated.log）。夹具原先固定sleep50ms并假定元数据已一致，改为最多2秒重新枚举并取得通过复查的只读预览；冻结的回收请求一次执行，旧文档集合/缺快照/陈旧身份拒绝断言不变，不自动重试删除。
+- 最终cargo clippy --locked --offline --all-targets -- -D warnings exit0（.artifacts/T107-discard-marker-final-clippy.log）；cargo test --locked --offline exit0（.artifacts/T107-discard-marker-final-rust.log，98 passed、1个100k benchmark ignored）。先前recovery/release定向9项亦通过。仅Rust核心新增，不冒称新Release/关闭UI/启动恢复验收。
+- 本切片只持久化标记并屏蔽旧版本；物理正文/manifest清理、IPC与关闭确认尚待b2/c，未开放放弃UI。T110启动扫描和save-transactions恢复必须查询同一标记。已审查版本边界、坏标记、容量/锁、源路径与新版本保护；下一步补可重试的对应快照清理。
+
 ## T107.a 原生资源释放核心（2026-11-02，进行中）
 
 - F-EDIT-013/F-FILE-018关闭链路的基础切片：documents.rs清理指定文档的身份索引/lease/fragment标志/全部chunk句柄；files.rs校验规范UUID，未知/未命名lease重复释放返回false，不触碰源文件、grant或恢复副本。CONTRACTS先记录释放与显式放弃分离、保存许可及重开新ID语义。

@@ -22,24 +22,35 @@ fn fixture() -> (PathBuf, FileService, FileRef) {
 }
 
 fn impact(service: &mut FileService, grant: &FileRef, name: &str) -> TrashImpact {
-    let entry = service
-        .list_directory(ListDirectoryRequest {
-            reference: grant.clone(),
-            cursor: None,
-            limit: None,
-            show_hidden: true,
-        })
-        .unwrap()
-        .items
-        .into_iter()
-        .find(|item| item.name == name)
-        .unwrap();
-    service
-        .get_trash_impact(TrashImpactRequest {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    loop {
+        let entry = service
+            .list_directory(ListDirectoryRequest {
+                reference: grant.clone(),
+                cursor: None,
+                limit: None,
+                show_hidden: true,
+            })
+            .unwrap()
+            .items
+            .into_iter()
+            .find(|item| item.name == name)
+            .unwrap();
+        match service.get_trash_impact(TrashImpactRequest {
             reference: entry.reference,
             expected_revision: entry.revision,
-        })
-        .unwrap()
+        }) {
+            Ok(impact) => return impact,
+            // NTFS enumeration metadata can lag immediately after fixture creation. Re-list
+            // only this read-only preview; never retry the subsequent frozen trash request.
+            Err(error)
+                if error.code == ErrorCode::Conflict && std::time::Instant::now() < deadline =>
+            {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            Err(error) => panic!("Controlled trash preview failed: {error:?}"),
+        }
+    }
 }
 
 fn snapshot(document: &OpenDocument, text: &str) -> SaveRequest {
@@ -217,7 +228,6 @@ fn directory_impact_detects_newly_opened_descendants_and_recycles_only_after_all
     fs::create_dir(&folder).unwrap();
     fs::write(folder.join("first.txt"), b"first").unwrap();
     fs::write(folder.join("second.txt"), b"second").unwrap();
-    std::thread::sleep(std::time::Duration::from_millis(50));
     let first_ref = service
         .grants
         .register_selection(&folder.join("first.txt"), GrantKind::File)

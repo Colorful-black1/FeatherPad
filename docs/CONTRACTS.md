@@ -134,6 +134,8 @@ export interface SaveAck {
 
 T107.a资源释放决策（2026-11-02）：请求严格只含规范UUID的documentId。释放该文档的文件身份索引、lease、分块标志和全部分块句柄，不撤销可供再次打开的原始grant；同一会话重试已释放ID返回released=false，无原生lease的无标题/缺失缓冲同样是正常结果。重开原文件建立新DocumentId，其他已打开文档及其句柄不受影响。IPC先取得与保存/回收共用的逐文档许可，在途保存返回BUSY且不释放；成功回执后前端才移除对应缓冲。释放不代表放弃，不删除或屏蔽任何恢复副本；显式放弃另行持久化tombstone，失败保留标签。T107完整验收仍需标签交互、脏关闭与放弃链路。
 
+T107.b放弃恢复决策（2026-11-02，分切片实施）：显式放弃绑定documentId与throughVersion（JS安全整数），不接受任何存储路径。先在私有recovery内排他写入并flush/读回校验不可变tombstone，再清理该文档不高于该版本的恢复指针/正文；标记、读取及快照写入共用.recovery.lock。相同或更旧的放弃可幂等重试，不降低已放弃版本上界；失败不关闭缓冲。load及迟到的快照写入均必须拒绝已放弃版本，新输入的更高版本仍可获得保护。标记缺失/损坏不能默认等同“可恢复”，不跟随链接、不操作清单中的sourcePath，不删除其他文档。T110启动扫描/恢复认领及save-transactions候选恢复也必须查询这些标记，不复活旧正文；歧义保存的临时/backup证据不能当普通草稿静默删除。T107.b1先验标记与恢复屏蔽，b2补物理清理和受校验IPC，未完成前不开放放弃UI。
+
 **保存幂等：** requestId 由调用者捕获保存版本时生成。Rust 记录 `(DocumentId, requestId, payloadHash, state/result)`；重复同 payload 已成功则回放 Ack，同 ID 不同 payload 报 INVALID_INPUT；处理中报 BUSY。常规运行内缓存可有界，但退出前未知结果需要 diskRevision 与恢复清单重新判定，不能假装内存幂等缓存提供跨崩溃保证。即使缓存过期，旧 expectedDiskRevision 通常会造成 CONFLICT 而不是重复写；调用者先 stat，不无脑换ID重试。
 
 混合换行：文档模型必须保留原始行结束元数据，未修改行不应在无提示下全量 LF 化。normal/degraded 的 content 还必须返回与 SaveRequest 相同结构的 newlineMap（初次documentVersion=0）；按原始换行建立映射。保存/另存/恢复快照中，存在mixed或孤立CR时必须提供newlineMap，版本需等于请求documentVersion，条数需等于归一化文本换行数；不匹配拒绝INVALID_INPUT，不猜测。用户显式统一转换才移除混合策略。M1 若未实现混合保留，应只读并解释，M2 完成前不能把该项标完成。
