@@ -23,6 +23,7 @@ pub mod external;
 pub mod file_ops;
 pub mod save;
 pub mod save_as;
+pub mod settings;
 
 type SharedFiles = Arc<Mutex<FileService>>;
 
@@ -417,17 +418,57 @@ pub async fn load_session(
     };
     let service = app.state::<SharedFiles>().inner().clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
-        let _: LoadSessionRequest = serde_json::from_value(value)
+        let request: LoadSessionRequest = serde_json::from_value(value)
             .map_err(|_| AppError::new(ErrorCode::InvalidInput, "读取会话请求格式无效。"))?;
+        if request.restore_grant_ids.len() > 50
+            || request.restore_grant_ids.iter().any(|id| {
+                uuid::Uuid::parse_str(id)
+                    .ok()
+                    .map(|parsed| parsed.to_string())
+                    .as_deref()
+                    != Some(id.as_str())
+            })
+        {
+            return Err(AppError::new(
+                ErrorCode::InvalidInput,
+                "最近记录授权标识格式无效。",
+            ));
+        }
         let root = session_root(&app)?;
         let mut loaded = crate::services::session::SessionStore::new(root.clone()).load()?;
-        let Some(manifest) = loaded.session.as_ref() else {
+        let required = loaded
+            .session
+            .as_ref()
+            .map(crate::services::session::grant_ids)
+            .unwrap_or_default();
+        let mut requested = required.clone();
+        requested.extend(request.restore_grant_ids);
+        if loaded.session.is_none() {
+            if requested.is_empty() {
+                return Ok(loaded);
+            }
+            let grant_load = crate::services::session_grants::SessionGrantStore::new(root)
+                .load_for(&requested)
+                .unwrap_or(crate::services::session_grants::SessionGrantLoad {
+                    grants: Vec::new(),
+                    warning: None,
+                });
+            let mut restored = Vec::new();
+            {
+                let mut files = service.lock().map_err(|_| internal_error())?;
+                for grant in grant_load.grants {
+                    let grant_id = grant.grant_id.clone();
+                    if files.grants.restore_persisted_grant(grant).is_ok() {
+                        restored.push(grant_id);
+                    }
+                }
+            }
+            loaded.restored_grant_ids = restored;
             return Ok(loaded);
-        };
-        let required = crate::services::session::grant_ids(manifest);
+        }
         let mut warnings = loaded.warning.into_iter().collect::<Vec<_>>();
         let grant_load = match crate::services::session_grants::SessionGrantStore::new(root)
-            .load_for(&required)
+            .load_for(&requested)
         {
             Ok(load) => load,
             Err(error) => {

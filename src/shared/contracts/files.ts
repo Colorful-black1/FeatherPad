@@ -69,6 +69,7 @@ export interface TextChunk {
 }
 export interface OpenDocumentBase {
   documentId: DocumentId;
+  canonicalIdentity?: string;
   ref: FileRef;
   metadata: FileMetadata;
   format: TextFormat;
@@ -227,6 +228,9 @@ export interface SessionLoadResult {
 export interface SessionSaveResult {
   saved: true;
   persistedAt: string;
+}
+export interface LoadSessionRequest {
+  restoreGrantIds?: readonly string[];
 }
 export interface SessionClearResult {
   cleared: true;

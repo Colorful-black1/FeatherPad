@@ -272,6 +272,7 @@ impl OpenDocumentContent {
 #[serde(rename_all = "camelCase")]
 pub struct OpenDocument {
     pub document_id: String,
+    pub canonical_identity: String,
     #[serde(rename = "ref")]
     pub reference: FileRef,
     pub metadata: FileMetadata,
@@ -476,7 +477,10 @@ pub struct SaveSessionRequest {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct LoadSessionRequest {}
+pub struct LoadSessionRequest {
+    #[serde(default)]
+    pub restore_grant_ids: Vec<String>,
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

@@ -8,6 +8,7 @@ pub mod services {
     pub mod external;
     pub mod file_ops;
     pub mod files;
+    pub mod fonts;
     pub mod grants;
     pub mod identity;
     pub mod open_policy;
@@ -18,6 +19,7 @@ pub mod services {
     pub mod save_requests;
     pub mod session;
     pub mod session_grants;
+    pub mod settings;
     pub mod snapshot;
     pub mod startup_storage;
     pub mod storage_budget;
@@ -28,6 +30,7 @@ pub mod services {
     pub mod watch;
     pub mod windows_file;
     pub mod windows_trash;
+    pub mod workspace_settings;
 }
 
 pub fn run() {
@@ -51,6 +54,11 @@ pub fn run() {
             commands::file_ops::get_trash_impact,
             commands::file_ops::trash_entry,
             commands::open_document,
+            commands::settings::load_settings,
+            commands::settings::save_settings,
+            commands::settings::restore_settings,
+            commands::settings::load_workspace_settings,
+            commands::settings::list_font_families,
             commands::external::get_disk_snapshot,
             commands::external::reload_document,
             commands::external::start_watch,

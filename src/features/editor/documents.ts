@@ -2,7 +2,8 @@ import { EditorSelection, type EditorState, type Text, type Transaction } from '
 import type { EditorView } from '@codemirror/view';
 import type { DocumentId, LoadedRecoveryEntry, OpenDocument, RenamedDocument, ResultEnvelope, SaveAck, SaveAsAck, SaveRequest, TextFormat, TrashEntryResult, WriteRecoverySnapshotRequest } from '../../shared/contracts/files';
 import { createEditorState, reconfigureBracketMatching, reconfigureCloseBrackets, reconfigureIndentation,
-  reconfigureLanguage, reconfigureReadOnly, setSearchHighlights, type IndentWidth } from './editor-state';
+  reconfigureLanguage, reconfigureReadOnly, reconfigureEditorPreferences, defaultEditorPreferences,
+  setSearchHighlights, type EditorPreferences, type IndentWidth } from './editor-state';
 import { countCharacters, editorMetrics, type EditorMetrics } from './editor-metrics';
 import { detectLanguage, type LanguageId } from './editor-language';
 import { captureExisting, captureDestination, captureRecovery, acknowledgeExisting, acknowledgeDestination, readOnlyReason,
@@ -26,6 +27,7 @@ export interface DocumentSummary {
   readOnlyReason: string | null;
   canSaveAs: boolean;
   indentWidth: IndentWidth;
+  indentOverridden: boolean;
   languageId: LanguageId;
   languageSource: 'auto' | 'manual';
   languageRevision: number;
@@ -74,6 +76,7 @@ export class DocumentRegistry {
   private snapshot: RegistrySnapshot = { documents: [], activeId: null };
   private untitledCount = 0;
   private hotExitFrozen = false;
+  private editorPreferences: EditorPreferences = { ...defaultEditorPreferences };
 
   readonly subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -133,7 +136,7 @@ export class DocumentRegistry {
       format: { encoding: 'utf-8', bom: 'none', lineEnding: 'crlf' },
       version: 0, dirty: false, missing: false, recoveryProtected: false, recoveryError: null, recovered: false,
       closing: false, hotExitFrozen: this.hotExitFrozen, readOnlyReason: null,
-      canSaveAs: true, indentWidth: 4, languageId: 'plaintext', languageSource: 'auto',
+      canSaveAs: true, indentWidth: 4, indentOverridden: false, languageId: 'plaintext', languageSource: 'auto',
       languageRevision: 0, bracketMatching: true, closeBrackets: true,
     };
     this.documents.set(id, {
@@ -183,6 +186,7 @@ export class DocumentRegistry {
         : { documentVersion: 0 as const, endings: [] as ('lf' | 'crlf' | 'cr')[] };
       const source = {
         documentId: document.documentId,
+        ...(document.canonicalIdentity === undefined ? {} : { canonicalIdentity: document.canonicalIdentity }),
         ref: document.ref,
         metadata: document.metadata,
         format: document.format,
@@ -196,7 +200,7 @@ export class DocumentRegistry {
           version: newlineMap.documentVersion, dirty: false, missing: false, recoveryProtected: false,
           recoveryError: null, recovered: false, closing: false, hotExitFrozen: this.hotExitFrozen,
           readOnlyReason: reason,
-          canSaveAs: fragment === null, indentWidth: 4, languageId, languageSource: 'auto',
+          canSaveAs: fragment === null, indentWidth: 4, indentOverridden: false, languageId, languageSource: 'auto',
           languageRevision: 0, bracketMatching: true, closeBrackets: true,
         },
         state, savedText: state.doc, savedVersion: newlineMap.documentVersion, source,
@@ -250,7 +254,7 @@ export class DocumentRegistry {
         missing: sourceDocument === undefined && displayPath !== null,
         recoveryProtected: true, recoveryError: null, recovered: true,
         closing: false, hotExitFrozen: this.hotExitFrozen, readOnlyReason: readOnly, canSaveAs: true,
-        indentWidth: 4, languageId: detectLanguage(displayPath ?? title), languageSource: 'auto',
+        indentWidth: 4, indentOverridden: false, languageId: detectLanguage(displayPath ?? title), languageSource: 'auto',
         languageRevision: 0, bracketMatching: true, closeBrackets: true,
       },
       state,
@@ -438,10 +442,34 @@ export class DocumentRegistry {
 
   setIndentWidth(id: DocumentId, indentWidth: IndentWidth) {
     const document = this.documents.get(id);
-    if (!document || document.summary.indentWidth === indentWidth) return;
-    document.state = reconfigureIndentation(document.state, indentWidth);
-    document.summary = { ...document.summary, indentWidth };
+    if (!document || (document.summary.indentWidth === indentWidth && document.summary.indentOverridden)) return;
+    document.state = reconfigureIndentation(document.state, indentWidth, this.editorPreferences.insertSpaces);
+    document.summary = { ...document.summary, indentWidth, indentOverridden: true };
     this.publish(this.snapshot.activeId);
+  }
+
+  clearIndentOverride(id: DocumentId) {
+    const document = this.documents.get(id);
+    if (!document || !document.summary.indentOverridden) return;
+    document.summary = { ...document.summary, indentOverridden: false };
+    this.applyEditorPreferences(this.editorPreferences);
+    this.publish(this.snapshot.activeId);
+  }
+
+  applyEditorPreferences(preferences: EditorPreferences) {
+    this.editorPreferences = { ...preferences };
+    let changed = false;
+    for (const [id, document] of this.documents) {
+      const indentWidth = document.summary.indentOverridden ? document.summary.indentWidth : preferences.indentWidth;
+      const next = reconfigureEditorPreferences(document.state, { ...preferences, indentWidth });
+      if (next === document.state) continue;
+      document.state = next;
+      document.summary = { ...document.summary, indentWidth };
+      const view = this.views.get(id);
+      if (view) { view.setState(next); this.restoreViewScroll(id, view, document.scroll); }
+      changed = true;
+    }
+    if (changed) this.publish(this.snapshot.activeId);
   }
 
   setLanguage(id: DocumentId, selection: 'auto' | LanguageId) {
@@ -513,8 +541,10 @@ export class DocumentRegistry {
       EditorSelection.range(Math.min(range.anchor, text.length), Math.min(range.head, text.length)))) }).state;
     document.savedText = document.state.doc;
     document.savedVersion = version;
-    document.source = { documentId: opened.documentId, ref: opened.ref, metadata: opened.metadata,
-      mode: opened.mode, format: opened.format, warnings: opened.warnings };
+    document.source = { documentId: opened.documentId,
+      ...(opened.canonicalIdentity === undefined ? {} : { canonicalIdentity: opened.canonicalIdentity }),
+      ref: opened.ref, metadata: opened.metadata, mode: opened.mode, format: opened.format,
+      warnings: opened.warnings };
     document.fragment = fragment;
     document.originalNewlines = { documentVersion: version,
       endings: opened.content.kind === 'text' ? [...opened.content.newlineMap.endings] : [] };

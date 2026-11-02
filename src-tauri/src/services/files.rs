@@ -14,6 +14,7 @@ use crate::models::{
     AppError, ErrorCode, FileRef, Newline, NewlineMap, OpenDocument, OpenDocumentContent,
     ReadChunkRequest, TextChunk, TextFormat,
 };
+use sha2::{Digest, Sha256};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OpenRequestMode {
@@ -182,6 +183,7 @@ impl FileService {
         if matches!(snapshot.identity, FileIdentity::Canonical(_)) {
             warnings.push("文件系统未提供稳定文件标识，当前按规范路径识别。".into());
         }
+        let canonical_identity = canonical_identity(&snapshot.identity);
         let document_id = self.documents.register_preferred(
             DocumentLease {
                 identity: snapshot.identity,
@@ -193,6 +195,7 @@ impl FileService {
         )?;
         Ok(OpenDocument {
             document_id,
+            canonical_identity,
             reference,
             metadata: snapshot.metadata,
             format: TextFormat {
@@ -304,6 +307,7 @@ impl FileService {
         }
         let decoded = decode_window(&snapshot, 0, INITIAL_CHUNK_BYTES)?;
         let format = stream_format(snapshot.encoding, snapshot.newlines);
+        let canonical_identity = canonical_identity(&snapshot.identity);
         let document_id = self.documents.register_preferred(
             DocumentLease {
                 identity: snapshot.identity,
@@ -320,6 +324,7 @@ impl FileService {
             .ok_or_else(|| AppError::new(ErrorCode::Internal, "无法建立只读分块句柄。"))?;
         Ok(OpenDocument {
             document_id,
+            canonical_identity,
             reference,
             metadata: snapshot.metadata.clone(),
             format,
@@ -356,6 +361,7 @@ impl FileService {
         }
         let decoded = decode_window(&snapshot, 0, HEAD_PREVIEW_BYTES)?;
         let format = stream_format(snapshot.encoding, snapshot.newlines);
+        let canonical_identity = canonical_identity(&snapshot.identity);
         let document_id = self.documents.register_preferred(
             DocumentLease {
                 identity: snapshot.identity,
@@ -368,6 +374,7 @@ impl FileService {
         self.documents.mark_fragment(&document_id);
         Ok(OpenDocument {
             document_id,
+            canonical_identity,
             reference,
             metadata: snapshot.metadata.clone(),
             format,
@@ -381,6 +388,10 @@ impl FileService {
             },
         })
     }
+}
+
+fn canonical_identity(identity: &FileIdentity) -> String {
+    format!("{:x}", Sha256::digest(identity.revision_tag()))
 }
 
 fn stream_format(encoding: StreamEncoding, newlines: NewlineStats) -> TextFormat {

@@ -7,6 +7,8 @@ export default defineConfig({
   metadata: { evidenceRunId: testRunId },
   projects: [
     ...nativeScenarios.map(name => ({ name, testMatch: 'shell.spec.ts', metadata: { scenario: name } })),
+    { name: 'settings', testMatch: 'settings.spec.ts' },
+    { name: 'recent', testMatch: 'recent.spec.ts' },
     { name: 'recovery', testMatch: 'recovery.spec.ts' },
   ],
   workers: 1,

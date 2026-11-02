@@ -1,15 +1,25 @@
-import { Compartment, EditorState, StateEffect, StateField, type Extension } from '@codemirror/state';
+import { Compartment, EditorState, Facet, StateEffect, StateField, type Extension } from '@codemirror/state';
 import { defaultKeymap, history, historyKeymap, indentWithTab, redo } from '@codemirror/commands';
 import { bracketMatching, defaultHighlightStyle, indentUnit, syntaxHighlighting } from '@codemirror/language';
 import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete';
-import { Decoration, type DecorationSet, EditorView, keymap, lineNumbers } from '@codemirror/view';
+import { Decoration, type DecorationSet, EditorView, highlightActiveLine, highlightActiveLineGutter, keymap, lineNumbers } from '@codemirror/view';
 
 const editability = new Compartment();
 const indentation = new Compartment();
 const languageMode = new Compartment();
 const matching = new Compartment();
 const closing = new Compartment();
+const appearance = new Compartment();
 export type IndentWidth = 2 | 4 | 8;
+export interface EditorPreferences {
+  indentWidth: IndentWidth; insertSpaces: boolean; wordWrap: boolean; lineNumbers: boolean; highlightActiveLine: boolean;
+}
+export const defaultEditorPreferences: Readonly<EditorPreferences> = Object.freeze({
+  indentWidth: 4, insertSpaces: true, wordWrap: true, lineNumbers: true, highlightActiveLine: true,
+});
+const appearanceSettings = Facet.define<EditorPreferences, EditorPreferences>({
+  combine: values => values[0] ?? defaultEditorPreferences,
+});
 export interface SearchHighlight {
   from: number;
   to: number;
@@ -38,6 +48,10 @@ export interface EditorStateOptions {
   language?: Extension;
   bracketMatching?: boolean;
   closeBrackets?: boolean;
+  insertSpaces?: boolean;
+  wordWrap?: boolean;
+  lineNumbers?: boolean;
+  highlightActiveLine?: boolean;
 }
 
 function accessExtensions(readOnly: boolean) {
@@ -46,18 +60,32 @@ function accessExtensions(readOnly: boolean) {
   })];
 }
 
-function indentationExtensions(indentWidth: IndentWidth) {
-  return [EditorState.tabSize.of(indentWidth), indentUnit.of(' '.repeat(indentWidth))];
+function indentationExtensions(indentWidth: IndentWidth, insertSpaces: boolean) {
+  return [EditorState.tabSize.of(indentWidth), indentUnit.of(insertSpaces ? ' '.repeat(indentWidth) : '\t')];
+}
+
+function appearanceExtensions(settings: EditorPreferences) {
+  return [appearanceSettings.of(settings), settings.wordWrap ? EditorView.lineWrapping : [],
+    settings.lineNumbers ? lineNumbers() : [],
+    settings.highlightActiveLine ? [highlightActiveLine(), highlightActiveLineGutter()] : []];
+}
+
+export function reconfigureEditorPreferences(state: EditorState, settings: EditorPreferences): EditorState {
+  const current = state.facet(appearanceSettings);
+  const next = reconfigureIndentation(state, settings.indentWidth, settings.insertSpaces);
+  if (current.wordWrap === settings.wordWrap && current.lineNumbers === settings.lineNumbers
+    && current.highlightActiveLine === settings.highlightActiveLine) return next;
+  return next.update({ effects: appearance.reconfigure(appearanceExtensions(settings)) }).state;
 }
 
 export function reconfigureReadOnly(state: EditorState, readOnly: boolean): EditorState {
   return state.facet(EditorState.readOnly) === readOnly ? state : state.update({ effects: editability.reconfigure(accessExtensions(readOnly)) }).state;
 }
 
-export function reconfigureIndentation(state: EditorState, indentWidth: IndentWidth): EditorState {
-  return state.facet(EditorState.tabSize) === indentWidth
+export function reconfigureIndentation(state: EditorState, indentWidth: IndentWidth, insertSpaces = true): EditorState {
+  return state.facet(EditorState.tabSize) === indentWidth && state.facet(indentUnit) === (insertSpaces ? ' '.repeat(indentWidth) : '\t')
     ? state
-    : state.update({ effects: indentation.reconfigure(indentationExtensions(indentWidth)) }).state;
+    : state.update({ effects: indentation.reconfigure(indentationExtensions(indentWidth, insertSpaces)) }).state;
 }
 
 export function reconfigureLanguage(state: EditorState, language: Extension): EditorState {
@@ -76,6 +104,7 @@ export function reconfigureCloseBrackets(state: EditorState, enabled: boolean): 
 
 export function createEditorState(text: string, readOnly: boolean, options: EditorStateOptions = {}) {
   const indentWidth = options.indentWidth ?? 4;
+  const preferences = { ...defaultEditorPreferences, ...options, indentWidth };
   return EditorState.create({
     doc: text,
     extensions: [
@@ -85,8 +114,9 @@ export function createEditorState(text: string, readOnly: boolean, options: Edit
         { key: 'Mod-Shift-z', run: redo, preventDefault: true },
         ...defaultKeymap,
         ...historyKeymap,
-      ]), lineNumbers(),
-      indentation.of(indentationExtensions(indentWidth)), EditorView.lineWrapping,
+      ]),
+      indentation.of(indentationExtensions(indentWidth, preferences.insertSpaces)),
+      appearance.of(appearanceExtensions(preferences)),
       languageMode.of(options.language ?? []),
       matching.of(options.bracketMatching === false ? [] : bracketMatching()),
       searchHighlightField,
@@ -96,7 +126,7 @@ export function createEditorState(text: string, readOnly: boolean, options: Edit
         '&': { height: '100%', backgroundColor: 'var(--bg-editor)', color: 'var(--text-primary)' },
         '.cm-scroller': { fontFamily: 'var(--font-mono)', fontSize: 'var(--editor-size)', overflow: 'auto' },
         '.cm-gutters': { backgroundColor: 'var(--bg-editor)', color: 'var(--text-muted)', borderRight: 'none' },
-        '.cm-content': { padding: '16px 0', lineHeight: '1.85' },
+        '.cm-content': { padding: '16px 0', lineHeight: 'var(--editor-line-height, 1.85)' },
         '&.cm-focused': { outline: '2px solid var(--focus)', outlineOffset: '-2px' },
       }),
     ],

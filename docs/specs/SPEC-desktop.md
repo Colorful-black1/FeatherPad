@@ -1,6 +1,6 @@
 # SPEC-desktop：本地设置、Windows 集成与发布
 
-> 轻羽 FeatherPad；模块 `desktop`；业务依赖仅 `editor`、`workspace`、`file-core`。状态：待实现、待验证，未声称用户已批准。拥有 F-DESK-001–013，详见 [矩阵](../FEATURE-MATRIX.md)。M0：013；M1：001/002/010/011；M2：003/004；M4：005–009；M5：012。
+> 轻羽 FeatherPad；模块 `desktop`；业务依赖仅 `editor`、`workspace`、`file-core`。状态：T112的F-DESK-001/002及相关M1设置能力已通过真实Release；其余能力待实现、待验证。拥有 F-DESK-001–013，详见 [矩阵](../FEATURE-MATRIX.md)。M0：013；M1：001/002/010/011；M2：003/004；M4：005–009；M5：012。
 
 ## Objective 与提供方契约
 
@@ -49,6 +49,8 @@ F-DESK-001设置优先级：内置默认 < 用户设置 < 工作区允许项 < �
 默认：主题跟随系统，字体优先本地等宽/Cascadia Mono/Consolas，14px，tabSize4、insertSpaces true、自动换行开启；新文件UTF8无BOM/CRLF；autoSave off（开启默认1500ms，合法范围500–10000）；hotExitEnabled true；Markdown raw HTML默认关闭，启用也仅清洗受限HTML；全局快捷键关闭；最近记录开启最多50项。用户修改即展示效果，持久化失败显示“仅本次生效”，不假称保存成功。
 
 F-DESK-002亮/暗/跟随系统、字体字号Tab/行高设置可预览/撤销，缺失字体回退并说明，不在线下载。主题/状态/选择可读对比度，不能只用颜色说明dirty/error。系统高对比与200%缩放可用，减少动画尊重系统设置。
+
+T112切片与边界：a私有版本化设置存储与原始文件revision、唯一备份/损坏隔离恢复；b用户/受授权工作区/会话设置合并、非法值诊断与未知键保留、版本化导入预览/导出；c亮暗/系统主题及本地字体、字号/行高/Tab即时预览与撤销；d可搜索设置页、单项/分组重置和定向原生验收。读取工作区配置不登记隐藏编辑文档，不授予根外路径；不自动写入工作区文件。后续能力的开关不伪装已生效。新增线协议见CONTRACTS。2026-11-02已通过相关真实Release验收；OS高对比、读屏与OS缩放的完整无障碍矩阵仍由T114继续，不把DOM 200%证据外推为这些平台能力。
 
 F-DESK-003应用快捷键采用稳定commandId映射、冲突检测、恢复默认、导入导出。默认CtrlN/O/S、CtrlShiftS、CtrlW、CtrlShiftT、CtrlP、CtrlShiftP、CtrlF/H、CtrlShiftF/H、CtrlG、CtrlTab、AltLeft/Right；实际组合受Windows/IME保留键约束，不能抢系统安全组合。系统全局仅提供“唤起/新建轻羽窗口”等显式登记命令，默认未注册，用户选择后检测占用/错误，关闭功能和退出释放。应用内按键仅活动窗口处理，不注册成全系统热键。
 

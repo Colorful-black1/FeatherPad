@@ -118,6 +118,23 @@ it('does not merge different physical identities by display path', () => {
   expect(registry.getSnapshot().documents).toHaveLength(2);
 });
 
+it('preserves the canonical identity through open and disk reload', () => {
+  const registry = new DocumentRegistry();
+  const opened = { ...fixture(), canonicalIdentity: 'a'.repeat(64) };
+  const id = registry.openDocument(opened);
+  expect(registry.getDocument(id)?.source?.canonicalIdentity).toBe('a'.repeat(64));
+
+  const nextRevision = 'revision-2' as DiskRevision;
+  const reloaded = {
+    ...opened,
+    canonicalIdentity: 'b'.repeat(64),
+    metadata: { ...opened.metadata, diskRevision: nextRevision },
+    content: { kind: 'text' as const, text: 'reloaded', newlineMap: { documentVersion: 0, endings: [] } },
+  };
+  expect(registry.applyDiskReload(reloaded, 0, 'revision-1')).toEqual({ ok: true, value: { reloaded: true } });
+  expect(registry.getDocument(id)?.source?.canonicalIdentity).toBe('b'.repeat(64));
+});
+
 it('rejects read-only edits even when a caller bypasses CM input handling', () => {
   for (const options of [{ readOnly: true }, { encoding: 'utf-16le' }, { lineEnding: 'mixed' }]) {
     const registry = new DocumentRegistry();

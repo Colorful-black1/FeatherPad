@@ -83,6 +83,7 @@ export interface TextFormat {
 }
 export interface OpenDocumentBase {
   documentId: DocumentId;
+  canonicalIdentity?: string; // Windows FileIdentity 的 SHA256；仅用于前端稳定去重，不是写盘授权
   ref: FileRef;
   metadata: FileMetadata;
   format: TextFormat;
@@ -266,7 +267,7 @@ export interface TextJobResult {
 | `load_recovery_entry` | `{receiptId}` | `{entry:RecoveryEntry,text}` |
 | `load_save_transaction` | `{receiptId}` | `{receiptId,displayName,text,format,newlineMap}` |
 | `save_session` | `{manifest:SessionManifest}` | `{saved:true,persistedAt}` |
-| `load_session` | `{}` | `{session:SessionManifest|null,warning:string|null,restoredGrantIds:string[]}` |
+| `load_session` | `{restoreGrantIds?:string[]}` | `{session:SessionManifest|null,warning:string|null,restoredGrantIds:string[]}` |
 | `clear_session` | `{}` | `{cleared:true}` |
 | `resolve_recovery_entry` | `{entryId,action:'restore'|'discard'|'inspect'}` | `{resolved:boolean}` |
 | `open_external_link` | `{url,userGestureId}` | `{opened:boolean}` |
@@ -274,11 +275,17 @@ export interface TextJobResult {
 
 settings 的 schemaVersion 是格式版本，version 是每次成功更新递增的内容修订号；首次load必须返回二者。保存、导入、重置均携带expectedVersion，冲突返回CONFLICT和当前版本供重读，不静默覆盖。
 
+T112实施决策（2026-11-02，已通过相关真实Release）：`load_settings {}`扩展返回`{schemaVersion:1,version,revision:string|null,settings:Record<string,JsonValue>,warning:string|null,recoveryCopies:{id,version}[]}`；`save_settings {expectedVersion,expectedRevision:string|null,settings}`返回`{version,revision}`。revision由file-core磁盘快照产生，防止第三方保持version却改写正文时被覆盖；首次缺失为version0/revision null。私有设置位于状态目录`settings/settings.json`，使用OS锁、受校验临时文件flush、原生不覆盖创建/带唯一备份的替换和写后读回；旧配置保留为可恢复备份。`restore_settings {expectedVersion,expectedRevision,recoveryId}`仅选择私有目录中规范UUID备份，仍递增当前版本并复核revision。损坏JSON隔离留原件并提示，可选择有效旧备份恢复；较新schema/超限/权限错误不默默清空。设置最大64KiB，未知设置键保留，非法已知值由设置合并层诊断并回退，不把配置内容执行为代码。真实Release证据覆盖创建/更新/重启、同版本外部改写拒绝、未知键、本机字体、坏JSON隔离和显式旧副本恢复；Web E2E仍只证明mock UI。
+
+T112应用层按默认 < 用户 < 工作区允许项 < 会话临时选择合并；工作区只读取授权根内`.featherpad/settings.json`（schemaVersion1/settings对象），只接受tabSize/insertSpaces/wordWrap/lineNumbers/highlightActiveLine，其他键保留但不应用并诊断。用户设置页先即时预览，保存才持久化，取消恢复进入预览前效果；导入先校验并展示变更，导出复用既有原生Save As与安全保存副本，不新增任意路径写IPC。缺失本地字体使用固定本地后备并提示，不下载字体。T109快捷键入口保持，完整全局唤起仍T214，历史隐私仍T113/T215，不开放未实现的高风险设置开关。
+
 快照通过原子JSON清单+独立内容文件持久化，返回 durableVersion 表示该版本实际写入；失败显示“恢复副本未更新”。恢复打开后仍是 dirty buffer，不能覆盖源文件。`restore` 操作只恢复内存；写回源文件仍走 save expectedDiskRevision。恢复条目缺失/损坏逐条隔离，不拖垮启动。
 
 T110存储扩展决策（2026-11-02，按切片实施）：复用schema1、UUID receipt不可变正文/manifest、目录链/reparse校验、OS配额锁、256MiB预算和版本化discard tombstone。reason从before-trash扩展为periodic/hot-exit；普通快照允许sourcePath/sourceRevision同时为空以表示无标题/未绑定副本，命名来源则两者同时存在，路径仅由原生lease或既有受校验恢复记录派生，不由写快照IPC接收。存储/读取不访问该sourcePath，不改源文件；正文、格式/换行/版本及校验仍完整验证。a先扩展native存储和定向文件测试，b继续IPC/定时快照，c启动扫描/认领及会话清单，d退出拦截/flush及相关真实Release。完整恢复和热退出未验前T110保持进行中。
 
 T110会话与扫描（2026-11-02，已通过相关真实Release）：会话view使用bufferVersion、成对存在或同时为空的fileRef/diskRevision及normal/head-preview模式；文件/根授权仅由原生既有grant持久化，重启核对文件identity后才恢复授权，load_session返回restoredGrantIds，缺少当前及历史有效授权记录时返回SESSION_INCOMPLETE。重新打开可携带会话DocumentId，仍遵守单文件身份规则。list_recovery_entries返回entries、failures、startupWarnings、storageBytes和saveTransactions；只读扫描保存事务并核对摘要/阶段/同一discard tombstone，坏标记不列候选，歧义临时/备份保留且不静默删除。超过30天仅提示。统一256MiB配额及显式事务读取已实现，完整隐私管理继续由T215实现。
+
+T113最近记录契约（2026-11-02，已通过相关真实Release）：`OpenDocument.canonicalIdentity`为Windows `FileIdentity`的SHA256字符串，用于前端按稳定文件身份去重；它不替代grant、documentId或磁盘revision，也不能作为写盘授权。`load_session`请求可带最多50个规范UUID `restoreGrantIds`，原生只尝试重新打开持久化记录中仍存在且文件身份/根路径仍匹配的grant，返回本次实际恢复的`restoredGrantIds`；未知、越权、格式错误或当前不可用的记录不恢复。最近记录本身存于版本化设置，最多50项/48KiB，不存正文、搜索词或剪贴板；关闭历史只停止新增，既有记录需显式移除/清空。写入成功后前端刷新会话，使对应grant持久化。
 
 打开外链只允许 http/https/mailto，必须来自明确用户动作；未知 protocol/file/command 拒绝。不注册可任意执行命令的链接协议。文件关联由操作系统支持方式处理，不能绕过 Windows 默认应用限制，不能修改与本项目无关关联。
 

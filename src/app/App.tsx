@@ -20,14 +20,23 @@ import { hotExit } from '../features/desktop/hot-exit';
 import { HotExitDialog } from '../features/desktop/HotExitDialog';
 import { fitSessionBounds } from '../features/desktop/window-restore';
 import { RecoveryPanel } from '../features/desktop/RecoveryPanel';
+import { settings } from '../features/desktop/settings';
+import { SettingsDialog } from '../features/desktop/SettingsDialog';
+import { applySettingsToEditors } from '../features/desktop/settings-effects';
 import { saveAll } from '../features/editor/save-all';
 import { SaveAllResults } from '../features/editor/SaveAllResults';
 import { FindBar } from '../features/search-tools/FindBar';
 import type { SearchScope } from '../features/search-tools/search-query';
 import { Explorer } from '../features/workspace/Explorer';
+import { RecentList } from '../features/workspace/RecentList';
 import { TrashDialog } from '../features/workspace/TrashDialog';
 import { workspace } from '../features/workspace/store';
-import type { DirectoryEntry, DocumentId, FileRef, OpenDocument, SaveTransactionCandidate } from '../shared/contracts/files';
+import {
+  addRecentEntry, clearRecentHistory, readRecentHistory, recentFileCandidate, recentGrantIds,
+  recentHistoryItemsSetting, recentWorkspaceCandidate, removeRecentEntry, writeRecentHistory,
+  type RecentCandidate, type RecentEntry,
+} from '../features/workspace/recent';
+import type { DirectoryEntry, DocumentId, FileRef, OpenDocument, RenamedDocument, SaveTransactionCandidate } from '../shared/contracts/files';
 import { ariaShortcut } from '../shared/commands/keyboard';
 import { createAppCommands, type AppCommandActions, type AppCommandState, type AppCommandId } from './register-commands';
 import { quickCandidates } from './quick-candidates';
@@ -40,7 +49,11 @@ interface FindRequest {
 }
 
 export function App() {
-  const [dark, setDark] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches);
+  const [systemDark, setSystemDark] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches);
+  const settingsState = useSyncExternalStore(settings.subscribe, settings.getSnapshot);
+  const dark = settingsState.settings.theme === 'system' ? systemDark : settingsState.settings.theme === 'dark';
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsOrigin = useRef<HTMLElement | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(() => window.matchMedia('(min-width: 1100px)').matches);
   const snapshot = useSyncExternalStore(documents.subscribe, documents.getSnapshot);
   const tabState = useSyncExternalStore(tabs.subscribe, tabs.getSnapshot);
@@ -48,6 +61,7 @@ export function App() {
   const workspaceState = useSyncExternalStore(workspace.subscribe, workspace.getSnapshot);
   const exitState = useSyncExternalStore(hotExit.subscribe, hotExit.getSnapshot);
   const sessionState = useSyncExternalStore(session.subscribe, session.getSnapshot);
+  const recentEntries = readRecentHistory(settingsState.user[recentHistoryItemsSetting]);
   const batchBusy = batch.phase === 'running' || batch.phase === 'cancelling';
   const current = snapshot.documents.find(document => document.id === snapshot.activeId);
   const currentReference = current ? documents.getDocument(current.id)?.source?.ref : undefined;
@@ -76,10 +90,23 @@ export function App() {
 
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
-  }, [dark]);
+    document.documentElement.style.setProperty('--font-mono', `"${settingsState.settings.fontFamily}", Consolas, "Microsoft YaHei UI", monospace`);
+    document.documentElement.style.setProperty('--editor-size', `${settingsState.settings.fontSize}px`);
+    document.documentElement.style.setProperty('--editor-line-height', String(settingsState.settings.lineHeight));
+  }, [dark, settingsState.settings.fontFamily, settingsState.settings.fontSize, settingsState.settings.lineHeight]);
+
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const sync = () => setSystemDark(media.matches);
+    media.addEventListener('change', sync);
+    return () => media.removeEventListener('change', sync);
+  }, []);
+
+  useEffect(() => applySettingsToEditors(settings, documents), []);
 
   useEffect(() => {
     if (!Reflect.get(window, '__TAURI_INTERNALS__')) return;
+    const stopSettings = settings.start(workspace, { load: false });
     let active = true;
     let stopRecovery: (() => void) | null = null;
     let stopSession: (() => void) | null = null;
@@ -101,7 +128,11 @@ export function App() {
     void (async () => {
       const notices: string[] = [];
       try {
-        const loaded = await session.load();
+        const loadedSettings = await settings.load();
+        const restoreGrantIds = loadedSettings.ok
+          ? recentGrantIds(readRecentHistory(loadedSettings.value.settings[recentHistoryItemsSetting]))
+          : [];
+        const loaded = await session.load(restoreGrantIds);
         let sources = new Map<DocumentId, OpenDocument>();
         if (!loaded.ok) setError(previous => previous
           ? `${previous}；无法读取会话状态：${loaded.error.message}`
@@ -176,13 +207,79 @@ export function App() {
       stopRecovery?.();
       stopSession?.();
       stopExternal?.();
+      stopSettings();
       if (hotExit.getSnapshot().phase !== 'idle') hotExit.resume();
     };
   }, []);
 
-  const openOne = useCallback(async (reference: FileRef, intent: 'preview' | 'pinned' = 'pinned'): Promise<string | null> => {
+  const rememberRecentCandidate = useCallback(async (candidate: RecentCandidate): Promise<RecentEntry | null> => {
+    session.markGrantAvailable(candidate.ref.grantId);
+    const current = readRecentHistory(settings.getSnapshot().user[recentHistoryItemsSetting]);
+    const next = addRecentEntry(current, candidate);
+    const saved = await settings.updatePersistedValue(recentHistoryItemsSetting, writeRecentHistory(next));
+    if (!saved.ok) {
+      setNotice(`项目已打开，但最近记录未保存：${saved.error.message}`);
+      return null;
+    }
+    const flushed = await session.flush();
+    if (!flushed.ok) setNotice(`最近记录已保存，但用于重启后再次打开的授权未确认：${flushed.error.message}`);
+    return next.find(entry => entry.canonicalIdentity === candidate.canonicalIdentity
+      && entry.kind === candidate.kind) ?? null;
+  }, [setNotice]);
+
+  const rememberRecentFile = useCallback(async (id: DocumentId) => {
+    const source = documents.getDocument(id)?.source;
+    if (!source) return;
+    session.markGrantAvailable(source.ref.grantId);
+    if (!settings.getSnapshot().settings.recentHistoryEnabled) return;
+    await rememberRecentCandidate(recentFileCandidate(source));
+  }, [rememberRecentCandidate]);
+
+  const rememberRecentWorkspace = useCallback(async (grant: FileRef, displayName: string) => {
+    session.markGrantAvailable(grant.grantId);
+    if (!settings.getSnapshot().settings.recentHistoryEnabled) return;
+    await rememberRecentCandidate(recentWorkspaceCandidate(grant, displayName));
+  }, [rememberRecentCandidate]);
+
+  const persistRecentEntries = useCallback(async (entries: readonly RecentEntry[]): Promise<string | null> => {
+    const result = await settings.updatePersistedValue(recentHistoryItemsSetting, writeRecentHistory(entries));
+    return result.ok ? null : result.error.message;
+  }, []);
+
+  const applyRecentRenames = useCallback(async (renamed: readonly RenamedDocument[]) => {
+    const current = readRecentHistory(settings.getSnapshot().user[recentHistoryItemsSetting]);
+    const byIdentity = new Map(renamed.map(mapping => [
+      documents.getDocument(mapping.documentId)?.source?.canonicalIdentity,
+      mapping,
+    ] as const).filter((item): item is readonly [string, RenamedDocument] => !!item[0]));
+    if (byIdentity.size === 0) return;
+    let changed = false;
+    const next = current.map(entry => {
+      const mapping = byIdentity.get(entry.canonicalIdentity);
+      if (!mapping) return entry;
+      changed = true;
+      const displayPath = mapping.displayPath.slice(0, 4096);
+      return {
+        ...entry,
+        ref: { ...mapping.ref },
+        displayPath,
+        title: (displayPath.split(/[\\/]/).pop() || displayPath).slice(0, 512),
+      };
+    });
+    if (!changed) return;
+    const error = await persistRecentEntries(next);
+    if (error) setNotice(`最近记录的路径未能随重命名更新：${error}`);
+  }, [persistRecentEntries, setNotice]);
+
+  const openOne = useCallback(async (
+    reference: FileRef,
+    intent: 'preview' | 'pinned' = 'pinned',
+    remember = true,
+  ): Promise<string | null> => {
     const result = await tabs.open(reference, intent);
     if (result.ok) {
+      if (remember) await rememberRecentFile(result.value.id);
+      else session.markGrantAvailable(reference.grantId);
       if (result.value.warning && result.value.warning !== tabs.getSnapshot().warning) setNotice(result.value.warning);
       return null;
     }
@@ -192,7 +289,7 @@ export function App() {
       ) ? candidates : [...candidates, reference]);
     }
     return result.error.message;
-  }, []);
+  }, [rememberRecentFile]);
 
   const openFile = useCallback(async () => {
     if (opening.current) return;
@@ -229,10 +326,11 @@ export function App() {
     try {
       const result = await tabs.open(reference, 'pinned', 'head-preview');
       if (result.ok) {
+        await rememberRecentFile(result.value.id);
         setPreviewCandidates(candidates => candidates.filter(candidate => candidate !== reference));
       } else setError(result.error.message);
     } finally { setBusy(false); }
-  }, [setBusy, setError]);
+  }, [rememberRecentFile, setBusy, setError]);
 
   const newFile = useCallback(async () => { setAutoFocus(true); await tabs.createUntitled(); }, [setAutoFocus]);
 
@@ -354,9 +452,70 @@ export function App() {
       if (result.value.grant && result.value.displayName) {
         workspace.setRoot({ grant: result.value.grant, displayName: result.value.displayName });
         setSidebarOpen(true);
+        await rememberRecentWorkspace(result.value.grant, result.value.displayName);
       }
     } finally { opening.current = false; setBusy(false); }
-  }, [setBusy]);
+  }, [rememberRecentWorkspace, setBusy]);
+
+  const openRecent = useCallback(async (entry: RecentEntry): Promise<string | null> => {
+    if (entry.kind === 'workspace') {
+      workspace.setRoot({ grant: entry.ref, displayName: entry.displayPath });
+      setSidebarOpen(true);
+      await rememberRecentWorkspace(entry.ref, entry.displayPath);
+      return null;
+    }
+    setAutoFocus(true);
+    setBusy(true);
+    setError(null);
+    try {
+      return await openOne(entry.ref, 'pinned');
+    } finally { setBusy(false); }
+  }, [openOne, rememberRecentWorkspace, setBusy]);
+
+  const repairRecent = useCallback(async (entry: RecentEntry): Promise<string | null> => {
+    setBusy(true);
+    setError(null);
+    try {
+      let stored: RecentEntry | null = null;
+      if (entry.kind === 'workspace') {
+        const selected = await files.chooseFolder();
+        if (!selected.ok) return selected.error.message;
+        if (!selected.value.grant || !selected.value.displayName) return '未重新选择工作区。';
+        workspace.setRoot({ grant: selected.value.grant, displayName: selected.value.displayName });
+        setSidebarOpen(true);
+        stored = await rememberRecentCandidate(recentWorkspaceCandidate(
+          selected.value.grant,
+          selected.value.displayName,
+        ));
+      } else {
+        const selected = await files.chooseFiles(false);
+        if (!selected.ok) return selected.error.message;
+        const reference = selected.value.grants[0];
+        if (!reference) return selected.value.failures[0]?.error.message ?? '未重新选择文件。';
+        setAutoFocus(true);
+        const failure = await openOne(reference, 'pinned', false);
+        if (failure) return `已重新选择，但无法打开：${failure}`;
+        const id = documents.getSnapshot().activeId;
+        const source = id ? documents.getDocument(id)?.source : undefined;
+        if (!source) return '文件已打开，但无法建立最近记录。';
+        stored = await rememberRecentCandidate(recentFileCandidate(source));
+      }
+      if (!stored) return '已重新打开，但最近记录未能保存。';
+      const current = readRecentHistory(settings.getSnapshot().user[recentHistoryItemsSetting]);
+      const previous = current.find(item => item.id === entry.id);
+      if (!previous || previous.id === stored.id) return null;
+      const removalError = await persistRecentEntries(removeRecentEntry(current, entry.id));
+      return removalError ? `已重新打开新项目，但旧记录未能移除：${removalError}` : null;
+    } finally { setBusy(false); }
+  }, [openOne, persistRecentEntries, rememberRecentCandidate, setBusy]);
+
+  const removeRecent = useCallback(async (entry: RecentEntry): Promise<string | null> => {
+    const current = readRecentHistory(settings.getSnapshot().user[recentHistoryItemsSetting]);
+    return persistRecentEntries(removeRecentEntry(current, entry.id));
+  }, [persistRecentEntries]);
+
+  const clearRecent = useCallback(async (): Promise<string | null> =>
+    persistRecentEntries(clearRecentHistory()), [persistRecentEntries]);
 
   const getCommandState = useCallback((targetId?: DocumentId): AppCommandState => {
     const snapshot = documents.getSnapshot();
@@ -378,6 +537,10 @@ export function App() {
     setAutoFocus(false);
     setPaletteMode(mode);
   }, []);
+  const openSettings = useCallback(() => {
+    settingsOrigin.current = window.document.activeElement instanceof HTMLElement ? window.document.activeElement : null;
+    setAutoFocus(false); setSettingsOpen(true);
+  }, []);
   const restorePaletteFocus = useCallback(() => {
     if (paletteOrigin.current?.isConnected) paletteOrigin.current.focus();
     else { const id = documents.getSnapshot().activeId; if (id) documents.focus(id); }
@@ -388,9 +551,10 @@ export function App() {
     'file.saveAll': async () => { await saveAll.run(); },
     'file.close': async () => { const id = documents.getSnapshot().activeId; if (id) await requestClose(id); },
     'editor.find': openFind, 'tabs.pin': () => { const id = documents.getSnapshot().activeId; if (id) tabs.pin(id); },
-    'view.sidebar': () => setSidebarOpen(open => !open), 'view.theme': () => setDark(value => !value),
+    'view.sidebar': () => setSidebarOpen(open => !open),
+    'view.theme': () => settings.setSession('theme', dark ? 'light' : 'dark'), 'settings.open': openSettings,
     'commands.open': () => openPalette('commands'), 'files.quickOpen': () => openPalette('files'),
-  }), [newFile, openFile, openFolder, saveCurrent, saveDestination, requestClose, openFind, openPalette]);
+  }), [newFile, openFile, openFolder, saveCurrent, saveDestination, requestClose, openFind, openPalette, openSettings, dark]);
 
   const executeCommand = useCallback(async (id: string, targetId?: DocumentId) => {
     const actions = targetId ? { ...commandActions, 'file.close': () => requestClose(targetId), 'tabs.pin': () => tabs.pin(targetId) } : commandActions;
@@ -425,6 +589,10 @@ export function App() {
 
   return (
     <Shell
+      railActions={<button className="icon-button" aria-label="打开设置" {...commandProps('settings.open')}
+        onClick={() => void executeCommand('settings.open')}>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6l1 4 3 2 3 1v4l-3 1-3 2-1 4H9l-1-4-3-2-3-1v-4l3-1 3-2Z" /><circle cx="12" cy="12" r="3" /></svg>
+      </button>}
       sidebarOpen={sidebarOpen}
       dark={dark}
       headerActions={<>
@@ -437,9 +605,18 @@ export function App() {
       onToggleTheme={() => void executeCommand('view.theme')}
       sidebarShortcut={ariaShortcut(commands.binding('view.sidebar'))}
       themeShortcut={ariaShortcut(commands.binding('view.theme'))}
-      sidebar={<Explorer currentReference={currentReference} onOpen={(reference, intent) => void openTreeFile(reference, intent ?? 'preview')}
-        onTrash={setTrashEntry} mutationBlocked={busy || savingCount > 0 || batchBusy || closingCount > 0}
-        onRenamed={renamed => documents.applyRenamedPaths(renamed)} />}
+      sidebar={<div className="sidebar-stack">
+        <RecentList entries={recentEntries} availableGrantIds={sessionState.availableGrantIds}
+          enabled={settingsState.settings.recentHistoryEnabled}
+          busy={busy || savingCount > 0 || batchBusy || closingCount > 0}
+          onOpen={openRecent} onRepair={repairRecent} onRemove={removeRecent} onClear={clearRecent} />
+        <Explorer currentReference={currentReference} onOpen={(reference, intent) => void openTreeFile(reference, intent ?? 'preview')}
+          onTrash={setTrashEntry} mutationBlocked={busy || savingCount > 0 || batchBusy || closingCount > 0}
+          onRenamed={renamed => {
+            documents.applyRenamedPaths(renamed);
+            void applyRecentRenames(renamed);
+          }} />
+      </div>}
       status={<><span>{closingCount > 0 || current?.closing ? '正在关闭…' : batchBusy ? '正在全部保存…' : savingCount > 0 ? '正在保存…' : busy ? '正在打开…' : current ? current.readOnlyReason ? '只读' : current.dirty ? '未保存修改' : current.displayPath ? '未修改' : '未命名' : '就绪'}</span>{current && <EditorStatus registry={documents} id={current.id} summary={current} />}<span className="status-end">{current ? `${current.format.encoding.toUpperCase()}${current.format.bom === 'none' ? '' : ' BOM'} · ${current.format.lineEnding.toUpperCase()}` : '轻羽 FeatherPad'}</span></>}
     >
       {error && <div className="notice error-notice" role="alert"><span>{error}</span><button onClick={() => setError(null)}>关闭提示</button></div>}
@@ -561,6 +738,13 @@ export function App() {
             else window.document.querySelector<HTMLButtonElement>('[aria-label="刷新目录树"]')?.focus();
           });
         }} onClose={() => setTrashEntry(null)} />}
+      {settingsOpen && <SettingsDialog coordinator={settings} onClose={() => {
+        setSettingsOpen(false);
+        requestAnimationFrame(() => {
+          if (settingsOrigin.current?.isConnected) settingsOrigin.current.focus();
+          else { const id = documents.getSnapshot().activeId; if (id) documents.focus(id); }
+        });
+      }} onShortcuts={() => { setSettingsOpen(false); openPalette('commands'); }} />}
       {exitState.phase !== 'idle' && <HotExitDialog snapshot={exitState}
         onRetry={async () => { await hotExit.prepare(); }}
         onSaveAs={saveExitDrafts}

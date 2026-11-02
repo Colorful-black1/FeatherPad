@@ -1,5 +1,5 @@
 import { files } from '../../bridge/files';
-import type { DocumentId, GrantId, OpenDocument, ResultEnvelope, SessionClearResult, SessionLoadResult, SessionManifest, SessionSaveResult, SessionView, SessionWindow } from '../../shared/contracts/files';
+import type { DocumentId, GrantId, LoadSessionRequest, OpenDocument, ResultEnvelope, SessionClearResult, SessionLoadResult, SessionManifest, SessionSaveResult, SessionView, SessionWindow } from '../../shared/contracts/files';
 import { documents, type DocumentRegistry } from '../editor/documents';
 import { tabs, type TabController } from '../editor/tabs';
 import { workspace, type WorkspaceStore } from '../workspace/store';
@@ -8,7 +8,7 @@ const SESSION_DEBOUNCE_MS = 1_000;
 const SESSION_MAX_WAIT_MS = 5_000;
 type TimerHandle = ReturnType<typeof setTimeout>;
 type SaveSession = (manifest: SessionManifest) => Promise<ResultEnvelope<SessionSaveResult>>;
-type LoadSession = () => Promise<ResultEnvelope<SessionLoadResult>>;
+type LoadSession = (request?: LoadSessionRequest) => Promise<ResultEnvelope<SessionLoadResult>>;
 type ClearSession = () => Promise<ResultEnvelope<SessionClearResult>>;
 type OpenSessionFile = typeof files.open;
 
@@ -23,6 +23,7 @@ interface SessionSnapshot {
   persistedAt: string | null;
   error: string | null;
   missingSources: readonly MissingSessionSource[];
+  availableGrantIds: readonly string[];
 }
 
 interface Schedule {
@@ -63,7 +64,9 @@ export class SessionCoordinator {
   private schedule: Schedule | null = null;
   private readonly unsubscribers: (() => void)[] = [];
   private readonly listeners = new Set<() => void>();
-  private snapshot: SessionSnapshot = { phase: 'idle', persistedAt: null, error: null, missingSources: [] };
+  private snapshot: SessionSnapshot = {
+    phase: 'idle', persistedAt: null, error: null, missingSources: [], availableGrantIds: [],
+  };
   private pendingViews: SessionView[] = [];
   private pendingRoot: { id: string; label: string } | null = null;
   private activeSave: Promise<ResultEnvelope<SessionSaveResult>> | null = null;
@@ -103,10 +106,16 @@ export class SessionCoordinator {
     this.cancelSchedule();
   }
 
-  async load(): Promise<ResultEnvelope<SessionLoadResult>> {
-    const result = await this.loadTransport();
+  async load(restoreGrantIds: readonly string[] = []): Promise<ResultEnvelope<SessionLoadResult>> {
+    const result = await this.loadTransport({ restoreGrantIds });
     if (result.ok && result.value.session) this.sessionId = result.value.session.sessionId;
+    if (result.ok) this.publish({ ...this.snapshot, availableGrantIds: [...result.value.restoredGrantIds] });
     return result;
+  }
+
+  markGrantAvailable(grantId: string) {
+    if (this.snapshot.availableGrantIds.includes(grantId)) return;
+    this.publish({ ...this.snapshot, availableGrantIds: [...this.snapshot.availableGrantIds, grantId] });
   }
 
   async restoreSources(
@@ -209,7 +218,7 @@ export class SessionCoordinator {
     if (result.ok) {
       this.lastSavedFingerprint = null;
       this.lastSaveResult = null;
-      this.publish({ phase: 'idle', persistedAt: null, error: null });
+      this.publish({ phase: 'idle', persistedAt: null, error: null, availableGrantIds: this.snapshot.availableGrantIds });
     }
     return result;
   }
@@ -315,10 +324,11 @@ export class SessionCoordinator {
       this.lastSaveResult = result;
       if (result.ok) {
         this.lastSavedFingerprint = currentFingerprint;
-        this.publish({ phase: 'idle', persistedAt: result.value.persistedAt, error: null });
+        this.publish({ phase: 'idle', persistedAt: result.value.persistedAt, error: null,
+          availableGrantIds: this.snapshot.availableGrantIds });
       } else {
         this.publish({ phase: 'failed', persistedAt: this.snapshot.persistedAt,
-          error: `会话状态未保存：${result.error.message}` });
+          error: `会话状态未保存：${result.error.message}`, availableGrantIds: this.snapshot.availableGrantIds });
       }
       return result;
     }).catch((): ResultEnvelope<SessionSaveResult> => {
@@ -328,7 +338,8 @@ export class SessionCoordinator {
         retryable: false,
       } };
       this.lastSaveResult = result;
-      this.publish({ phase: 'failed', persistedAt: this.snapshot.persistedAt, error: result.error.message });
+      this.publish({ phase: 'failed', persistedAt: this.snapshot.persistedAt, error: result.error.message,
+        availableGrantIds: this.snapshot.availableGrantIds });
       return result;
     }).finally(() => {
       if (this.activeSave === operation) this.activeSave = null;

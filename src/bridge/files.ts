@@ -1,4 +1,4 @@
-import type { ChosenFiles, ChosenFolder, CreateEntryRequest, DirectoryEntry, DirectoryPage, DiscardRecoveryRequest, DiscardRecoveryResult, DocumentId, FileRef, ListDirectoryRequest, LoadedRecoveryEntry, LoadRecoveryEntryRequest, OpenDocument, ReadChunkRequest, RecoveryEntry, RecoveryInventory, RecoverySnapshotAck, ReleaseDocumentResult, RenameEntryRequest, RenameEntryResult, SaveAck, SaveAsAck, SaveAsRequest, SaveRequest, SessionClearResult, SessionLoadResult, SessionManifest, SessionSaveResult, TextChunk, TextFormat, TrashEntryRequest, TrashEntryResult, TrashImpact, TrashImpactRequest, WriteRecoverySnapshotRequest } from '../shared/contracts/files';
+import type { ChosenFiles, ChosenFolder, CreateEntryRequest, DirectoryEntry, DirectoryPage, DiscardRecoveryRequest, DiscardRecoveryResult, DocumentId, FileRef, ListDirectoryRequest, LoadedRecoveryEntry, LoadRecoveryEntryRequest, LoadSessionRequest, OpenDocument, ReadChunkRequest, RecoveryEntry, RecoveryInventory, RecoverySnapshotAck, ReleaseDocumentResult, RenameEntryRequest, RenameEntryResult, SaveAck, SaveAsAck, SaveAsRequest, SaveRequest, SessionClearResult, SessionLoadResult, SessionManifest, SessionSaveResult, TextChunk, TextFormat, TrashEntryRequest, TrashEntryResult, TrashImpact, TrashImpactRequest, WriteRecoverySnapshotRequest } from '../shared/contracts/files';
 import { callCommand, isAppError, isRecord } from './invoke';
 import type { LoadedSaveTransaction, SaveTransactionCandidate } from '../shared/contracts/files';
 
@@ -119,7 +119,9 @@ export function isTrashEntryResult(value: unknown): value is TrashEntryResult {
 
 export function isOpenDocument(value: unknown): value is OpenDocument {
   if (!isRecord(value) || !nonemptyString(value.documentId) || !isFileRef(value.ref)
-    || !isRecord(value.metadata) || !isRecord(value.format) || !isRecord(value.content)) return false;
+    || !isRecord(value.metadata) || !isRecord(value.format) || !isRecord(value.content)
+    || (value.canonicalIdentity !== undefined
+      && (typeof value.canonicalIdentity !== 'string' || value.canonicalIdentity.length > 128))) return false;
   const { metadata, format, content } = value;
   if (!isFileMetadata(metadata)) return false;
   if (!nonemptyString(format.encoding) || typeof format.bom !== 'string'
@@ -342,7 +344,8 @@ export const files = {
   saveSession: (manifest: SessionManifest) => callCommand('save_session', { manifest },
     (value): value is SessionSaveResult => isRecord(value) && value.saved === true
       && typeof value.persistedAt === 'string' && value.persistedAt === manifest.persistedAt),
-  loadSession: () => callCommand('load_session', {}, isSessionLoadResult),
+  loadSession: (request: LoadSessionRequest = {}) => callCommand('load_session', { ...request,
+    ...(request.restoreGrantIds ? { restoreGrantIds: [...new Set(request.restoreGrantIds)] } : {}) }, isSessionLoadResult),
   clearSession: () => callCommand('clear_session', {},
     (value): value is SessionClearResult => isRecord(value) && value.cleared === true),
   readChunk: (request: ReadChunkRequest) => callCommand('read_document_chunk', { ...request }, isTextChunk),

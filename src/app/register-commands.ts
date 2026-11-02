@@ -1,7 +1,7 @@
 import { CommandRegistry, type CommandDefinition } from '../shared/commands/registry';
 
 export const appCommandIds = ['file.new', 'file.open', 'workspace.open', 'file.save', 'file.saveAs', 'file.saveCopy',
-  'file.saveAll', 'file.close', 'editor.find', 'tabs.pin', 'view.sidebar', 'view.theme', 'commands.open', 'files.quickOpen'] as const;
+  'file.saveAll', 'file.close', 'editor.find', 'tabs.pin', 'view.sidebar', 'view.theme', 'settings.open', 'commands.open', 'files.quickOpen'] as const;
 export type AppCommandId = typeof appCommandIds[number];
 export interface AppCommandState {
   hasDocument: boolean;
@@ -32,6 +32,7 @@ const commandInfo: CommandInfo[] = [
   ['tabs.pin', '固定标签', 'pin preview 预览', null, state => hasDocument(state) ?? (state.closing ? '正在关闭文档。' : state.isPreview ? null : '当前标签已固定。')],
   ['view.sidebar', '切换资源管理器', 'sidebar explorer 侧栏', 'Ctrl+B', () => null],
   ['view.theme', '切换亮暗主题', 'theme dark light', null, () => null],
+  ['settings.open', '打开设置', 'settings preferences theme font 设置 主题 字体', null, state => state.closing ? '请等待当前关闭操作。' : null],
   ['commands.open', '打开命令面板', 'command palette 命令', 'Ctrl+Shift+P', () => null],
   ['files.quickOpen', '快速打开文件', 'quick open 文件导航', 'Ctrl+P', () => null],
 ];

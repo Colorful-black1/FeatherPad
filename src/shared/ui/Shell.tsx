@@ -5,6 +5,7 @@ interface ShellProps {
   sidebar: ReactNode;
   status: ReactNode;
   headerActions?: ReactNode;
+  railActions?: ReactNode;
   sidebarOpen: boolean;
   dark: boolean;
   onToggleSidebar: () => void;
@@ -13,7 +14,7 @@ interface ShellProps {
   themeShortcut?: string | undefined;
 }
 
-export function Shell({ children, sidebar, status, headerActions, sidebarOpen, dark, onToggleSidebar, onToggleTheme, sidebarShortcut, themeShortcut }: ShellProps) {
+export function Shell({ children, sidebar, status, headerActions, railActions, sidebarOpen, dark, onToggleSidebar, onToggleTheme, sidebarShortcut, themeShortcut }: ShellProps) {
   return (
     <div className="app-shell" data-sidebar-open={sidebarOpen}>
       <header className="app-heading">
@@ -28,6 +29,7 @@ export function Shell({ children, sidebar, status, headerActions, sidebarOpen, d
           <button className="icon-button" onClick={onToggleSidebar} aria-label="切换资源管理器" aria-controls="explorer" aria-expanded={sidebarOpen} aria-keyshortcuts={sidebarShortcut} title={`资源管理器${sidebarShortcut ? `（${sidebarShortcut}）` : ''}`}>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7V5h7l2 2h9v13H3ZM3 9h18" /></svg>
           </button>
+          {railActions}
           <button className="icon-button theme-button" onClick={onToggleTheme} aria-label={dark ? '切换到浅色主题' : '切换到深色主题'} aria-keyshortcuts={themeShortcut} title={`切换主题${themeShortcut ? `（${themeShortcut}）` : ''}`}>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 15A9 9 0 0 1 9 4a9 9 0 1 0 11 11Z" /></svg>
           </button>
