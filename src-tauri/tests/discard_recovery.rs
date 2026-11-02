@@ -173,6 +173,131 @@ fn a_live_store_lock_blocks_discard_and_load_without_mutating_the_draft() {
     assert_eq!(store.load(&receipt).unwrap().text, request.text);
 }
 
+#[test]
+fn discard_cleans_only_matching_versions_and_retries_cleanup_after_a_previous_marker() {
+    let (root, source, store, mut request) = fixture();
+    let first = store.persist_before_trash(&request, &source).unwrap();
+    let first_manifest = serde_json::to_value(&first.manifest).unwrap();
+    let first_path = root.join("recovery").join(first.manifest.receipt_id);
+    request.document_version = 2;
+    request.text.push_str(" 新版本");
+    let second = store.persist_before_trash(&request, &source).unwrap();
+    let second_path = root.join("recovery").join(second.manifest.receipt_id);
+    let mut peer = request.clone();
+    peer.document_id = uuid::Uuid::new_v4().to_string();
+    let peer_receipt = store
+        .persist_before_trash(&peer, &source)
+        .unwrap()
+        .manifest
+        .receipt_id;
+    let corrupt = root.join("recovery").join(uuid::Uuid::new_v4().to_string());
+    fs::create_dir(&corrupt).unwrap();
+    fs::write(corrupt.join("manifest.json"), b"{unknown corrupt record").unwrap();
+    fs::write(corrupt.join("body.bin"), b"manual recovery candidate").unwrap();
+    store.discard_through(&request.document_id, 1).unwrap();
+    assert!(!first_path.exists());
+    assert_eq!(
+        fs::read(second_path.join("body.bin")).unwrap(),
+        request.text.as_bytes()
+    );
+    assert_eq!(store.load(&peer_receipt).unwrap().text, peer.text);
+    assert_eq!(
+        fs::read(corrupt.join("body.bin")).unwrap(),
+        b"manual recovery candidate"
+    );
+    // Simulate a crash leaving an older snapshot after its durable marker was written.
+    let orphan_receipt = uuid::Uuid::new_v4().to_string();
+    let orphan = root.join("recovery").join(&orphan_receipt);
+    fs::create_dir(&orphan).unwrap();
+    let mut manifest = first_manifest;
+    manifest["receiptId"] = orphan_receipt.into();
+    manifest["sourcePath"] = root
+        .join("never-delete-this.txt")
+        .to_string_lossy()
+        .into_owned()
+        .into();
+    fs::write(root.join("never-delete-this.txt"), b"unrelated source").unwrap();
+    fs::write(
+        orphan.join("manifest.json"),
+        serde_json::to_vec(&manifest).unwrap(),
+    )
+    .unwrap();
+    fs::write(orphan.join("body.bin"), first.text).unwrap();
+    store.discard_through(&request.document_id, 0).unwrap();
+    assert!(!orphan.exists());
+    assert_eq!(
+        fs::read(root.join("never-delete-this.txt")).unwrap(),
+        b"unrelated source"
+    );
+    assert_eq!(fs::read(source).unwrap(), b"source remains intact");
+}
+
+#[test]
+fn unknown_nested_contents_are_preserved_instead_of_recursively_deleted() {
+    let (root, source, store, request) = fixture();
+    let receipt = store
+        .persist_before_trash(&request, &source)
+        .unwrap()
+        .manifest
+        .receipt_id;
+    let directory = root.join("recovery").join(receipt);
+    fs::create_dir(directory.join("unexpected")).unwrap();
+    fs::write(directory.join("unexpected/keep.txt"), b"unrecognized data").unwrap();
+    assert_eq!(
+        store
+            .discard_through(&request.document_id, 1)
+            .unwrap_err()
+            .code,
+        ErrorCode::InvalidInput
+    );
+    assert_eq!(
+        fs::read(directory.join("unexpected/keep.txt")).unwrap(),
+        b"unrecognized data"
+    );
+    assert_eq!(
+        fs::read(directory.join("body.bin")).unwrap(),
+        request.text.as_bytes()
+    );
+    assert!(directory.join("manifest.json").exists());
+}
+
+#[cfg(windows)]
+#[test]
+fn a_sharing_failure_keeps_the_manifest_and_retries_only_cleanup_after_unlock() {
+    use std::os::windows::fs::OpenOptionsExt;
+    use windows_sys::Win32::Storage::FileSystem::{FILE_SHARE_READ, FILE_SHARE_WRITE};
+    let (root, source, store, request) = fixture();
+    let receipt = store
+        .persist_before_trash(&request, &source)
+        .unwrap()
+        .manifest
+        .receipt_id;
+    let directory = root.join("recovery").join(&receipt);
+    let lock = fs::OpenOptions::new()
+        .read(true)
+        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
+        .open(directory.join("body.bin"))
+        .unwrap();
+    assert_eq!(
+        store
+            .discard_through(&request.document_id, 1)
+            .unwrap_err()
+            .code,
+        ErrorCode::Busy
+    );
+    assert!(directory.join("manifest.json").exists());
+    assert_eq!(
+        fs::read(directory.join("body.bin")).unwrap(),
+        request.text.as_bytes()
+    );
+    assert_eq!(store.load(&receipt).unwrap_err().code, ErrorCode::NotFound);
+    drop(lock);
+    let reopened = RecoveryStore::new(root.join("recovery"));
+    reopened.discard_through(&request.document_id, 1).unwrap();
+    assert!(!directory.exists());
+    assert_eq!(fs::read(source).unwrap(), b"source remains intact");
+}
+
 #[cfg(windows)]
 #[test]
 fn a_tombstone_directory_junction_is_rejected_without_writing_through_it() {

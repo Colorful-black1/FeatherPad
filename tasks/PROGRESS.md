@@ -32,6 +32,12 @@
 | 2026-11-01 / T002 | app-shell | React Shell/App/token/CSS、Web及原生测试 | typecheck/lint exit 0；Web 2 passed；真实WebView2 debug 1 passed | Web与原生范围分开，未测OS对话框 | .artifacts/T002/及docs/acceptance/M0.md | T002通过；下一T003 |
 | 2026-11-01 / T003.a–d（进行中） | F-DESK-013 | Rust models/grants/files/commands、AppManifest ACL、TS contracts/bridge、CodeMirror只读UI、测试与脚本 | typecheck/lint/TS单测3、Rust原生5、Web4、Release smoke1均exit 0；check.ps1 -Desktop exit 0；交互选择器三次超时，后次显式exit 1 | 原生Rust磁盘+junction，真实Release IPC/WebView2，Web mock独立 | docs/acceptance/M0.md；.artifacts/T003；.artifacts/T002/native-release.json | T003未完成OS选取验收，G0不勾选 |
 
+## T107.b2 对应恢复副本物理清理（2026-11-02，进行中）
+
+- discard_through仅在tombstone已落盘/读回后清理对应documentId且不高于上界的受控UUID receipt。仅删除固定body.bin、manifest.json和空目录，不沿sourcePath寻址、不递归删除。先验证目录内容，再删正文，最后删除manifest；正文被锁定时保留manifest作为重试定位，旧标记重试也重新执行清理。其他文档/更高版本/未知损坏清单保留；未知嵌套内容拒绝且不触碰正文。
+- discard_recovery原生测试扩为8项，exit0（.artifacts/T107-discard-cleanup-tests.log）：匹配旧版本目录实际消失、另文档和较新正文保留；模拟标记后遗留旧快照可在重试时清理；伪造清单sourcePath不影响对应文件；真实无共享删除句柄使清理BUSY、manifest/正文保留，解锁/重建store后同版本清理完成；未知子目录保留并失败。没有递归操作用户路径。
+- cargo clippy --locked --offline --all-targets -- -D warnings、cargo test --locked --offline均exit0（.artifacts/T107-discard-cleanup-clippy.log、.artifacts/T107-discard-cleanup-rust.log；101 passed，1个100k benchmark ignored）。仅Rust核心新增，TS/UI沿a2证据；下一步b3严格IPC/typed bridge及真实Release，随后c标签/脏关闭交互。T107/T110/G1仍未完成。
+
 ## T107.b1 放弃恢复标记核心（2026-11-02，进行中）
 
 - recovery.rs增加以规范documentId/JS安全整数throughVersion绑定的不可变tombstone，排他写入并flush、读回验证，旧版本重复放弃不降低上界。标记、读取和快照持久化共用OS文件锁；load拒绝已放弃版本，迟到persist同样拒绝，新的更高版本仍可保护。源路径不参与标记寻址，目录预算/100k枚举界限和reparse拒绝继续生效；损坏标记保留副本并停止恢复，不默认忽略。

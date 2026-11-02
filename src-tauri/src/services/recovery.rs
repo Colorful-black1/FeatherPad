@@ -176,9 +176,10 @@ impl RecoveryStore {
         let root = self.root.canonicalize().map_err(io_error)?;
         let _parents = windows_file::lock_parent_chain(&root.join("pending"))?;
         let _quota = quota_guard(&root)?;
-        if discarded_version(&root, document_id)?.is_some_and(|version| version >= through_version)
+        if let Some(previous) =
+            discarded_version(&root, document_id)?.filter(|version| *version >= through_version)
         {
-            return Ok(());
+            return purge_discarded_snapshots(&root, document_id, previous);
         }
         let marker = DiscardMarker {
             schema_version: 1,
@@ -204,7 +205,7 @@ impl RecoveryStore {
         if discarded_version(&root, document_id)? != Some(through_version) {
             return Err(invalid());
         }
-        Ok(())
+        purge_discarded_snapshots(&root, document_id, through_version)
     }
 
     fn ensure_root(&self) -> Result<(), AppError> {
@@ -215,6 +216,69 @@ impl RecoveryStore {
         fs::create_dir_all(&self.root).map_err(io_error)?;
         reject_reparse_chain(&self.root)
     }
+}
+
+fn purge_discarded_snapshots(
+    root: &Path,
+    document_id: &str,
+    through_version: u64,
+) -> Result<(), AppError> {
+    // Never follow manifest source paths or recursively delete an unverified directory tree.
+    for (index, entry) in fs::read_dir(root).map_err(io_error)?.enumerate() {
+        if index >= 100_000 {
+            return Err(invalid());
+        }
+        let entry = entry.map_err(io_error)?;
+        let Some(receipt) = entry.file_name().to_str().map(str::to_owned) else {
+            continue;
+        };
+        if validate_document_version(&receipt, 0).is_err() {
+            continue;
+        }
+        let directory = root.join(&receipt);
+        reject_reparse_chain(&directory)?;
+        if !entry.file_type().map_err(io_error)?.is_dir() {
+            continue;
+        }
+        let parents = windows_file::lock_parent_chain(&directory.join("manifest.json"))?;
+        let bytes = match read_bounded(&directory.join("manifest.json"), MAX_RECOVERY_BYTES) {
+            Ok(bytes) => bytes,
+            Err(error) if error.code == ErrorCode::NotFound => continue,
+            Err(error) => return Err(error),
+        };
+        let Ok(manifest) = serde_json::from_slice::<RecoveryManifest>(&bytes) else {
+            continue;
+        };
+        if manifest.document_id != document_id || manifest.buffer_version > through_version {
+            continue;
+        }
+        validate_document_version(&manifest.document_id, manifest.buffer_version)?;
+        if manifest.schema_version != 1 || manifest.receipt_id != receipt {
+            return Err(invalid());
+        }
+        for child in fs::read_dir(&directory).map_err(io_error)? {
+            let child = child.map_err(io_error)?;
+            reject_reparse_chain(&child.path())?;
+            if !child.file_type().map_err(io_error)?.is_file()
+                || !matches!(
+                    child.file_name().to_str(),
+                    Some("body.bin" | "manifest.json")
+                )
+            {
+                return Err(invalid());
+            }
+        }
+        // Keep the manifest until its body is gone so interrupted cleanup can be retried.
+        match fs::remove_file(directory.join("body.bin")) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(io_error(error)),
+        }
+        fs::remove_file(directory.join("manifest.json")).map_err(io_error)?;
+        drop(parents);
+        fs::remove_dir(&directory).map_err(io_error)?;
+    }
+    Ok(())
 }
 
 fn validate_document_version(document_id: &str, version: u64) -> Result<(), AppError> {
