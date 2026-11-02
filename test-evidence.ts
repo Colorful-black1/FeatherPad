@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 export const testRunId = `${new Date().toISOString().replaceAll(':', '-').replaceAll('.', '-')}-${randomUUID()}`;
-export const nativeScenarios = ['smoke', 'saving', 'tabs', 'commands', 'external', 'workspace', 'editor', 'search', 'large-files', 'disk-full', 'forced-exit', 'regression'] as const;
+export const nativeScenarios = ['smoke', 'mvp', 'saving', 'tabs', 'commands', 'external', 'workspace', 'editor', 'search', 'large-files', 'disk-full', 'forced-exit', 'regression'] as const;
 export type NativeScenario = typeof nativeScenarios[number];
 
 export function isNativeScenario(value: unknown): value is NativeScenario {

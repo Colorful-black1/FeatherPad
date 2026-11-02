@@ -151,6 +151,72 @@ describe('RecoveryCoordinator', () => {
     }
   });
 
+  it('retries confirmed transient storage contention without another edit and protects the same version', async () => {
+    const requests: WriteRecoverySnapshotRequest[] = [];
+    const h = fixture(async request => {
+      requests.push(request);
+      return requests.length === 1 ? { ok: false, error: {
+        code: 'BUSY', message: 'Controlled snapshot budget contention', retryable: true,
+      } } : acknowledgement(request);
+    });
+    try {
+      edit(h.registry, h.id, 'unsaved 中文😀');
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(requests).toHaveLength(1);
+      expect(h.registry.getDocument(h.id)?.summary).toMatchObject({
+        recoveryProtected: false, recoveryError: 'Controlled snapshot budget contention',
+      });
+      await vi.advanceTimersByTimeAsync(999);
+      expect(requests).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(requests).toHaveLength(2);
+      expect(requests[1]).toEqual(requests[0]);
+      expect(h.registry.getDocument(h.id)?.summary).toMatchObject({ recoveryProtected: true, recoveryError: null });
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(requests).toHaveLength(2);
+    } finally { h.stop(); }
+  });
+
+  it('does not retry a non-retryable locked-file failure without another edit', async () => {
+    const transport = vi.fn(async (): Promise<ResultEnvelope<RecoverySnapshotAck>> => ({
+      ok: false, error: { code: 'BUSY', message: 'Controlled locked recovery file', retryable: false },
+    }));
+    const h = fixture(transport);
+    try {
+      edit(h.registry, h.id, 'unsaved');
+      await vi.advanceTimersByTimeAsync(1_000);
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(transport).toHaveBeenCalledTimes(1);
+      expect(h.registry.getDocument(h.id)?.summary).toMatchObject({
+        recoveryProtected: false, recoveryError: 'Controlled locked recovery file',
+      });
+    } finally { h.stop(); }
+  });
+
+  it('reschedules transient contention after an explicit retry of a previously failed version', async () => {
+    let attempts = 0;
+    const h = fixture(async request => {
+      attempts++;
+      if (attempts === 1) return { ok: false, error: {
+        code: 'DISK_FULL', message: 'Controlled storage full', retryable: false,
+      } };
+      if (attempts === 2) return { ok: false, error: {
+        code: 'BUSY', message: 'Controlled budget contention after explicit retry', retryable: true,
+      } };
+      return acknowledgement(request);
+    });
+    try {
+      edit(h.registry, h.id, 'same version');
+      expect((await h.coordinator.flush(h.id)).ok).toBe(false);
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(attempts).toBe(1);
+      expect((await h.coordinator.flush(h.id)).ok).toBe(false);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(attempts).toBe(3);
+      expect(h.registry.getDocument(h.id)?.summary).toMatchObject({ recoveryProtected: true, recoveryError: null });
+    } finally { h.stop(); }
+  });
+
   it('shows a failure once and retries only after the document changes', async () => {
     const transport = vi.fn(async (): Promise<ResultEnvelope<RecoverySnapshotAck>> => ({
       ok: false,

@@ -150,11 +150,11 @@ test('Web mock lazily pages one root and keeps empty, denied, hidden and current
   await editor.focus();
   await page.keyboard.press('Control+End');
   await page.keyboard.type(' edited');
-  await expect(page.getByLabel('有未保存修改')).toBeVisible();
+  await expect(page.getByLabel('有未保存修改', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: '打开文件夹', exact: true }).click();
   await expect(tree).toBeVisible();
   await expect(editor).toHaveText('nested edited');
-  await expect(page.getByLabel('有未保存修改')).toBeVisible();
+  await expect(page.getByLabel('有未保存修改', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: '定位当前文件' }).click();
 
   await page.getByRole('button', { name: '重命名选中项' }).click();
@@ -164,7 +164,7 @@ test('Web mock lazily pages one root and keeps empty, denied, hidden and current
   await page.getByRole('button', { name: '确定', exact: true }).click();
   await expect(tree.getByRole('treeitem', { name: 'renamed.txt', exact: true })).toBeVisible();
   await expect(page.getByRole('tab', { name: /renamed\.txt 有未保存修改/ })).toBeVisible();
-  await expect(page.getByLabel('有未保存修改')).toBeVisible();
+  await expect(page.getByLabel('有未保存修改', { exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: '新建文件', exact: true }).click();
   const createInput = page.getByRole('textbox', { name: '新建文件名称' });

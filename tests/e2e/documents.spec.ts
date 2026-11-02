@@ -10,6 +10,13 @@ test('Web mock: multi-open isolates failures, retains buffers/undo and sends no 
     Reflect.set(window, '__TAURI_INTERNALS__', {
       invoke: async (command: string, args: { multiple?: boolean; ref?: { grantId: string } }) => {
         calls.push({ command, args });
+        if (command === 'list_font_families') return { ok: true, value: { families: ['Consolas'], truncated: false } };
+        if (command === 'load_settings') return { ok: true, value: {
+          schemaVersion: 1, version: 1, revision: 'a'.repeat(64), settings: { recentHistoryEnabled: false },
+          warning: null, recoveryCopies: [],
+        } };
+        if (command === 'start_watch') return { ok: true, value: { watchId: 'documents-watch' } };
+        if (command === 'stop_watch') return { ok: true, value: { stopped: true } };
         if (command === 'choose_files') {
           selections++;
           return { ok: true, value: { grants: (selections === 1 ? ['first', 'denied', 'second'] : ['first']).map(grantId => ({ grantId, relativePath: '' })),
@@ -39,6 +46,7 @@ test('Web mock: multi-open isolates failures, retains buffers/undo and sends no 
   await first.click();
   const editor = page.locator('.cm-content');
   await editor.click();
+  const beforeTyping = await page.evaluate(() => structuredClone(Reflect.get(window, 'fixtureCalls')) as { command: string; args: unknown }[]);
   await page.keyboard.press('Control+End');
   await page.keyboard.insertText(' 中文😀未保存');
   await expect(first).toContainText('●');
@@ -54,8 +62,10 @@ test('Web mock: multi-open isolates failures, retains buffers/undo and sends no 
   await page.keyboard.press('Control+y');
   await expect(editor).toContainText('中文😀未保存');
   const calls = await page.evaluate(() => Reflect.get(window, 'fixtureCalls') as { command: string; args: unknown }[]);
-  expect(calls.map(call => call.command)).toEqual(['choose_files', 'open_document', 'open_document', 'open_document']);
-  expect(calls[0]?.args).toEqual({ multiple: true });
+  expect(calls).toEqual(beforeTyping);
+  const fileCalls = calls.filter(call => call.command === 'choose_files' || call.command === 'open_document');
+  expect(fileCalls.map(call => call.command)).toEqual(['choose_files', 'open_document', 'open_document', 'open_document']);
+  expect(fileCalls[0]?.args).toEqual({ multiple: true });
   await page.getByRole('button', { name: '打开文件', exact: true }).click();
   await expect(page.getByRole('tab')).toHaveCount(2);
   await expect(editor).toContainText('中文😀未保存');

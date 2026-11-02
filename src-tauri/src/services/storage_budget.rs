@@ -42,8 +42,13 @@ impl StorageBudget {
         if opened_file_path(&lock)? != path {
             return Err(invalid());
         }
-        lock.try_lock()
-            .map_err(|_| AppError::new(ErrorCode::Busy, "恢复与保存存储正在写入，请稍后重试。"))?;
+        lock.try_lock().map_err(|error| match error {
+            std::fs::TryLockError::WouldBlock => AppError {
+                retryable: true,
+                ..AppError::new(ErrorCode::Busy, "恢复与保存存储正在写入，请稍后重试。")
+            },
+            std::fs::TryLockError::Error(error) => io_error(error),
+        })?;
         Ok(Self {
             store,
             peer,

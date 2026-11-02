@@ -191,6 +191,10 @@ T111覆盖接口`overwrite_document`接受与`save_document`相同的SaveRequest
 
 T111会话授权衔接：未经接纳的外部替换继续不更新持久identity；仅`reload_document`已核对revision、唯一identity、原grant与当前句柄最终路径并接纳新lease后，更新该file grant的持久identity，使已接纳的clean正文可在后续会话重开。比较本身不更新。保存和重载复用同一句柄/授权校验原语，不引入任意路径授权。
 
+G1身份复核（2026-11-02）：已打开路径被外部替换后，再次`open_document`继续返回既有逻辑DocumentId；只读磁盘快照的canonicalIdentity和diskRevision反映新磁盘对象，不替换既有lease或更新持久grant。释放后再次打开才创建新DocumentId。T101旧测试已按T111既有行为补强物理身份与lease断言，不改变生产契约。
+
+G1恢复锁竞争补正：仅私有恢复/保存总预算锁的`WouldBlock`返回`BUSY`且`retryable:true`，此时尚未获得锁或开始该次写入。周期恢复保留未保护提示，并按原1秒调度再次尝试同一最新版本；成功Ack才清除提示/标保护。其他BUSY、满盘、权限、未知IPC结果仍按失败版本停止自动重试，热退出仍须成功落盘或显示失败，不因可重试而自行退出。
+
 T111边界：比较仅返回完整<20MiB文本，大文件返回READ_ONLY提示并继续使用受限重载/分页，不返回已释放的临时分块句柄。监听最多4个订阅，每订阅256引用/64父目录；原生64KiB通知缓冲非递归，100ms前端合并后核对所有已打开引用，overflow会核对并重建订阅。停止取消在途原生读取后才释放其缓冲；失败可见，一次成功stat不代表监听已恢复。外部文件名不穿过IPC，实际kind为changed，缺失/权限/离线由stat结果判断。
 
 ## 4. 搜索与批量替换 search-tools

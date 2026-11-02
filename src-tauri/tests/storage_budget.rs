@@ -111,7 +111,9 @@ fn a_save_reservation_excludes_concurrent_recovery_until_its_lifetime_ends() {
         std::thread::spawn(move || RecoveryStore::new(recovery_root).persist_snapshot(competing))
             .join()
             .unwrap();
-    assert_eq!(result.unwrap_err().code, ErrorCode::Busy);
+    let error = result.unwrap_err();
+    assert_eq!(error.code, ErrorCode::Busy);
+    assert!(error.retryable);
     drop(pending);
     let recovered = RecoveryStore::new(root.join("recovery"))
         .persist_snapshot(snapshot(&request))

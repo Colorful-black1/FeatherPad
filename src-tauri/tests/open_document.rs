@@ -441,18 +441,41 @@ fn opens_authorized_unicode_long_path_with_native_identity() {
 }
 
 #[test]
-fn path_replacement_does_not_reuse_the_open_document_identity() {
+fn path_replacement_preserves_logical_document_without_adopting_disk_identity() {
     let (mut service, reference) = open_bytes(b"same bytes");
     let before = service.open_document(reference.clone()).unwrap();
+    let original_identity = service
+        .document_lease(&before.document_id)
+        .unwrap()
+        .identity
+        .clone();
     let path = PathBuf::from(&before.metadata.display_path);
     let archived = path.with_file_name("archived.txt");
     // The open identity lease must allow rename while preventing reuse of the old file ID.
     fs::rename(&path, &archived).unwrap();
     fs::write(&path, b"same bytes").unwrap();
-    let after = service.open_document(reference).unwrap();
-    assert_ne!(before.document_id, after.document_id);
+    let after = service.open_document(reference.clone()).unwrap();
+    // T111 keeps the logical buffer until explicit reload; reading the replacement
+    // must still expose its different disk identity and must not adopt its lease.
+    assert_eq!(before.document_id, after.document_id);
+    assert_ne!(before.canonical_identity, after.canonical_identity);
     assert_ne!(before.metadata.disk_revision, after.metadata.disk_revision);
+    assert_eq!(
+        service
+            .document_lease(&before.document_id)
+            .unwrap()
+            .identity,
+        original_identity
+    );
     assert_eq!(fs::read(archived).unwrap(), b"same bytes");
+    assert!(service.release_document(&before.document_id).unwrap());
+    let reopened = service.open_document(reference).unwrap();
+    assert_ne!(before.document_id, reopened.document_id);
+    assert_eq!(after.canonical_identity, reopened.canonical_identity);
+    assert_eq!(
+        after.metadata.disk_revision,
+        reopened.metadata.disk_revision
+    );
 }
 
 #[test]

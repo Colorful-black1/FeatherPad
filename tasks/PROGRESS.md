@@ -5,7 +5,7 @@
 - 产品名称：**轻羽 FeatherPad**。
 - 当前交付：完整产品方案、86项功能矩阵、模块规格、UI规范与离线交互原型、技术/本机环境文档、M0–M5实现计划、57个开发任务、agent执行入口。
 - 产品代码：**M0/G0、M1/T101–T114通过**。保存/编辑/树/搜索/标签/命令/恢复、外部变化与安全冲突处理、设置/主题/字体、最近记录与隐私关闭、字号与键盘导航均有相关真实Release证据。T114实际Windows 11平台样本也已完成；G1整体关卡尚未通过，更不是完整v1。
-- 当前：**T114完成，下一项T115/G1整体回归和M1逐项证据审计**。完整范围保持M0–M5全部86项必需功能；双组、多窗口和完整隐私管理继续由相应后续任务实现。
+- 当前：**T114已提交`810a9bd`；T115/G1审计发现的恢复锁竞争已修复并通过相关Release，下一切片补F-FILE-015手动只读试开**。G1仍未通过，需补齐入口、最终逐项报告和试用包；完整范围保持M0–M5全部86项必需功能。
 - 本次交付检查：详见 [DELIVERY-CHECK](../docs/DELIVERY-CHECK.md)，不代表产品关卡G0–G5通过。
 
 ## 已核查环境
@@ -13,6 +13,15 @@
 复用本机Node22.13.0、pnpm10.32.1、Rust1.99.1、VS2022 Build Tools C++、Windows SDK10.0.26100.0、WebView2。未安装新开发工具。严格遵守新增安装与缓存仅在E:\Codeing，入口见 [ENVIRONMENT](../docs/ENVIRONMENT.md)。
 
 ## 实施证据（未来逐任务追加）
+
+### 2026-11-02 T115进行中：整体回归及恢复锁竞争修复
+
+- F-FILE-010/011、F-DESK-011相关修复：多个文档周期快照争用总预算锁时，临时BUSY曾永久阻止该版本再次保护。`storage_budget.rs`仅对锁`WouldBlock`标`retryable:true`；`recovery.ts`保留失败提示并按原1秒调度重试，成功Ack才标保护。明确重试旧失败版本后遇BUSY也会清除旧屏障。其他BUSY/满盘/权限/未知结果仍停止自动重试，热退出失败仍可见且不自行退出；无新依赖/grant/IPC权限。
+- 整体基线：`scripts/check.ps1`首轮exit101，TS216/类型/ESLint通过，T101旧身份测试与T111既有逻辑ID契约冲突。保留用例并补强不同canonical identity/revision、旧lease不接纳和释放后新ID，定向19项通过；随后Rust全套140 passed/1项100k专项ignored、fmt/clippy exit0。Web首轮66/68通过，补生命周期夹具和精确dirty标记后定向4项通过，保留打开顺序/参数并新增编辑前后全部IPC相同断言。日志`.artifacts/T115/logs/{check,identity-reproduction,identity-final,integration-final,web-all,web-affected-final}.log`。
+- 新增`tests/desktop/mvp.ts`并加入原生project与`test:desktop:all`：中文两级懒加载树、MD/Java/JSON/SQL/XML/HTML/TXT七类文件的语言检测/编辑/保存字节、无标题取消/首次保存、跨标签undo通过。原生11项首轮9通过/2失败；回收测试现同时核对明确回收成功及通用缺失提示，并在删除前等操作按钮可用，原字节/恢复断言保留。保存失败定向捕获真实BUSY后才修复，证据日志`{native-m1,native-saving-workspace}.log`及相应native目录保留。
+- 修复验证：新增模型先红后绿，最终恢复/热退出/保存3文件23项、Rust预算3项、Web恢复副本1项、类型/受影响ESLint/fmt/clippy均exit0。日志`{recovery-busy-red,recovery-busy-final,recovery-exit-save-final,rust-storage-contention,web-recovery-final,typecheck-final,lint-summary-final,clippy-recovery-fix}.log`。首轮修复Release真实mvp/saving/workspace/recovery 4 passed/2.6分钟/exit0，证据`.artifacts/native/2026-11-02T14-49-39-776Z-d82208d7-4150-4b27-9f50-be1e5ed6ab0e/`，其中mvp截图已检查；此轮恢复包含既有受控强杀，未重复满盘/100k/大文件专项。
+- 最终`pnpm build`exit0：12,412,928 bytes，SHA256 `2B99731FF7B8B31D5BE7E354A3D96D10A5D1712DA60B9EF0552FE508B78D0EB6`，WebView2 156.0.4314.58，主JS776.88kB/gzip245.18kB警告保留。保存/恢复相关真实Release复验2 passed/55.3秒/exit0，证据`.artifacts/native/2026-11-02T14-55-50-061Z-1ceb50b1-c204-4785-8ed5-07811352f8e8/{saving,recovery}/native-release.json`及`{release-build-final,native-contention-edge-final}.log`。对应exe保留于`.artifacts/T115/release-2B99731F/featherpad.exe`，不将它称作已通过G1的试用包；其余未相关能力按代码/构建关联性复用，未声称新exe全套重跑。
+- code-review-and-quality审查无新增必改项。F-FILE-015严格二进制拒绝/UTF16识别已有证据，但手动只读试开入口尚缺，下一切片必须补齐及相关真实验收，不能借T201依赖G1推迟。README明确可选小地图不可用且默认关闭；M1最终逐项报告/试用包待补，G1及M2–M5未通过。所有失败产物及未提交的`docs/CLEANUP-AFTER-DEVELOPMENT.md`保留，未自动清理。
 
 ### 2026-11-02 T114完成：字号、焦点导航和实际Windows辅助功能
 

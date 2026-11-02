@@ -160,7 +160,10 @@ export class RecoveryCoordinator {
         return acknowledged;
       });
       if (!result.ok && attemptedVersion !== null) {
-        this.failedVersions.set(id, attemptedVersion);
+        // Only confirmed lock contention is safe to reschedule without new input.
+        // Keep real failures/unknown writes visible and fenced at this version.
+        if (result.error.code === 'BUSY' && result.error.retryable) this.failedVersions.delete(id);
+        else this.failedVersions.set(id, attemptedVersion);
         this.registry.markRecoveryFailure(id, attemptedVersion, result.error.message);
       }
       return result;

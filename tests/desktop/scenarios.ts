@@ -13,6 +13,7 @@ import { verifyNativeForcedExit } from './forced-exit';
 import { verifyNativeTabs } from './tabs';
 import { verifyNativeCommands } from './commands';
 import { verifyNativeExternal } from './external';
+import { verifyNativeMvp } from './mvp';
 
 const runFile = promisify(execFile);
 type ChooserAction = 'open' | 'open-folder' | 'open-degraded' | 'open-large-chunk' | 'open-head-preview' | 'open-fault' | 'save' | 'cancel' | 'inspect-external' | 'confirm-external' | 'reject-external';
@@ -52,6 +53,8 @@ export async function runFocusedNativeScenario(scenario: string, context: Native
   const { page, child, dataDir, evidence, cleanupTasks } = context;
   const chooser = new NativeChooser(context);
   switch (scenario) {
+    case 'mvp':
+      return verifyNativeMvp(page, dataDir, evidence, (action, target) => chooser.select(action, target));
     case 'external':
       return verifyNativeExternal(page, dataDir, evidence, (action, target) => chooser.select(action, target));
     case 'commands':

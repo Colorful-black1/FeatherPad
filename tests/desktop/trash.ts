@@ -94,7 +94,8 @@ export async function verifyNativeTrash(page: Page, dataDir: string, root: strin
   await dialog.getByRole('button', { name: '移至回收站', exact: true }).click();
   await expect(dialog).not.toBeVisible();
   await expect(page.getByRole('treeitem', { name, exact: true })).toHaveCount(0);
-  await expect(page.getByRole('note')).toContainText('文件已移至回收站');
+  await expect(page.getByText('已移至系统回收站。已打开的内容仍保留，可另存为新文件。', { exact: true })).toBeVisible();
+  await expect(page.getByRole('note')).toContainText('原文件当前不可用，当前内容仍保留。草稿已获得落盘保护。');
   await expect(editor).toHaveText(intended);
   expect(await stat(source).then(() => true, () => false)).toBe(false);
   await editor.focus();
@@ -119,6 +120,7 @@ export async function verifyNativeTrash(page: Page, dataDir: string, root: strin
   await page.keyboard.press('Control+End');
   await page.keyboard.insertText(' 未保存后代😀');
   const nestedText = '目录后代原件 未保存后代😀';
+  await expect(page.getByRole('button', { name: '移至回收站', exact: true })).toBeEnabled();
   await folderRow.press('Delete');
   const directoryDialog = page.getByRole('dialog', { name: '移至回收站' });
   await expect(directoryDialog).toContainText('文件夹及其中全部内容');
