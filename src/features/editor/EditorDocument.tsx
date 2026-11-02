@@ -14,6 +14,7 @@ export function EditorDocument({ registry, id, autoFocus }: { registry: Document
   const languageRevision = document?.summary.languageRevision;
   const bracketMatching = document?.summary.bracketMatching;
   const closeBrackets = document?.summary.closeBrackets;
+  const closing = document?.summary.closing;
   useEffect(() => {
     const record = registry.getDocument(id);
     if (!parent.current || !record) return;
@@ -39,7 +40,7 @@ export function EditorDocument({ registry, id, autoFocus }: { registry: Document
       detachView();
       view.destroy();
     };
-  }, [id, registry, autoFocus, readOnlyReason, indentWidth, languageId, languageRevision, bracketMatching, closeBrackets]);
+  }, [id, registry, autoFocus, readOnlyReason, indentWidth, languageId, languageRevision, bracketMatching, closeBrackets, closing]);
   if (!document) return null;
   return <section className="document-view" role="tabpanel" id={`panel-${id}`} aria-labelledby={`tab-${id}`} tabIndex={-1}>
     <header className="document-heading"><span>{document.summary.displayPath ?? document.summary.title}</span><span>{document.source?.mode === 'large-readonly' ? '只读分块' : document.source?.mode === 'head-preview' ? '限量预览' : document.summary.readOnlyReason ? '只读' : document.source?.mode === 'degraded' ? '纯文本 · 降级' : '文本'}</span></header>

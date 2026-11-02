@@ -6,7 +6,7 @@ import { workspace, type WorkspaceSnapshot, type WorkspaceStore } from './store'
 
 interface ExplorerProps {
   currentReference: FileRef | undefined;
-  onOpen: (reference: FileRef) => void;
+  onOpen: (reference: FileRef, intent?: 'preview' | 'pinned') => void;
   onRenamed?: ((documents: readonly RenamedDocument[]) => void) | undefined;
   onTrash?: ((entry: DirectoryEntry) => void) | undefined;
   mutationBlocked?: boolean;
@@ -25,7 +25,7 @@ interface DirectoryContentsProps {
   parentKey: string | null;
   snapshot: WorkspaceSnapshot;
   currentReference: FileRef | undefined;
-  onOpen: (reference: FileRef) => void;
+  onOpen: (reference: FileRef, intent?: 'preview' | 'pinned') => void;
   onRenamed?: ((documents: readonly RenamedDocument[]) => void) | undefined;
   editing: EditingEntry | null;
   beginEditing: (editing: EditingEntry) => void;
@@ -52,7 +52,7 @@ function EntryRow({
   parentKey: string | null;
   snapshot: WorkspaceSnapshot;
   currentReference: FileRef | undefined;
-  onOpen: (reference: FileRef) => void;
+  onOpen: (reference: FileRef, intent?: 'preview' | 'pinned') => void;
   onRenamed?: ((documents: readonly RenamedDocument[]) => void) | undefined;
   editing: EditingEntry | null;
   beginEditing: (editing: EditingEntry) => void;
@@ -70,7 +70,7 @@ function EntryRow({
   function activate() {
     store.select(entry);
     if (expandable) store.toggleDirectory(entry);
-    else onOpen(entry.ref);
+    else onOpen(entry.ref, 'preview');
   }
 
   function navigate(event: KeyboardEvent<HTMLButtonElement>) {
@@ -140,6 +140,7 @@ function EntryRow({
       data-tree-parent={parentKey ?? ''}
       style={{ '--tree-depth': depth } as CSSProperties}
       onClick={activate}
+      onDoubleClick={() => { if (!expandable && !['junction', 'symlink'].includes(entry.kind)) onOpen(entry.ref, 'pinned'); }}
       onKeyDown={navigate}
     >
       <span className={`tree-chevron ${expandable ? '' : 'tree-chevron-empty'}`} aria-hidden="true">{expanded ? '▾' : '▸'}</span>
@@ -204,7 +205,7 @@ function DirectoryContents({
         );
         if (!result.ok) return result.error.message;
         finishEditing(result.value.ref.relativePath);
-        if (result.value.kind === 'file') onOpen(result.value.ref);
+        if (result.value.kind === 'file') onOpen(result.value.ref, 'pinned');
         return null;
       }}
       onCancel={() => finishEditing(reference.relativePath)}

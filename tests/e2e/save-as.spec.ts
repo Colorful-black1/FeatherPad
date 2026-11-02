@@ -41,7 +41,7 @@ test('Web mock: first-save cancellation preserves the draft and copy keeps the s
   await page.evaluate(() => { document.documentElement.style.zoom = '2'; });
   await expect(page.getByRole('button', { name: '关闭提示', exact: true })).toBeInViewport();
   await expect(page.locator('.cm-editor')).toBeInViewport();
-  await page.screenshot({ path: '.artifacts/T102/save-as-web.png' });
+  await page.screenshot({ path: test.info().outputPath('save-as-web.png') });
 });
 
 test('Web mock: a read-only complete document becomes editable after saving elsewhere', async ({ page }) => {

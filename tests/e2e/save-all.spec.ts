@@ -52,7 +52,7 @@ test('Web mock: save-all lists a third-item failure and keeps that buffer dirty 
   await expect(results.getByRole('button', { name: '关闭保存结果' })).toBeInViewport();
   await expect(page.locator('.cm-editor')).toBeInViewport();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  await page.screenshot({ path: '.artifacts/T102/save-all-failure-web.png' });
+  await page.screenshot({ path: test.info().outputPath('save-all-failure-web.png') });
   await results.getByRole('button', { name: '关闭保存结果' }).click();
   await expect(page.getByRole('button', { name: '全部保存', exact: true })).toBeFocused();
 });

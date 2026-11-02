@@ -99,7 +99,7 @@ test('Web CodeMirror: language highlighting, bracket pairing and independent fea
   await expect(page.getByRole('combobox', { name: '语言模式' })).toHaveValue('auto');
   await page.getByRole('tab', { name: /无标题 1/ }).click();
   await expect(page.getByRole('combobox', { name: '语言模式' })).toHaveValue('java');
-  await page.screenshot({ path: '.artifacts/T106/editor-web.png' });
+  await page.screenshot({ path: test.info().outputPath('editor-web.png') });
 });
 
 test('Web Chromium composition input inserts CJK once without duplicate bracket pairs', async ({ page }) => {

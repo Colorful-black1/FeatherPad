@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import type { KeyboardEvent } from 'react';
 import { Shell } from '../shared/ui/Shell';
 import { files } from '../bridge/files';
 import { EditorDocument } from '../features/editor/EditorDocument';
 import { EditorStatus } from '../features/editor/EditorStatus';
 import { languageLabel, languageOptions, type LanguageId } from '../features/editor/editor-language';
 import { documents } from '../features/editor/documents';
+import { tabs } from '../features/editor/tabs';
+import { TabStrip } from '../features/editor/TabStrip';
+import { CloseDialog, type CloseTarget } from '../features/editor/CloseDialog';
 import { saves } from '../features/editor/save';
 import { saveAll } from '../features/editor/save-all';
 import { SaveAllResults } from '../features/editor/SaveAllResults';
@@ -27,12 +29,19 @@ export function App() {
   const [dark, setDark] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches);
   const [sidebarOpen, setSidebarOpen] = useState(() => window.matchMedia('(min-width: 1100px)').matches);
   const snapshot = useSyncExternalStore(documents.subscribe, documents.getSnapshot);
+  const tabState = useSyncExternalStore(tabs.subscribe, tabs.getSnapshot);
   const batch = useSyncExternalStore(saveAll.subscribe, saveAll.getSnapshot);
   const batchBusy = batch.phase === 'running' || batch.phase === 'cancelling';
   const current = snapshot.documents.find(document => document.id === snapshot.activeId);
   const currentReference = current ? documents.getDocument(current.id)?.source?.ref : undefined;
   const [autoFocus, setAutoFocus] = useState(true);
-  const [busy, setBusy] = useState(false);
+  const [openingCount, setOpeningCount] = useState(0);
+  const busy = openingCount > 0;
+  const setBusy = useCallback((active: boolean) => { setOpeningCount(count => count + (active ? 1 : -1)); }, []);
+  const [closingCount, setClosingCount] = useState(0);
+  const [closeTarget, setCloseTarget] = useState<CloseTarget | null>(null);
+  const closeOrigin = useRef<HTMLElement | null>(null);
+  const closingIds = useRef(new Set<DocumentId>());
   const [savingCount, setSavingCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -46,10 +55,10 @@ export function App() {
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
   }, [dark]);
 
-  const openOne = useCallback(async (reference: FileRef): Promise<string | null> => {
-    const result = await files.open(reference);
+  const openOne = useCallback(async (reference: FileRef, intent: 'preview' | 'pinned' = 'pinned'): Promise<string | null> => {
+    const result = await tabs.open(reference, intent);
     if (result.ok) {
-      documents.openDocument(result.value);
+      if (result.value.warning && result.value.warning !== tabs.getSnapshot().warning) setNotice(result.value.warning);
       return null;
     }
     if (result.error.code === 'TOO_LARGE') {
@@ -79,12 +88,12 @@ export function App() {
     } finally { opening.current = false; setBusy(false); }
   }, [openOne, setError, setBusy, setAutoFocus]);
 
-  const openTreeFile = useCallback(async (reference: FileRef) => {
+  const openTreeFile = useCallback(async (reference: FileRef, intent: 'preview' | 'pinned') => {
     setAutoFocus(true);
     setBusy(true);
     setError(null);
     try {
-      const failure = await openOne(reference);
+      const failure = await openOne(reference, intent);
       if (failure) setError(failure);
     } finally { setBusy(false); }
   }, [openOne, setBusy, setError]);
@@ -93,15 +102,42 @@ export function App() {
     setError(null);
     setBusy(true);
     try {
-      const result = await files.open(reference, 'head-preview');
+      const result = await tabs.open(reference, 'pinned', 'head-preview');
       if (result.ok) {
-        documents.openDocument(result.value);
         setPreviewCandidates(candidates => candidates.filter(candidate => candidate !== reference));
       } else setError(result.error.message);
     } finally { setBusy(false); }
   }, [setBusy, setError]);
 
-  const newFile = useCallback(() => { setAutoFocus(true); documents.createUntitled(); }, [setAutoFocus]);
+  const newFile = useCallback(() => { setAutoFocus(true); void tabs.createUntitled(); }, [setAutoFocus]);
+
+  const focusAfterClose = useCallback(() => {
+    setAutoFocus(true);
+    requestAnimationFrame(() => {
+      const id = documents.getSnapshot().activeId;
+      if (id) { if (!documents.focus(id)) window.document.getElementById(`panel-${id}`)?.focus(); }
+      else window.document.querySelector<HTMLButtonElement>('.welcome-actions button')?.focus();
+    });
+  }, []);
+
+  const requestClose = useCallback(async (id: DocumentId) => {
+    if (batchBusy || closingIds.current.has(id)) return;
+    const document = documents.getDocument(id);
+    if (!document) return;
+    setAutoFocus(false);
+    if (document.summary.dirty) {
+      closeOrigin.current = window.document.activeElement instanceof HTMLElement ? window.document.activeElement : null;
+      setCloseTarget({ id, version: document.summary.version });
+      return;
+    }
+    closingIds.current.add(id);
+    setClosingCount(count => count + 1);
+    try {
+      const result = await tabs.close(id, document.summary.version, 'clean');
+      if (!result.ok) setError(result.error.message);
+      else if (result.value.closed) focusAfterClose();
+    } finally { closingIds.current.delete(id); setClosingCount(count => count - 1); }
+  }, [batchBusy, focusAfterClose]);
 
   const saveCurrent = useCallback(async () => {
     if (saveAll.getSnapshot().phase === 'running' || saveAll.getSnapshot().phase === 'cancelling') return;
@@ -157,10 +193,15 @@ export function App() {
       if (event.key.toLowerCase() === 'n') { event.preventDefault(); newFile(); }
       if (event.key.toLowerCase() === 'o') { event.preventDefault(); void openFile(); }
       if (event.key.toLowerCase() === 's') { event.preventDefault(); void saveCurrent(); }
+      if (event.key.toLowerCase() === 'w') {
+        event.preventDefault();
+        const id = documents.getSnapshot().activeId;
+        if (id) void requestClose(id);
+      }
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [newFile, openFile, openFind, saveCurrent, saveDestination]);
+  }, [newFile, openFile, openFind, saveCurrent, saveDestination, requestClose]);
 
   async function openFolder() {
     if (opening.current) return;
@@ -179,31 +220,20 @@ export function App() {
 
   function selectTab(id: DocumentId) { setAutoFocus(false); documents.activate(id); }
 
-  function navigateTabs(event: KeyboardEvent<HTMLButtonElement>, index: number) {
-    const count = snapshot.documents.length;
-    const target = event.key === 'ArrowRight' ? (index + 1) % count
-      : event.key === 'ArrowLeft' ? (index + count - 1) % count
-        : event.key === 'Home' ? 0 : event.key === 'End' ? count - 1 : null;
-    const document = target === null ? undefined : snapshot.documents[target];
-    if (!document) return;
-    event.preventDefault();
-    selectTab(document.id);
-    window.document.getElementById(`tab-${document.id}`)?.focus();
-  }
-
   return (
     <Shell
       sidebarOpen={sidebarOpen}
       dark={dark}
       onToggleSidebar={() => setSidebarOpen(open => !open)}
       onToggleTheme={() => setDark(value => !value)}
-      sidebar={<Explorer currentReference={currentReference} onOpen={reference => void openTreeFile(reference)}
-        onTrash={setTrashEntry} mutationBlocked={busy || savingCount > 0 || batchBusy}
+      sidebar={<Explorer currentReference={currentReference} onOpen={(reference, intent) => void openTreeFile(reference, intent ?? 'preview')}
+        onTrash={setTrashEntry} mutationBlocked={busy || savingCount > 0 || batchBusy || closingCount > 0}
         onRenamed={renamed => documents.applyRenamedPaths(renamed)} />}
-      status={<><span>{batchBusy ? '正在全部保存…' : savingCount > 0 ? '正在保存…' : busy ? '正在打开…' : current ? current.readOnlyReason ? '只读' : current.dirty ? '未保存修改' : current.displayPath ? '未修改' : '未命名' : '就绪'}</span>{current && <EditorStatus registry={documents} id={current.id} summary={current} />}<span className="status-end">{current ? `${current.format.encoding.toUpperCase()}${current.format.bom === 'none' ? '' : ' BOM'} · ${current.format.lineEnding.toUpperCase()}` : '轻羽 FeatherPad'}</span></>}
+      status={<><span>{closingCount > 0 || current?.closing ? '正在关闭…' : batchBusy ? '正在全部保存…' : savingCount > 0 ? '正在保存…' : busy ? '正在打开…' : current ? current.readOnlyReason ? '只读' : current.dirty ? '未保存修改' : current.displayPath ? '未修改' : '未命名' : '就绪'}</span>{current && <EditorStatus registry={documents} id={current.id} summary={current} />}<span className="status-end">{current ? `${current.format.encoding.toUpperCase()}${current.format.bom === 'none' ? '' : ' BOM'} · ${current.format.lineEnding.toUpperCase()}` : '轻羽 FeatherPad'}</span></>}
     >
       {error && <div className="notice error-notice" role="alert"><span>{error}</span><button onClick={() => setError(null)}>关闭提示</button></div>}
       {notice && <div className="notice error-notice" aria-live="polite"><span>{notice}</span><button onClick={() => setNotice(null)}>关闭提示</button></div>}
+      {tabState.warning && <p className="notice" role="alert">{tabState.warning}</p>}
       {previewCandidates.length > 0 && <div className="notice preview-choice" aria-live="polite">
         <span>超过100MiB的文件不会自动加载完整内容。请选择是否只读预览前1MiB。</span>
         <span className="preview-choice-actions">
@@ -223,6 +253,8 @@ export function App() {
           <button id="save-all-button" className="plain-button" onClick={() => void saveAll.run()} disabled={savingCount > 0 || batchBusy || !snapshot.documents.some(document => document.dirty)}>全部保存</button>
           <button className="plain-button" onClick={() => void saveDestination()} disabled={!current.canSaveAs || savingCount > 0 || batchBusy} aria-keyshortcuts="Control+Shift+s">另存为</button>
           <button className="plain-button" onClick={() => void saveDestination('copy')} disabled={!current.canSaveAs || savingCount > 0 || batchBusy}>保存副本</button>
+          <button type="button" className="plain-button tab-pin-control" onClick={() => tabs.pin(current.id)}
+            disabled={tabState.previewId !== current.id || current.closing}>{tabState.previewId === current.id ? '固定标签' : '已固定'}</button>
           <label className="toolbar-field">缩进
             <select aria-label="缩进宽度" value={current.indentWidth} onChange={event => {
               const width = Number(event.currentTarget.value);
@@ -246,14 +278,9 @@ export function App() {
         <FindBar registry={documents} id={current.id} version={current.version} readOnlyReason={current.readOnlyReason}
           request={findRequest?.id === current.id ? findRequest : null} open={findOpen} onClose={() => setFindOpen(false)} />
         <SaveAllResults />
-        <div className="document-tabs" role="tablist" aria-label="打开的文档">
-          {snapshot.documents.map((document, index) => <button
-            key={document.id} id={`tab-${document.id}`} role="tab" aria-selected={document.id === snapshot.activeId}
-            aria-controls={document.id === snapshot.activeId ? `panel-${document.id}` : undefined}
-            tabIndex={document.id === snapshot.activeId ? 0 : -1} title={document.displayPath ?? document.title}
-            onClick={() => selectTab(document.id)} onKeyDown={event => navigateTabs(event, index)}
-          ><span>{document.title}</span>{document.dirty && <span className="dirty-marker" aria-label="有未保存修改">●</span>}</button>)}
-        </div>
+        <TabStrip documents={snapshot.documents} activeId={snapshot.activeId} previewId={tabState.previewId}
+          busy={busy || savingCount > 0 || batchBusy || closingCount > 0} onSelect={selectTab}
+          onPin={id => tabs.pin(id)} onClose={id => void requestClose(id)} />
         <EditorDocument key={snapshot.activeId} registry={documents} id={snapshot.activeId} autoFocus={autoFocus} />
       </> : <div className="welcome">
         <div className="welcome-content">
@@ -267,6 +294,15 @@ export function App() {
           </div>
         </div>
       </div>}
+      {closeTarget && <CloseDialog key={closeTarget.id} target={closeTarget} registry={documents} tabs={tabs}
+        onClosed={() => { setCloseTarget(null); focusAfterClose(); }}
+        onCancel={() => {
+          setCloseTarget(null);
+          requestAnimationFrame(() => {
+            if (closeOrigin.current?.isConnected) closeOrigin.current.focus();
+            else { const id = documents.getSnapshot().activeId; if (id) documents.focus(id); }
+          });
+        }} />}
       {trashEntry && <TrashDialog entry={trashEntry} store={workspace} documents={snapshot.documents}
         captureSnapshots={ids => documents.captureTrashSnapshots(ids)}
         saveDocuments={async ids => {

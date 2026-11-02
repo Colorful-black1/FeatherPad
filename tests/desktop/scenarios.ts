@@ -10,6 +10,7 @@ import { verifyNativeDegradedEditing } from './degraded';
 import { verifyNativeLargeFiles } from './large-files';
 import { verifyNativeDiskFull } from './disk-full';
 import { verifyNativeForcedExit } from './forced-exit';
+import { verifyNativeTabs } from './tabs';
 
 const runFile = promisify(execFile);
 type ChooserAction = 'open' | 'open-folder' | 'open-degraded' | 'open-large-chunk' | 'open-head-preview' | 'open-fault' | 'save' | 'cancel';
@@ -49,9 +50,11 @@ export async function runFocusedNativeScenario(scenario: string, context: Native
   const { page, child, dataDir, evidence, cleanupTasks } = context;
   const chooser = new NativeChooser(context);
   switch (scenario) {
+    case 'tabs':
+      return verifyNativeTabs(page, dataDir, evidence, (action, target) => chooser.select(action, target));
     case 'workspace':
       return verifyNativeWorkspace(page, dataDir, target => chooser.select('open-folder', target), evidence,
-        (action, target) => chooser.select(action, target));
+        (action, target) => chooser.select(action, target), 'workspace');
     case 'search':
       return verifyNativeSearch(page, dataDir, target => chooser.select('open', target), evidence);
     case 'large-files': {

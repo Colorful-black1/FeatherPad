@@ -72,7 +72,7 @@ test('Web mock: multi-open isolates failures, retains buffers/undo and sends no 
   await first.click();
   await expect(editor).toContainText('中文😀未保存');
   expect(errors).toEqual([]);
-  await page.screenshot({ path: '.artifacts/T101/documents-web.png' });
+  await page.screenshot({ path: test.info().outputPath('documents-web.png') });
 });
 
 test('new document keyboard input stays usable at 200 percent zoom', async ({ page }) => {
@@ -88,7 +88,7 @@ test('new document keyboard input stays usable at 200 percent zoom', async ({ pa
   await expect(page.locator('.cm-line')).toHaveText(['中文😀', '独立草稿']);
   await expect(page.getByRole('button', { name: '打开文件', exact: true })).toBeInViewport();
   await expect(page.locator('.cm-editor')).toBeInViewport();
-  await page.screenshot({ path: '.artifacts/T101/documents-zoom200.png' });
+  await page.screenshot({ path: test.info().outputPath('documents-zoom200.png') });
 });
 
 test('Web mock: all selection grants failing leaves existing content intact and an empty cancellation clears the notice', async ({ page }) => {

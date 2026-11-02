@@ -122,7 +122,7 @@ test('Web mock: saving refreshes revision and identity before a new confirmation
   await dialog.getByRole('button', { name: '保存修改并重新确认' }).click();
   await expect(dialog).toContainText('0 个有未保存修改');
   expect((await calls(page)).filter(call => call.command === 'trash_entry')).toHaveLength(0);
-  await page.screenshot({ path: '.artifacts/T105/trash-web-zoom200.png' });
+  await page.screenshot({ path: test.info().outputPath('trash-web-zoom200.png') });
   await dialog.getByRole('button', { name: '移至回收站', exact: true }).click();
   await expect(dialog).not.toBeVisible();
   const request = (await calls(page)).find(call => call.command === 'trash_entry')?.request;

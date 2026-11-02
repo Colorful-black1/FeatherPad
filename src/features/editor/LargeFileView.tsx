@@ -26,7 +26,7 @@ export function LargeFileView({ document }: LargeFileViewProps) {
   const request = useRef(0);
 
   async function loadPage(offset: number, previousStarts: number[]) {
-    if (!page || document.source === null || document.summary.missing || fragment?.kind !== 'chunked' || loading) return;
+    if (!page || document.source === null || document.summary.missing || document.summary.closing || document.releaseUncertain || fragment?.kind !== 'chunked' || loading) return;
     const requestId = ++request.current;
     setLoading(true);
     setError(null);
@@ -39,6 +39,7 @@ export function LargeFileView({ document }: LargeFileViewProps) {
     });
     if (requestId !== request.current) return;
     setLoading(false);
+    if (document.summary.missing || document.summary.closing || document.releaseUncertain) return;
     if (!result.ok) {
       setError(result.error.message);
       return;
@@ -78,8 +79,8 @@ export function LargeFileView({ document }: LargeFileViewProps) {
       <strong>第 {number.format(page.previousStarts.length + 1)} 页 · 第 {number.format(chunk.firstLine)} 行起</strong>
       <span>{number.format(chunk.byteEnd)} / {number.format(fragment.totalBytes)} 字节 · 只读</span>
       <span className="large-file-navigation">
-        <button className="plain-button" onClick={loadPrevious} disabled={document.summary.missing || page.previousStarts.length === 0 || loading}>上一块</button>
-        <button className="plain-button" onClick={loadNext} disabled={document.summary.missing || !chunk.hasMore || loading}>
+        <button className="plain-button" onClick={loadPrevious} disabled={document.summary.missing || document.summary.closing || document.releaseUncertain || page.previousStarts.length === 0 || loading}>上一块</button>
+        <button className="plain-button" onClick={loadNext} disabled={document.summary.missing || document.summary.closing || document.releaseUncertain || !chunk.hasMore || loading}>
           {loading ? '正在读取…' : chunk.hasMore ? '下一块' : '已到文件末尾'}
         </button>
       </span>

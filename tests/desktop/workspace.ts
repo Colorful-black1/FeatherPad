@@ -42,6 +42,7 @@ export async function verifyNativeWorkspace(
   openFolder: OpenFolder,
   evidence: string,
   chooseDestination: (action: 'save' | 'cancel', destination?: string) => Promise<void>,
+  scope: 'workspace' | 'regression' = 'regression',
 ) {
   const artifactRoot = path.resolve(process.cwd(), '.artifacts', 'T002');
   assertOwnedChild(artifactRoot, dataDir);
@@ -321,8 +322,8 @@ export async function verifyNativeWorkspace(
 
     await page.screenshot({ path: path.join(evidence, 'native-workspace-tree.png') });
     const trash = await verifyNativeTrash(page, dataDir, root, chooseDestination, grant);
-    const release = await verifyNativeRelease(page, root, grant);
-    const discard = await verifyNativeDiscard(page, dataDir, trash.failedDraft, trash.directoryDraft);
+    const release = scope === 'regression' ? await verifyNativeRelease(page, root, grant) : null;
+    const discard = scope === 'regression' ? await verifyNativeDiscard(page, dataDir, trash.failedDraft, trash.directoryDraft) : null;
     return {
       rootName,
       lazyNestedLoadVerified: true,
@@ -348,7 +349,8 @@ export async function verifyNativeWorkspace(
       ...trash,
       ...release,
       ...discard,
-      scope: `${trash.scope}; folder dialog, NTFS ACL and junction; 100k direct-child performance measured separately`,
+      coreIpcLifecycleChecksRun: scope === 'regression',
+      scope: `${trash.scope}; folder dialog, NTFS ACL and junction; 100k direct-child performance measured separately; low-level release/chunk/discard IPC checks ${scope === 'regression' ? 'run' : 'not run'}`,
     };
   } finally {
     await runFile('attrib.exe', ['-R', readOnly], { windowsHide: true }).catch(() => undefined);

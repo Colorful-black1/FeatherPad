@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { writeFile } from 'node:fs/promises';
 
 test('Web search: Unicode-safe options, navigation, capture replacement and single undo', async ({ page }) => {
   await page.goto('/');
@@ -37,7 +37,7 @@ test('Web search: Unicode-safe options, navigation, capture replacement and sing
   await editor.focus();
   await page.keyboard.press('Control+z');
   await expect(editor).toHaveText('cat scatter CAT 2 dog 3');
-  await page.screenshot({ path: '.artifacts/T108/search-web.png' });
+  await page.screenshot({ path: test.info().outputPath('search-web.png') });
 });
 
 test('Web search: CtrlF captures the current selection as a replaceable scope', async ({ page }) => {
@@ -108,8 +108,7 @@ test('Web search: a new query terminates stale worker work promptly', async ({ p
   await expect(findBar.locator('.find-result')).toHaveText('0 处');
   const elapsedMs = performance.now() - startedAt;
   expect(elapsedMs).toBeLessThan(250);
-  await mkdir('.artifacts/T108', { recursive: true });
-  await writeFile('.artifacts/T108/cancellation-web.json', JSON.stringify({
+  await writeFile(test.info().outputPath('cancellation-web.json'), JSON.stringify({
     scope: 'Web worker cancellation with a pathological regular expression; UI receives the replacement query result',
     measuredMs: elapsedMs,
     budgetMs: 250,

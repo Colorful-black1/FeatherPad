@@ -1,7 +1,7 @@
 # 开发任务清单
 
 当前阶段：**M0/G0已通过，开始M1**。`[ ]` 待做，`[~]` 进行中，`[x]` 通过验收。禁止仅因代码存在就打勾；关联 [计划](plan.md)、[进度](PROGRESS.md) 与 [完整功能矩阵](../docs/FEATURE-MATRIX.md)。范围写 `F-FILE-001..005` 表示含端点的连续ID。
-执行更新（2026-11-02）：T000–T005/G0、T101、T102、T103、T104、T105、T106与T108通过。T102已加入真实16MiB WSL2 `tmpfs`满盘场景：Release保存停在`write-temporary`，源文件不变、缓冲保持dirty、恢复正文和原件一致；Windows 9P错误31与NTFS错误112映射限制已明确记录。T106已用真实Release验证CodeMirror事务编辑、选区/字数、undo/redo、缩进、语言高亮、括号配对/匹配、剪贴板，以及Windows微软拼音候选窗提交；T108已用共享TS/Rust夹具和真实Release验证Unicode/大小写/整词、选区范围、零长度、非法式、捕获组、全部替换单次undo与只读保护。T105新建/重命名/仅回收站删除均通过真实Release验收，dirty先落盘、共享锁失败保源/保树、目录后代缓冲与缺失后另存已验证。下一项T107标签与关闭保护；G1尚未通过，不代表MVP或完整v1。
+执行更新（2026-11-02）：T000–T005/G0、T101–T108通过。T102已加入真实16MiB WSL2 `tmpfs`满盘场景：Release保存停在`write-temporary`，源文件不变、缓冲保持dirty、恢复正文和原件一致；Windows 9P错误31与NTFS错误112映射限制已明确记录。T106已用真实Release验证CodeMirror事务编辑、选区/字数、undo/redo、缩进、语言高亮、括号配对/匹配、剪贴板，以及Windows微软拼音候选窗提交；T108已用共享TS/Rust夹具和真实Release验证Unicode/大小写/整词、选区范围、零长度、非法式、捕获组、全部替换单次undo与只读保护。T105新建/重命名/仅回收站删除均通过真实Release验收。T107单预览/固定偏好、dirty关闭保存/放弃/取消、恢复副本清理及未知释放结果另存均通过相关真实Release。下一项T109命令入口与快捷键；完整恢复由T110推进，G1尚未通过，不代表MVP或完整v1。
 
 ## 执行约定
 
@@ -12,7 +12,7 @@
 - **Q**：受影响模块的类型/lint/行为检查；如`pnpm exec vitest run src/features/editor/close.test.ts`、`pnpm exec eslint src/features/editor/close.ts`。全局`pnpm typecheck`仅在共享契约/跨模块类型受影响时执行；所有命令检查exit code。
 - **R**：受影响Rust包/测试目标的fmt/clippy/test；如`cargo test --manifest-path src-tauri/Cargo.toml --test discard_recovery`，不随普通TS/UI修改重跑全部Rust测试。
 - **W**：受影响Web用例（如`pnpm test:e2e tests/e2e/trash.spec.ts`；mock只证明UI/bridge），M阶段再全量。
-- **D**：`pnpm test:desktop`只跑原生smoke；按能力用`pnpm exec playwright test --config desktop.config.ts --project workspace`等选择`saving/workspace/editor/search`；专项为`large-files/disk-full/forced-exit`。`pnpm test:desktop:all`保留原完整综合场景供M阶段。未实际执行的新入口/场景保持待验，不用smoke代替相关原生IO。
+- **D**：`pnpm test:desktop`只跑原生smoke；按能力用`pnpm exec playwright test --config desktop.config.ts --project tabs`等选择`saving/tabs/workspace/editor/search`；专项为`large-files/disk-full/forced-exit`。日常workspace只验树与变更流程，低层release/chunk/discard IPC仍在regression；`pnpm test:desktop:all`包含原完整综合场景及tabs供M阶段。未实际执行的新入口/场景保持待验，不用smoke代替相关原生IO。
 - **B**：普通相邻T可合并`pnpm build`及Release验收，高风险T完成必须有相关真实Release；记录产物hash及覆盖范围，已有同构建有效证据直接复用。
 - **P**：`pnpm bench:app`，固定版本/机器/夹具，10次样本取p95，完整进程树统计。
 
@@ -39,7 +39,7 @@ Q/R/W/D/B命令已建立；具体通过范围见PROGRESS，命令存在不等于
 | [x] T104 单根目录树 | T101 | F-WORK-001,F-WORK-003 | 打开根、懒加载/分页/排序/刷新/当前文件定位，空和拒绝态完整 | src/features/workspace/Explorer.tsx、src/features/workspace/store.ts、src-tauri/src/services/directories.rs | typecheck/lint、TS38、Rust66（100k基准另跑）、Web17、Release build、真实桌面1（55.2秒）exit0；原生空/无权限根恢复、205项分页、刷新保展开、junction拒绝、dirty保留；100k首分页159.669ms<300ms。见M1验收 |
 | [x] T105 树内变更 | T102,T104 | F-FILE-017,F-WORK-004..005 | 排他新建、不覆盖改名、仅回收站；dirty保存/保护/取消，失败保树、缺失缓冲可另存 | src/features/workspace/{Explorer,TrashDialog}.tsx、src-tauri/src/services/{file_ops,trash,windows_trash,recovery}.rs | 最终check.ps1 exit0：TS84/Rust89+1 ignored/Web31/fmt/clippy；Release build与真实桌面1（1.3分钟）exit0。原生锁定失败/草稿摘要/文件及目录回收/取消/新路径另存/越权拒绝已验。M1单项操作；多选编排仍由T206跟踪。 |
 | [x] T106 真实编辑内核 | T101 | F-EDIT-001..003,F-EDIT-008,F-EDIT-018 | CM事务/undo/缩进/括号/高亮及手动语言，IME正常 | src/features/editor/{documents,editor-state,EditorDocument,EditorStatus,editor-metrics,editor-language,language-loader}.ts/tsx | typecheck/lint、TS63、Rust66+1 ignored、Web22、Release build、真实桌面1（56.0秒）exit0；真实WebView2/CDP composition、系统剪辑板及Windows微软拼音候选窗均验证。见M1验收 |
-| [~] T107 标签与关闭保护 | T102,T106 | F-EDIT-013,F-FILE-018 | 每组单预览、dirty固定、关闭保存/放弃/取消不丢内容 | src/features/editor/tabs.ts、src/features/editor/TabStrip.tsx、src/features/editor/close.ts | a release及b放弃标记/物理清理/严格IPC通过真实Release：BUSY互斥、同版本重试、实际移除对应快照/保其他草稿与源绑定。TS87/Rust102/Web31、Release build/桌面1通过；下一c标签/脏关闭UI，T110恢复仍待做 |
+| [x] T107 标签与关闭保护 | T102,T106 | F-EDIT-013,F-FILE-018 | 单组单预览、dirty固定、关闭保存/放弃/取消不丢内容 | src/features/editor/{tabs,TabStrip,CloseDialog,close}.ts/tsx、src/app/App.tsx | 定向模型22、tabs Web7/相关Web7、相关eslint/typecheck、Release build均exit0；真实tabs1/12.6s及workspace1/20.2s通过，含恢复副本物理清理、外部冲突保源、取消路径、未知释放保副本另存与固定偏好重载。a/b原生IPC有效证据复用；完整会话恢复仍T110。见PROGRESS及M1验收 |
 | [x] T108 文件内搜索替换 | T106 | F-SEARCH-001..003 | 一致正则/整词语法，选区范围、计数、替换单次undo | src/features/search-tools/{FindBar,search-query}.ts/tsx、src/workers/find.worker.ts、tests/fixtures/search-semantics.json | typecheck/lint、TS74、Rust67+1 ignored、Web27、Release build、真实桌面1（56.8秒）exit0；共享TS/Rust语义夹具、真实只读文件与单次undo原生化均验证，取消耗时25.64ms<250ms。见M1验收 |
 | [ ] T109 命令入口与快捷键 | T107 | F-EDIT-017 | CtrlP/CtrlShiftP/快捷键全指向同一命令注册，启用态/焦点正确 | src/shared/commands/registry.ts、src/shared/ui/CommandPalette.tsx、src/app/register-commands.ts | Q/W/D：键盘循环/冲突提示/Escape恢复焦点 |
 | [ ] T110 恢复与热退出 | T102,T107 | F-FILE-010..011,F-DESK-011 | 草稿与dirty快照真实落盘，退出等flush，损坏隔离，恢复不覆盖源 | src/features/desktop/session.ts、src-tauri/src/services/recovery.rs、src-tauri/src/services/session.rs、src/features/desktop/RecoveryPanel.tsx | Q/R/D：强杀/重启、恢复文件变化、flush失败、未命名 |

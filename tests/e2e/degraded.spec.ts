@@ -38,5 +38,5 @@ test('Web mock: degraded complete text remains editable and sends the entire buf
   await expect(page.getByRole('button', { name: '保存', exact: true })).toBeInViewport();
   await expect(page.locator('.cm-editor')).toBeInViewport();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  await page.screenshot({ path: '.artifacts/T102/degraded-web-200.png' });
+  await page.screenshot({ path: test.info().outputPath('degraded-web-200.png') });
 });

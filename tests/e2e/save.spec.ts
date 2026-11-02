@@ -42,5 +42,5 @@ test('Web mock: delayed save Ack keeps newer input dirty, next save uses its rev
   const requests = await page.evaluate(() => Reflect.get(window, 'fixtureSaves') as { text: string; expectedDiskRevision: string }[]);
   expect(requests.map(request => request.text)).toEqual(['baseline 第一段', 'baseline 第一段 保存中新输入']);
   expect(requests[1]?.expectedDiskRevision).toBe('rev-1');
-  await page.screenshot({ path: '.artifacts/T102/save-web.png' });
+  await page.screenshot({ path: test.info().outputPath('save-web.png') });
 });

@@ -4,8 +4,8 @@
 
 - 产品名称：**轻羽 FeatherPad**。
 - 当前交付：完整产品方案、86项功能矩阵、模块规格、UI规范与离线交互原型、技术/本机环境文档、M0–M5实现计划、57个开发任务、agent执行入口。
-- 产品代码：**M0/G0、M1/T101、T102、T103、T104、T105、T106及T108通过**。真实Release保存/另存/副本/批次/覆盖/硬链接/进程终止、真实小容量满盘安全失败、<20MiB正常/降级编辑、20MiB分块只读、>100MiB显式预览、单根懒加载目录树、CodeMirror编辑/语言/系统中文IME，以及文件内搜索替换和只读保护均已验证；恢复和其余M1项仍未完成，G1未通过，更不是完整v1。
-- 当前：**T107标签与关闭保护进行中，下一切片c标签/关闭UI**。a资源释放和b版本化放弃/对应恢复副本清理的严格IPC均已通过真实Release；标签交互和保存/放弃/取消尚未接入。恢复与热退出/G1及以后仍未完成，继续M0–M5全部86项必需功能。
+- 产品代码：**M0/G0、M1/T101–T108通过**。真实Release保存/另存/副本/批次/覆盖/硬链接/进程终止、真实小容量满盘安全失败、<20MiB正常/降级编辑、20MiB分块只读、>100MiB显式预览、单根懒加载目录树、CodeMirror编辑/语言/系统中文IME、文件内搜索替换和只读保护，以及标签预览/固定和保存/放弃/取消关闭均已验证；恢复和其余M1项仍未完成，G1未通过，更不是完整v1。
+- 当前：**T107标签与关闭保护已通过，下一项T109命令入口与快捷键**。完整会话恢复与热退出由T110继续；固定偏好重载证据不代表启动恢复。G1及以后仍未完成，完整范围保持M0–M5全部86项必需功能。
 - 本次交付检查：详见 [DELIVERY-CHECK](../docs/DELIVERY-CHECK.md)，不代表产品关卡G0–G5通过。
 
 ## 已核查环境
@@ -32,7 +32,20 @@
 | 2026-11-01 / T002 | app-shell | React Shell/App/token/CSS、Web及原生测试 | typecheck/lint exit 0；Web 2 passed；真实WebView2 debug 1 passed | Web与原生范围分开，未测OS对话框 | .artifacts/T002/及docs/acceptance/M0.md | T002通过；下一T003 |
 | 2026-11-01 / T003.a–d（进行中） | F-DESK-013 | Rust models/grants/files/commands、AppManifest ACL、TS contracts/bridge、CodeMirror只读UI、测试与脚本 | typecheck/lint/TS单测3、Rust原生5、Web4、Release smoke1均exit 0；check.ps1 -Desktop exit 0；交互选择器三次超时，后次显式exit 1 | 原生Rust磁盘+junction，真实Release IPC/WebView2，Web mock独立 | docs/acceptance/M0.md；.artifacts/T003；.artifacts/T002/native-release.json | T003未完成OS选取验收，G0不勾选 |
 
-## T107.c1 关闭编排模型简记（2026-11-02，UI待接）
+## T107 标签与关闭保护完成（2026-11-02）
+
+- F-EDIT-013/F-FILE-018：单组至多一个预览，树单击预览、双击/输入/命令固定，已有固定标签不降级；结构操作串行，替换仅关闭仍干净且版本未变的旧预览，失败保留。固定偏好有schema/数量/大小限制，不存正文/grant，不自动打开文件；跟随另存/改名，同路径其他保留缓冲的偏好不被误清。同名显示父路径；键盘切换、关闭及最后标签回欢迎/焦点已接通。
+- CloseDialog默认取消，保存失败、选择路径取消、旧版本/新输入均保留正文；关闭最终阶段只读fence。放弃实际清理对应恢复副本并持久化版本标记；释放回执未知则保只读副本，真实另存后可恢复编辑。核心文件为editor/{tabs,TabStrip,CloseDialog,close,documents,EditorDocument,LargeFileView}、App/Explorer及样式，详见提交差异；a/b原生IPC沿用此前有效证据。
+- 定向模型22 passed（9个标签+13个关闭），.artifacts/T107-tabs-model-final.log；新增tabs Web 7 passed（.artifacts/T107-tabs-web-initial.log），相关documents/save-all/workspace Web 7 passed（.artifacts/T107-web-related.log）。Web明确mock；200%关闭按钮截图已视觉检查。受影响文件eslint及共享类型检查exit0，日志T107-tabs-lint-final、native-tabs-injection-lint/types、native-related-lint及final-types。
+- pnpm build exit0（.artifacts/T107-tabs-release-build.log），当前exe为10,988,032 bytes，SHA256 C3B933CEF7C09EC4E4548B992F0BBAF1AFB5EAB43DBF5D20F1D0B2DE49A85A05；主chunk641.69kB/gzip206.15kB警告保留，性能预算未变。构建终止exit0后才启动原生测试；后续仅测试/文档变更，复用同产物。
+- 真实Release tabs 1 passed/12.6s/exit0（.artifacts/T107-tabs-native-second.log），证据.artifacts/native/2026-11-02T03-15-58-242Z-5e8de583-5b98-4d6e-bdf1-5e03ad741a09/tabs/native-release.json：干净预览原生lease释放/重开新ID、dirty切换/undo/取消、外部冲突保源/另存保内存、无标题保存取消/再保存关闭、真实before-trash正文摘要/放弃清理receipt及marker、释放回执未知保副本再OS另存、固定偏好renderer重载均通过。冲突/固定标签两张原生截图已视觉检查；不声明完整会话恢复或OS缩放。
+- 首次tabs原生exit1（T107-tabs-native-first.log）保留：Tauri invoke是不可写属性，原测试赋值静默无效，故未注入回执丢失。修为测试独有的协议回调拦截，先收到真实release成功，再拒绝对应renderer回执；stat确认原生lease已消失，未伪造IO成功。只重跑tabs，没有重建产品或放宽断言。
+- 同构建workspace 1 passed/20.2s/exit0（.artifacts/T107-workspace-native.log）；证据.artifacts/native/2026-11-02T03-17-22-935Z-83382657-05fb-4e11-b115-da0af043ca2b/workspace/native-release.json，树懒加载/分页/定位、创建改名后保存、共享锁回收失败保源/保树、dirty后代保护/取消/缺失后另存均通过。日常workspace入口跳过无改动的低层release/chunk/discard IPC组合，coreIpcLifecycleChecksRun=false；原综合regression保留这些检查及全部断言。test:desktop:all现包含regression和新增tabs，列表发现不等于执行整体回归。
+- 测试输出修订：配置及native使用独立runId；本次相关旧Web回归仍曾使用固定截图路径，随后将全部Web显式截图/取消指标写入test.info().outputPath，后续不再覆盖旧路径。仅输出路径调整的用例未额外重跑，行为证据复用；没有自动清理历史产物，既有CLEANUP清单未改。两轮tabs及workspace留下受控回收站fixture，具体原路径在各运行dataDir和recycledFixtures；未枚举/清空用户回收站。
+- 本任务按用户新策略收尾：未重复全TS/Rust、综合桌面、大文件、100k、满盘、强杀或性能专项；G1仍待T109–T115。下一项T109，T110须实现真实快照周期、启动扫描及热退出，并遵守已有discard tombstone。
+- 收尾自审覆盖身份/版本、保存队列/关闭fence、恢复标记/未知回执、偏好边界及焦点；未发现未解决阻断项。新增证据输出路径的定向eslint exit0（T107-evidence-path-lint.log），阶段入口--list exit0且发现regression/tabs两项（T107-stage-regression-list.log，未执行整体），文档校验exit0/86功能/57任务（T107-docs-final.log）及git diff --check exit0。未新增依赖，未改断言或性能预算。
+
+## T107.c1 关闭编排模型简记（2026-11-02，当时UI待接）
 
 - close.ts复用SaveCoordinator逐文档队列：核对关闭版本，保存失败/路径取消/迟到Ack后有新输入均保留；最终清理/释放期间readonly fence，放弃失败推进恢复版本且保正文/undo/磁盘基线；释放未知则保只读未绑定副本，成功另存恢复绑定。removeClosed清理view映射/metrics/异步语言引用，激活右邻/左邻/欢迎；未暴露关闭UI。
 - typecheck/lint exit0（.artifacts/T107-close-core-typecheck.log、T107-close-core-lint.log）；TS100 passed（.artifacts/T107-close-core-unit.log），含13个关闭行为正反例。该批检查启动于用户验收策略调整前，后续小切片改为定向测试；当前Rust和真实Release沿用b3有效证据，不宣称本切片UI/新Release已验。下一步标签模型、TabStrip和CloseDialog，再按受影响场景收尾。

@@ -9,14 +9,14 @@ test('brand, theme and keyboard-accessible sidebar in the Web shell', async ({ p
   await expect(page.getByRole('heading', { name: '快开文件，专心编辑。' })).toBeVisible();
   const sidebar = page.getByRole('button', { name: '切换资源管理器' });
   await expect(sidebar).toHaveAttribute('aria-expanded', 'true');
-  await page.screenshot({ path: '.artifacts/T002/shell-light.png' });
+  await page.screenshot({ path: test.info().outputPath('shell-light.png') });
   await sidebar.focus();
   await page.keyboard.press('Enter');
   await expect(page.getByRole('complementary', { name: '资源管理器' })).toHaveCount(0);
   await expect(sidebar).toBeFocused();
   await page.getByRole('button', { name: '切换到深色主题' }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  await page.screenshot({ path: '.artifacts/T002/shell-dark.png' });
+  await page.screenshot({ path: test.info().outputPath('shell-dark.png') });
   expect(errors).toEqual([]);
 });
 
@@ -33,5 +33,5 @@ test('narrow overlay and 200 percent CSS zoom retain the document area', async (
   await page.evaluate(() => { document.documentElement.style.zoom = '2'; });
   await expect(page.getByRole('main', { name: '文档' })).toBeInViewport();
   await expect(page.getByRole('heading', { name: '快开文件，专心编辑。' })).toBeVisible();
-  await page.screenshot({ path: '.artifacts/T002/shell-zoom200.png' });
+  await page.screenshot({ path: test.info().outputPath('shell-zoom200.png') });
 });
