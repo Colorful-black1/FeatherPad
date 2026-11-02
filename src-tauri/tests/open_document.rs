@@ -4,6 +4,7 @@ use featherpad_lib::{
     models::{ErrorCode, OpenDocumentContent},
     services::{files::FileService, grants::GrantKind},
 };
+use std::os::windows::fs::symlink_file;
 use std::{fs, path::PathBuf};
 
 fn open_bytes(bytes: &[u8]) -> (FileService, featherpad_lib::models::FileRef) {
@@ -381,13 +382,21 @@ fn real_hardlinks_and_case_aliases_share_one_document_but_equal_bytes_do_not() {
     fs::create_dir_all(&root).unwrap();
     let original = root.join("Original.txt");
     let alias = root.join("alias.txt");
+    let symbolic = root.join("symbolic.txt");
     let different = root.join("different.txt");
     fs::write(&original, "same bytes").unwrap();
     fs::hard_link(&original, &alias).unwrap();
+    symlink_file(&original, &symbolic).unwrap();
     fs::write(&different, "same bytes").unwrap();
     let mut service = FileService::default();
     let mut opened = Vec::new();
-    for path in [&original, &alias, &root.join("ORIGINAL.TXT"), &different] {
+    for path in [
+        &original,
+        &alias,
+        &symbolic,
+        &root.join("ORIGINAL.TXT"),
+        &different,
+    ] {
         let reference = service
             .grants
             .register_selection(path, GrantKind::File)
@@ -396,14 +405,19 @@ fn real_hardlinks_and_case_aliases_share_one_document_but_equal_bytes_do_not() {
     }
     assert_eq!(opened[0].document_id, opened[1].document_id);
     assert_eq!(opened[0].document_id, opened[2].document_id);
+    assert_eq!(opened[0].document_id, opened[3].document_id);
     assert_eq!(
         opened[0].metadata.disk_revision,
         opened[1].metadata.disk_revision
     );
-    assert_ne!(opened[0].document_id, opened[3].document_id);
+    assert_eq!(
+        opened[0].metadata.disk_revision,
+        opened[2].metadata.disk_revision
+    );
+    assert_ne!(opened[0].document_id, opened[4].document_id);
     assert_ne!(
         opened[0].metadata.disk_revision,
-        opened[3].metadata.disk_revision
+        opened[4].metadata.disk_revision
     );
 }
 

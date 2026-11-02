@@ -1,5 +1,31 @@
 import { expect, test } from './test-fixture';
 
+test('Web CodeMirror: syntax selection grows, shrinks and bracket navigation preserves text', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: '新建文本', exact: true }).click();
+  await page.getByRole('combobox', { name: '语言模式' }).selectOption('json');
+  const editor = page.locator('.cm-content');
+  const status = page.getByRole('status');
+  const text = '{"a": {"b": 42}}';
+  await editor.focus();
+  await page.keyboard.insertText(text);
+  await expect(editor.locator('span').filter({ hasText: '42' }).first()).toBeVisible();
+  await page.keyboard.press('Control+Home');
+  for (let offset = 0; offset < 13; offset++) await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('Control+i');
+  await expect(status).toContainText('已选 2 字符');
+  await page.keyboard.press('Control+i');
+  await expect(status).toContainText('已选 7 字符');
+  await page.keyboard.press('Control+u');
+  await expect(status).toContainText('已选 2 字符');
+  await page.keyboard.press('Control+Home');
+  await page.keyboard.press('Control+Shift+Backslash');
+  await expect(status).toContainText('行 1，列 17');
+  await page.keyboard.press('Control+Shift+Backslash');
+  await expect(status).toContainText('行 1，列 1');
+  await expect(editor).toHaveText(text);
+});
+
 test('Web CodeMirror: status, selection, deletion and per-document undo stay local', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: '新建文本', exact: true }).click();

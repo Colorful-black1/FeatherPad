@@ -26,6 +26,7 @@ import { RecoveryPanel } from '../features/desktop/RecoveryPanel';
 import { settings } from '../features/desktop/settings';
 import { SettingsDialog } from '../features/desktop/SettingsDialog';
 import { applySettingsToEditors } from '../features/desktop/settings-effects';
+import { languagePreferences } from '../features/desktop/language-preferences';
 import { saveAll } from '../features/editor/save-all';
 import { SaveAllResults } from '../features/editor/SaveAllResults';
 import { FindBar } from '../features/search-tools/FindBar';
@@ -107,6 +108,7 @@ export function App() {
   }, []);
 
   useEffect(() => applySettingsToEditors(settings, documents), []);
+  useEffect(() => languagePreferences.start(setNotice), []);
 
   useEffect(() => {
     if (!Reflect.get(window, '__TAURI_INTERNALS__')) return;
@@ -123,6 +125,7 @@ export function App() {
       event.preventDefault();
       await startupReady;
       await settings.flushFontSize();
+      await languagePreferences.flush();
       if (active) await hotExit.prepare();
     }).then(unlisten => {
       if (active) unlistenClose = unlisten;
@@ -679,7 +682,7 @@ export function App() {
           <label className="toolbar-field">语言
             <select aria-label="语言模式" disabled={currentSource?.mode === 'text-preview'}
               value={current.languageSource === 'auto' ? 'auto' : current.languageId}
-              onChange={event => documents.setLanguage(current.id, event.currentTarget.value as 'auto' | LanguageId)}>
+              onChange={event => { void languagePreferences.choose(current.id, event.currentTarget.value as 'auto' | LanguageId); }}>
               <option value="auto">自动（{languageLabel(current.languageId)}）</option>
               {languageOptions.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}
             </select>

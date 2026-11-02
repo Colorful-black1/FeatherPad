@@ -3,6 +3,8 @@ export { isRawSettings } from '../../shared/contracts/settings';
 import type { ResultEnvelope } from '../../shared/contracts/files';
 import { recentHistoryItemsSetting } from '../workspace/recent';
 
+export const languagePreferencesSetting = 'documentLanguagePreferences';
+
 export interface Settings {
   theme: 'light' | 'dark' | 'system';
   fontFamily: string;
@@ -67,7 +69,7 @@ export function mergeSettings(user: RawSettings = {}, workspace: RawSettings = {
   }
   for (const [source, values] of [['user', user], ['workspace', workspace], ['session', session]] as const) {
     for (const [key, value] of Object.entries(values)) {
-      if (key === recentHistoryItemsSetting) continue;
+      if (key === recentHistoryItemsSetting || key === languagePreferencesSetting) continue;
       if (!isSettingKey(key)) {
         diagnostics.push({ key, source, message: '未识别的设置已保留，当前版本不应用此项。' }); continue;
       }

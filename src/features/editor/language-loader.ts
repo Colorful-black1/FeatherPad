@@ -11,7 +11,13 @@ export async function loadLanguageExtension(languageId: LanguageId): Promise<Ext
         import('@codemirror/language'),
         import('@codemirror/legacy-modes/mode/javascript'),
       ]);
-      return StreamLanguage.define(json);
+      return StreamLanguage.define({
+        ...json,
+        token(stream, state) {
+          const token = json.token(stream, state);
+          return token?.replace(/\bproperty\b/g, 'propertyName') ?? token;
+        },
+      });
     }
     case 'xml': return (await import('@codemirror/lang-xml')).xml();
     case 'html': return (await import('@codemirror/lang-html')).html();

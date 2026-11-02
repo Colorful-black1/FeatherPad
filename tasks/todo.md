@@ -1,8 +1,8 @@
 # 开发任务清单
 
-当前阶段：**M0/G0 已通过；M1 已实现到 T115，G1 统一验收进行中**。完整 v1 需要 M0–M5 全部 86 项必需功能，M1 只是可试用 MVP，不是成品。
+当前阶段：**M0/G0、M1/G1 已通过；M2 尚未开始，等待用户确认后从 T201 继续**。完整 v1 需要 M0–M5 全部 86 项必需功能，M1 只是可试用 MVP，不是成品。
 
-2026-11-03 用户修订验收粒度：**以 M 为验收单元**。M 内各 T 只做实现和最小自检，不再每个 T 跑一遍大量测试；整个 M 的 T 全部完成后，统一执行一次全量回归、真实 Release 验收和矩阵证据汇总，通过后才推进下一阶段。M0 与 M1 的已完成任务产生于旧的逐任务策略，其逐项证据仍然有效，保存在 [PROGRESS](PROGRESS.md) 和 [M0验收](../docs/acceptance/M0.md)、[M1验收](../docs/acceptance/M1.md)（按 `T1xx` 检索即可定位）。
+2026-11-03 用户修订验收粒度：**以 M 为验收单元**。M 内各 T 只做实现和最小自检，不再每个 T 跑一遍大量测试；整个 M 的 T 全部完成后，统一执行一次全量回归、真实 Release 验收和矩阵证据汇总，通过后打勾并停止，等待用户确认后再推进下一阶段。M0 与 M1 的已完成任务产生于旧的逐任务策略，其逐项证据仍然有效，保存在 [PROGRESS](PROGRESS.md) 和 [M0验收](../docs/acceptance/M0.md)、[M1验收](../docs/acceptance/M1.md)（按 `T1xx` 检索即可定位）。
 
 ## 状态标记
 
@@ -91,8 +91,8 @@ pnpm test:desktop:all
 | 阶段 | 关卡 | 状态 | 说明 |
 |---|---|---|---|
 | M0 | G0 | 已通过（2026-11-01） | 真实 Tauri 与 Release 启动、测试通路建立，见 [M0验收](../docs/acceptance/M0.md) |
-| M1 | G1 | **进行中** | T101–T114 已实现并逐项验收；T115 待补 M1 逐项证据汇总与可试用包 |
-| M2 | G2 | 未开始 | 依赖 G1 |
+| M1 | G1 | 已通过（2026-11-03） | T101–T115 完成；34项feature ID统一验收通过，见 [M1验收](../docs/acceptance/M1.md) |
+| M2 | G2 | 未开始 | 依赖已满足；等待用户确认后从 T201 开始 |
 | M3 | G3 | 未开始 | 依赖 G2 |
 | M4 | G4 | 未开始 | 依赖 G3 |
 | M5 | G5 | 未开始 | 依赖 G4 |
@@ -112,7 +112,7 @@ pnpm test:desktop:all
 
 ## M1 MVP（依赖：G0）
 
-验收：T101–T114 已在旧策略下逐项验收，证据见 [PROGRESS](PROGRESS.md) 与 [M1验收](../docs/acceptance/M1.md)。**G1 统一验收尚未完成**，剩余 T115。
+验收：T101–T115 已完成，G1 于 2026-11-03 统一验收通过；34项feature ID、最终Release和证据见 [PROGRESS](PROGRESS.md) 与 [M1验收](../docs/acceptance/M1.md)。
 
 | 状态/任务 | 依赖 | 功能追踪 | 交付内容与验收点 | 主要规划文件（非穷举） |
 |---|---|---|---|---|
@@ -130,9 +130,9 @@ pnpm test:desktop:all
 | [x] T112 设置与主题 | T002,T110 | F-DESK-001..002 | a 受保护设置存储/版本/损坏隔离；b 合并/导入预览/工作区允许项；c 主题/字体/编辑器即时预览；d 设置页 | src/features/desktop/settings.ts、src/features/desktop/SettingsDialog.tsx、src-tauri/src/services/settings.rs |
 | [x] T113 最近记录 | T104,T112 | F-WORK-007 | 50 项去重、缺失修复、单删/清空，关闭记录后不再落盘 | src/features/workspace/RecentList.tsx、src/features/workspace/recent.ts |
 | [x] T114 视图与无障碍 | T106,T112 | F-EDIT-012,F-DESK-010 | a 编辑器 Tab 焦点；b 字号缩放/区域导航；c 读屏/媒体/设置分类；d 相关 Release 与平台验收 | src/features/editor/view-settings.ts、src/shared/ui/focus-navigation.ts、src/styles/accessibility.css |
-| [~] T115 G1 MVP验收 | T103,T105,T108..114 | M1全部 | 原生从打开到保存恢复闭环；M1 矩阵逐项证据汇总；保留可试用包 | tasks/PROGRESS.md、docs/acceptance/M1.md |
+| [x] T115 G1 MVP验收 | T103,T105,T108..114 | M1全部 | 原生打开到保存恢复闭环；34项矩阵证据统一验收；Release与可试用包已保留 | tasks/PROGRESS.md、docs/acceptance/M1.md、.artifacts/T115/FeatherPad-M1-portable-935A3E54.zip |
 
-## M2 效率与可靠性补齐（依赖：G1）
+## M2 效率与可靠性补齐（依赖：G1，等待用户确认后开始）
 
 验收：本表全部 `[x]` 后，一次性执行 [M 统一验收清单](#m-统一验收清单) 的 G2 项，通过则 G2 打勾。
 

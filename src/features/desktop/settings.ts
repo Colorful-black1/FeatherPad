@@ -4,7 +4,7 @@ import type { FileRef, ResultEnvelope, SaveAsRequest } from '../../shared/contra
 import type { JsonValue, LoadedSettings, LocalFonts, RawSettings, SavedSettings, SettingsCopy } from '../../shared/contracts/settings';
 import type { WorkspaceStore } from '../workspace/store';
 import { defaultSettings, exportSettings, isSettingKey, isSettingValue, mergeSettings, resetSettings,
-  settingsChanges, type SettingKey, type Settings } from './settings-schema';
+  settingsChanges, languagePreferencesSetting, type SettingKey, type Settings } from './settings-schema';
 
 export interface SettingsSnapshot extends ReturnType<typeof mergeSettings> {
   user: RawSettings;
@@ -266,16 +266,19 @@ export class SettingsCoordinator {
     return result;
   }
 
-  async updatePersistedValue(key: string, value: JsonValue): Promise<ResultEnvelope<SavedSettings>> {
-    if (key !== 'recentHistoryItems') return fail('此内部设置键不允许独立写入。');
+  async updatePersistedValue(key: string, update: JsonValue | ((current: JsonValue | undefined) => JsonValue)): Promise<ResultEnvelope<SavedSettings>> {
+    if (key !== 'recentHistoryItems' && key !== languagePreferencesSetting) return fail('此内部设置键不允许独立写入。');
     return this.enqueuePersistence(async () => {
       if (this.snapshot.version === null) {
-        const result = fail('最近记录尚未读取到设置版本；当前会话中的最近项仍可见。');
+        const result = fail('尚未读取到设置版本；此修改仅本次生效。');
         this.publish({ error: result.error.message });
         return result;
       }
+      const resolve = () => typeof update === 'function' ? update(structuredClone(this.user[key])) : update;
+      let value: JsonValue;
+      try { value = resolve(); } catch { return fail('内部偏好无效或已达到容量限制；原数据已保留，此修改仅本次生效。'); }
       let captured: RawSettings = { ...structuredClone(this.user), [key]: structuredClone(value) };
-      if (!Object.hasOwn(captured, key)) return fail('最近记录写入失败。');
+      if (!Object.hasOwn(captured, key)) return fail('内部偏好写入失败。');
       let request = { expectedVersion: this.snapshot.version, expectedRevision: this.snapshot.revision, settings: captured };
       let result = await this.bridge.save(request);
       if (!result.ok && result.error.code === 'IPC_UNAVAILABLE') {
@@ -288,12 +291,13 @@ export class SettingsCoordinator {
       if (!result.ok && result.error.code === 'CONFLICT') {
         const observed = await this.load();
         if (!observed.ok || this.snapshot.version === null) return result;
+        try { value = resolve(); } catch { return fail('内部偏好无效或已达到容量限制；原数据已保留，此修改仅本次生效。'); }
         captured = { ...structuredClone(this.user), [key]: structuredClone(value) };
         request = { expectedVersion: this.snapshot.version, expectedRevision: this.snapshot.revision, settings: captured };
         result = await this.bridge.save(request);
       }
       if (!result.ok) {
-        this.publish({ error: `最近记录未能保存：${result.error.message}` });
+        this.publish({ error: `内部偏好未能保存：${result.error.message}` });
         return result;
       }
       this.user = captured;

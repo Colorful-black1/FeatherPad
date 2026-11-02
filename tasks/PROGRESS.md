@@ -4,8 +4,8 @@
 
 - 产品名称：**轻羽 FeatherPad**。
 - 当前交付：完整产品方案、86项功能矩阵、模块规格、UI规范与离线交互原型、技术/本机环境文档、M0–M5实现计划、57个开发任务、agent执行入口。
-- 产品代码：**M0/G0、M1/T101–T114通过**。保存/编辑/树/搜索/标签/命令/恢复、外部变化与安全冲突处理、设置/主题/字体、最近记录与隐私关闭、字号与键盘导航均有相关真实Release证据。T114实际Windows 11平台样本也已完成；G1整体关卡尚未通过，更不是完整v1。
-- 当前：**T115/G1恢复锁竞争修复已提交`60a41e9`；F-FILE-015手动只读试开已补齐并通过相关Release，下一步M1逐项证据审计与试用包**。G1仍未通过，完整范围保持M0–M5全部86项必需功能。
+- 产品代码：**M0/G0、M1/T101–T115及G1已通过（2026-11-03）**。保存/编辑/树/搜索/标签/命令/恢复、外部变化与安全冲突处理、设置/主题/字体、最近记录与隐私关闭、字号与键盘导航均有相关真实Release证据；M1的34个feature ID已统一验收，但仍不是完整v1。
+- 当前：**M1/G1已收尾并提交；M2/G2尚未开始**。按用户要求，每完成一个M阶段必须停止并等待确认；下一项是T201编码与逐行换行，未确认前不开始。
 - 本次交付检查：详见 [DELIVERY-CHECK](../docs/DELIVERY-CHECK.md)，不代表产品关卡G0–G5通过。
 
 ## 已核查环境
@@ -13,6 +13,14 @@
 复用本机Node22.13.0、pnpm10.32.1、Rust1.99.1、VS2022 Build Tools C++、Windows SDK10.0.26100.0、WebView2。未安装新开发工具。严格遵守新增安装与缓存仅在E:\Codeing，入口见 [ENVIRONMENT](../docs/ENVIRONMENT.md)。
 
 ## 实施证据（未来逐任务追加）
+
+### 2026-11-03 T115完成：M1/G1统一验收通过并停止
+
+- 最终`scripts/check.ps1` exit 0：TypeScript、ESLint、27个TS测试文件231项、Rust 148 passed/1个100k专项ignored、Rust格式与clippy、Web Playwright 73 passed全部通过；日志`.artifacts/T115/logs/m1-final-check.stdout.log`和`.artifacts/T115/logs/m1-final-check.stderr.log`，ignored不计通过。
+- 最终真实Release桌面Playwright `pnpm test:desktop:all`为11 passed/3.4分钟/exit 0；日志`.artifacts/T115/logs/m1-desktop-all-pass.log`，原生结果根`.artifacts/native/2026-11-02T16-43-43-526Z-4356b62a-c96c-40a5-b0dd-8644956e266e/`。覆盖真实Tauri/WebView2、原生选择器、文件读写、保存冲突、回收站、设置、最近记录、只读预览、恢复/热退出、外部变化和键盘无障碍。
+- 最终Release为`src-tauri/target/release/featherpad.exe`，12,434,432 bytes，SHA256 `935A3E5450E2E1BC7153FA18F2EAD3FC6B6074ED9DAC4CF8C9029A831A9FB1D5`，WebView2 156.0.4314.58。M1可试用包`.artifacts/T115/FeatherPad-M1-portable-935A3E54.zip`为3,924,638 bytes，SHA256 `11D3335E443D7917137C4B08ACEC2992D0BE912362B7388346891E75CABD547F`，保留exe和README；失败、排错和专项产物均未删除。
+- 收尾`git diff --check` exit 0；`node scripts/validate-docs.mjs` exit 0（313文件/29 Markdown/206本地链接/86 feature/57任务/coverage 86），文档检查不计为产品行为测试。
+- M1的34个必需feature ID和组织范围见[`docs/acceptance/M1.md`](../docs/acceptance/M1.md)。已知边界继续保留：满盘为受控WSL2 `tmpfs`而非原生NTFS全卷，强杀不承诺零丢失，可选小地图明确不可用，完整编码/转换留待M2。M1/G1完成，M2/T201等待用户确认。
 
 ### 2026-11-02 T115补齐F-FILE-015：显式只读文本试开
 

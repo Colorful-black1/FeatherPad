@@ -11,6 +11,7 @@ export default defineConfig({
     { name: 'recent', testMatch: 'recent.spec.ts' },
     { name: 'accessibility', testMatch: 'accessibility.spec.ts' },
     { name: 'text-preview', testMatch: 'text-preview.spec.ts' },
+    { name: 'language', testMatch: 'language.spec.ts' },
     { name: 'recovery', testMatch: 'recovery.spec.ts' },
   ],
   workers: 1,

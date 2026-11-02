@@ -32,9 +32,10 @@ async function protectedDraft(dataDir: string, source: string, text: string) {
     if (!/^[0-9a-f-]{36}$/.test(receipt)) continue;
     const directory = path.join(recovery, receipt);
     const manifest = JSON.parse(await readFile(path.join(directory, 'manifest.json'), 'utf8')) as {
-      sourcePath: string; documentId: string; bufferVersion: number; bodySha256: string;
+      sourcePath: string | null; documentId: string; bufferVersion: number; bodySha256: string;
     };
-    if (!manifest.sourcePath.replaceAll('\\', '/').endsWith(source.replaceAll('\\', '/'))) continue;
+    if (manifest.sourcePath === null
+      || !manifest.sourcePath.replaceAll('\\', '/').endsWith(source.replaceAll('\\', '/'))) continue;
     const body = await readFile(path.join(directory, 'body.bin'));
     if (body.toString('utf8') !== text) continue;
     expect(createHash('sha256').update(body).digest('hex')).toBe(manifest.bodySha256);

@@ -75,6 +75,29 @@ export async function verifyNativeEditor(page: Page, evidence: string) {
   await page.keyboard.press('Control+v');
   await expect(editor).toHaveText('clipboardclipboard');
 
+  await page.getByRole('button', { name: '新建文本', exact: true }).click();
+  await page.getByRole('combobox', { name: '语言模式' }).selectOption('json');
+  await editor.focus();
+  const syntaxText = '{"a": {"b": 42}}';
+  await page.keyboard.insertText(syntaxText);
+  // Wait for the actual lazy-loaded grammar before using syntax selection.
+  await expect(editor.locator('span').filter({ hasText: '42' }).first()).toBeVisible();
+  await page.keyboard.press('Control+Home');
+  for (let offset = 0; offset < 13; offset++) await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('Control+i');
+  await expect(status).toContainText('已选 2 字符');
+  await page.keyboard.press('Control+i');
+  await expect(status).toContainText('已选 7 字符');
+  await page.keyboard.press('Control+u');
+  await expect(status).toContainText('已选 2 字符');
+  await expect(editor).toHaveText(syntaxText);
+  await page.keyboard.press('Control+Home');
+  await page.keyboard.press('Control+Shift+Backslash');
+  await expect(status).toContainText('行 1，列 17');
+  await page.keyboard.press('Control+Shift+Backslash');
+  await expect(status).toContainText('行 1，列 1');
+  await page.screenshot({ path: path.join(evidence, 'native-selection-and-bracket-jump.png') });
+
   return {
     statusAndSelectionVerified: true,
     undoRedoAndWordNavigationVerified: true,
@@ -83,6 +106,8 @@ export async function verifyNativeEditor(page: Page, evidence: string) {
     bracketPairingAndMatchingVerified: true,
     webView2CompositionInputVerified: true,
     clipboardPasteVerified: true,
+    syntaxSelectionGrowAndSelectionUndoShrinkVerified: true,
+    matchingBracketKeyboardJumpBothDirectionsVerified: true,
     scope: 'Real Tauri WebView2/CodeMirror; composition events use CDP and do not exercise the OS candidate window',
   };
 }
