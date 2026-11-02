@@ -15,18 +15,22 @@ const systemBindings = new Set(['Alt+F4', 'Shift+Alt+F4', 'Alt+Tab', 'Shift+Alt+
 export function normalizeShortcut(value: string): string | null {
   if (value.length > 64) return null;
   const parts = value.trim().split('+').map(part => part.trim().toLowerCase());
-  const last = parts.pop();
-  const key = last === ',' ? ',' : last && /^(?:[a-z0-9]|f(?:[1-9]|1[0-2])|tab|escape)$/.test(last)
+  let last = parts.pop();
+  if (last === '' && parts.at(-1) === '') { parts.pop(); last = '='; }
+  const key = last && [',', '=', '-'].includes(last) ? last : last && /^(?:[a-z0-9]|f(?:[1-9]|1[0-2])|tab|escape)$/.test(last)
     ? last.length === 1 ? last.toUpperCase() : last === 'tab' ? 'Tab' : last === 'escape' ? 'Escape' : last.toUpperCase() : null;
   if (!key) return null;
-  const modifiers = parts.map(part => part === 'control' ? 'ctrl' : part);
+  let modifiers = parts.map(part => part === 'control' ? 'ctrl' : part);
   if (new Set(modifiers).size !== modifiers.length || modifiers.some(part => !['ctrl', 'shift', 'alt'].includes(part))) return null;
+  // Plus and equals share the editor zoom binding on Windows keyboard layouts.
+  if (key === '=' && modifiers.includes('ctrl') && !modifiers.includes('alt')) modifiers = modifiers.filter(part => part !== 'shift');
   if (!modifiers.includes('ctrl') && !modifiers.includes('alt') && !/^F\d+$/.test(key)) return null;
   return [...(modifiers.includes('ctrl') ? ['Ctrl'] : []), ...(modifiers.includes('shift') ? ['Shift'] : []),
     ...(modifiers.includes('alt') ? ['Alt'] : []), key].join('+');
 }
 
 export function shortcutRestriction(binding: string): string | null {
+  if (binding === 'F6' || binding === 'Shift+F6') return '此组合键保留给界面区域导航。';
   if (editorBindings.has(binding)) return '此组合键保留给原生文本编辑。';
   if (systemBindings.has(binding)) return '此组合键保留给 Windows。';
   if (binding.includes('Ctrl+') && binding.includes('Alt+')) return 'Ctrl+Alt 组合可能用于 AltGr 输入，请选择其他组合。';

@@ -3,6 +3,7 @@ import { defaultKeymap, history, historyKeymap, indentWithTab, redo } from '@cod
 import { bracketMatching, defaultHighlightStyle, indentUnit, syntaxHighlighting } from '@codemirror/language';
 import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete';
 import { Decoration, type DecorationSet, EditorView, highlightActiveLine, highlightActiveLineGutter, keymap, lineNumbers } from '@codemirror/view';
+import { editorKeyboardFocus } from './keyboard-focus';
 
 const editability = new Compartment();
 const indentation = new Compartment();
@@ -108,6 +109,7 @@ export function createEditorState(text: string, readOnly: boolean, options: Edit
   return EditorState.create({
     doc: text,
     extensions: [
+      editorKeyboardFocus,
       history(), closing.of(options.closeBrackets === false ? [] : [closeBrackets(), keymap.of(closeBracketsKeymap)]),
       keymap.of([
         indentWithTab,

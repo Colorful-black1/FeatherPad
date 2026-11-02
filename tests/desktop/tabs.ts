@@ -64,7 +64,7 @@ export async function verifyNativeTabs(page: Page, dataDir: string, evidence: st
   await expect(page.getByRole('tab')).toHaveCount(1);
   expect(await nativeStat(page, oldA)).toMatchObject({ ok: false, error: { code: 'NOT_FOUND' } });
   await page.getByRole('treeitem', { name: 'b.txt', exact: true }).dblclick();
-  await expect(page.getByRole('tab', { name: 'b.txt', exact: true })).toHaveAttribute('aria-description', '固定标签');
+  await expect(page.getByRole('tab', { name: 'b.txt', exact: true })).toHaveAttribute('aria-description', '固定标签；没有未保存修改');
   await openTree('a.txt');
   const freshA = await documentId(page, 'a.txt');
   expect(freshA).not.toBe(oldA);
@@ -188,7 +188,7 @@ export async function verifyNativeTabs(page: Page, dataDir: string, evidence: st
   await page.reload(); // All remaining buffers are clean; this verifies pin metadata, not session recovery.
   await openFolder();
   await openTree('b.txt');
-  await expect(page.getByRole('tab', { name: 'b.txt', exact: true })).toHaveAttribute('aria-description', '固定标签');
+  await expect(page.getByRole('tab', { name: 'b.txt', exact: true })).toHaveAttribute('aria-description', '固定标签；没有未保存修改');
   await page.getByRole('button', { name: '关闭 b.txt', exact: true }).click();
   await expect(page.getByRole('heading', { name: '快开文件，专心编辑。' })).toBeVisible();
   await expect(page.getByRole('button', { name: '新建文本', exact: true })).toBeFocused();

@@ -4,8 +4,8 @@
 
 - 产品名称：**轻羽 FeatherPad**。
 - 当前交付：完整产品方案、86项功能矩阵、模块规格、UI规范与离线交互原型、技术/本机环境文档、M0–M5实现计划、57个开发任务、agent执行入口。
-- 产品代码：**M0/G0、M1/T101–T113通过**。既有保存/编辑/树/搜索/标签/命令/恢复能力，以及外部变化检测、冲突比较/保护重载/另存/明确覆盖、版本化设置/主题/字体、最近记录与隐私关闭均有相关真实Release证据；其余M1项仍未完成，G1未通过，更不是完整v1。
-- 当前：**T113已完成相关真实Release验收，下一项T114视图与无障碍**。完整范围保持M0–M5全部86项必需功能；双组、多窗口和完整隐私管理继续由相应后续任务实现。
+- 产品代码：**M0/G0、M1/T101–T114通过**。保存/编辑/树/搜索/标签/命令/恢复、外部变化与安全冲突处理、设置/主题/字体、最近记录与隐私关闭、字号与键盘导航均有相关真实Release证据。T114实际Windows 11平台样本也已完成；G1整体关卡尚未通过，更不是完整v1。
+- 当前：**T114完成，下一项T115/G1整体回归和M1逐项证据审计**。完整范围保持M0–M5全部86项必需功能；双组、多窗口和完整隐私管理继续由相应后续任务实现。
 - 本次交付检查：详见 [DELIVERY-CHECK](../docs/DELIVERY-CHECK.md)，不代表产品关卡G0–G5通过。
 
 ## 已核查环境
@@ -13,6 +13,58 @@
 复用本机Node22.13.0、pnpm10.32.1、Rust1.99.1、VS2022 Build Tools C++、Windows SDK10.0.26100.0、WebView2。未安装新开发工具。严格遵守新增安装与缓存仅在E:\Codeing，入口见 [ENVIRONMENT](../docs/ENVIRONMENT.md)。
 
 ## 实施证据（未来逐任务追加）
+
+### 2026-11-02 T114完成：字号、焦点导航和实际Windows辅助功能
+
+- F-EDIT-012/F-DESK-010在当前M1范围通过。实现文件为editor的`keyboard-focus.ts`、`view-settings.ts`及编辑状态/标签，desktop设置队列/分类页，Shell区域导航、统一命令与系统媒体CSS；不新增依赖、Rust源或IPC权限。a/b/c定向模型/Web及d1相关真实Release证据沿用下文，不重复构建或专项检查。
+- d2复用d1同一Release（SHA256 `EBE5F3A9BE056646527E9EC72DF81034145A20F861FA913B9E945AFE76210E9F`），实际Windows 11 build26100、2560×1440、WebView2 156.0.4314.58。通过系统设置切换125/150/200%，观测DPR1.25/1.5/2且页面zoom为空；200%有效视口1280×650，主要设置操作可见、内容可滚动，Tab/F6/CtrlM/Escape不改受控正文。未把640px组件测试当最低视口支持。
+- 实际“水生/沙漠”高对比下，正文对比度16.29/10.43，搜索和主按钮7.89/7.00，禁用项opacity1、搜索和焦点轮廓可见。减少动效时媒体查询生效，观测动画/非零过渡均0，编辑后单次undo及F6正常。最终恢复100%、无对比主题、动效开启，正文不变；测试实例正常关闭exit0，讲述人退出。未清理任何产物。
+- Windows讲述人10.0.26100.3323实际播报样本8条：状态、dirty标签、关闭风险、Tab模式状态/帮助、设置分类、弹窗返回、主动读取搜索“1处”、非法正则自动错误提示。使用[微软键盘命令](https://support.microsoft.com/en-us/accessibility/windows/narrator/appendix-b-narrator-keyboard-commands-and-touch-gestures)的读当前/下一项与复制最后播报保存受控UI短句；未取得自动完整计数或瞬时CtrlM公告录音，不据此宣称这些播报已证实。原剪贴板未备份恢复，仅保留受控短句；没有采集用户正文或剪贴板内容。
+- 汇总`.artifacts/T114/windows-platform-1SPvhE/platform-acceptance.json`；`dpi*-settings`、`raw-high-contrast-*-search`、`raw-reduced-motion-*`、`final-platform-restored`的JSON/PNG及`narrator-*.txt`保留。125–200%和深浅高对比截图已视觉检查。最初Playwright附着时出现的高对比媒体不匹配证据保留并排除，实际高对比重新启动后的原始CDP只读观测、主题动态切换及恢复为有效证据，未用仿真覆盖系统偏好。
+- `node .artifacts/T114/summarize-platform.mjs` exit0（仅核对实际观测，不冒充新产品运行）；日志`.artifacts/T114/logs/platform-summary.log`。d1类型/ESLint/Release和原生证据有效；最终`node scripts/validate-docs.mjs`与`git diff --check`均exit0，日志`{docs-final,diff-check-final}.log`。Windows10及后续功能仍须各阶段验收；下一T115整体回归，G1/M2–M5未通过。
+
+### 2026-11-02 T114.d1：相关真实Release验收（平台矩阵仍待验）
+
+- 新增独立`tests/desktop/accessibility.spec.ts`及desktop `accessibility` project，纳入`test:desktop:all`，日常可单独选择；不改生产测试入口，不使用业务mock或DPI/媒体仿真。验证真实Tab缩进及undo、CtrlM/Tab/ShiftTab/Esc离开、F6及选区/undo、dirty关闭名称/状态AX、设置分类键盘/预览取消/焦点返回、原生800px窗口侧栏和设置操作、快捷键/真实Ctrl滚轮仅改编辑字号、真实设置落盘和正常WM_CLOSE后恢复字号及最后输入。没有故意延迟写入，退出前请求与关闭的观测不代替所有并发时序；串行队列边界复用b1模型证据。
+- `pnpm build`exit0，Release 12,412,928 bytes，SHA256 `EBE5F3A9BE056646527E9EC72DF81034145A20F861FA913B9E945AFE76210E9F`，WebView2 156.0.4314.58；主JS776.81kB/gzip245.16kB警告保留，未提高阈值。新原生1 passed/5.2秒（总6.0秒），相关原生tabs/settings 2 passed/30.0秒，均exit0。受影响ESLint、`pnpm typecheck`、文档静态校验及`git diff --check`均exit0；无Rust源改动，复用已有Rust检查，不跑满盘/大目录/强杀/性能专项。
+- 证据`.artifacts/native/2026-11-02T13-07-18-817Z-3578ca9a-2242-45a6-bf3d-074b2f6d8f9d/accessibility/native-release.json`及三张截图均已视觉检查；相关原生`.artifacts/native/2026-11-02T13-08-05-639Z-6867fe5e-193e-4634-9dc4-469411b10411/{tabs,settings}/`。日志`.artifacts/T114/logs/{release-build,native-accessibility,native-settings-tabs,lint-native-accessibility,typecheck-native-accessibility}.log`。最终字号14，真实设置version6、SHA256 `B4D25A2418175DB8C047876C1F35E5A08D55604BACD61C18D28B4080B0D479E9`。
+- 将退出证据字段改成准确的`lastFontRequestBeforeRealWmClosePersists`，未更改产品代码/断言；同一Release复验1 passed/5.5秒（总6.5秒）/exit0，最终证据`.artifacts/native/2026-11-02T13-11-17-995Z-5f9d3b5d-1e19-422b-a548-f360760486a1/accessibility/native-release.json`和`native-accessibility-final.log`。复用同构建首轮截图视觉检查，最终文档校验/差异检查见`{docs-d1,diff-check-d1}.log`。
+- 按code-review-and-quality检查累计实现/测试：核对Tab模式初始化和销毁、焦点记忆失效/模态边界、字号串行/未知回执/迟到Ack、原有设置/最近记录保留和工作区键白名单，没有新增必改项；未新增依赖/IPC权限。T114仍未整项提交或标通过，G1未完成。实际Windows读屏/高对比/减少动效/125–200%系统缩放仍待d2；本轮原生基线DPR1、forcedColors/reducedMotion均false，不外推为平台矩阵通过。computer-use规则禁止同一轮混用直接PowerShell UIA与Computer Use，本轮tabs已使用受控UIA选取器；平台UI切换留下一轮，现有测试产物和清理清单保留。
+
+### 2026-11-02 T114.c2：设置分类键盘与语义（原生待验）
+
+- `SettingsDialog.tsx`将分类改成单一Tab入口的tablist/tab/tabpanel，方向键/Home/End切换并聚焦分类，忽略IME组合；内容区有名称、焦点圈和自然Tab路径。紧凑布局同步水平分类语义，快捷键入口移至设置操作区。分类切换/搜索保留预览；取消恢复效果和原焦点。相关`App.tsx`补设置入口标题，`app.css`及`accessibility.css`补选中/焦点样式；无新设置键/IPC/依赖。
+- 新增3项行为测试，连同原设置3项及区域焦点4项，`pnpm test:e2e tests/e2e/settings.spec.ts tests/e2e/focus-navigation.spec.ts`共10 passed/19.0秒/exit0；受影响ESLint和测试入口内TS/前端构建均exit0。覆盖预览跨分类保留、空结果进出内容区、IME、快捷键入口焦点返回、紧凑布局和200% CSS缩放。日志`.artifacts/T114/logs/{lint-settings-category,web-settings-category}.log`。
+- 截图`.artifacts/playwright-results/2026-11-02T12-55-28-525Z-d5e08760-66bf-4365-b85f-12cbaaa4cd8e/settings-compact-settings--3ad8f-h-contrast-and-200-CSS-zoom/settings-category-compact.png`已视觉检查，主操作可见，内容区可滚动；640px仅验证设置组件紧凑分支，不表示产品最低视口降至640px。当前仍为Web mock/媒体仿真/CSS缩放证据，不代表Windows读屏或系统DPI已通过。下一d相关Release/平台验收，T114/G1待验，未运行专项或清理产物。
+
+### 2026-11-02 T114.c1：读屏语义、高对比与减少动效（平台验收仍待进行）
+
+- F-DESK-010部分：Shell状态栏保持polite并明确非atomic，App将光标/字数放入可主动读取、live off的命名分组；TabStrip的描述及关闭名称包含dirty/只读风险，clean/预览/固定状态仍准确。`src/styles/accessibility.css`经`src/main.tsx`导入，forced-colors使用系统颜色和状态轮廓，禁用按钮保留不透明文字，搜索与主按钮配对Highlight/HighlightText；reduce模式取消CSS动画、过渡、平滑滚动和自绘光标闪烁。五个生产文件，无新增依赖/IPC/工具。
+- `media-accessibility.spec.ts`最终4 passed/13.8秒/exit0；浏览器AX树验证status的polite/atomic false和可读指标分组，DOM验证dirty/clean/只读标签及关闭风险。两种forced-colors配色下正文/搜索/主按钮对比度均≥4.5:1、焦点≥3:1，焦点宽度≥2px；reduce下无运行CSS动画且编辑/undo/F6正常，偏好取消后恢复100ms。相关`accessibility.spec.ts`3项和`tabs.spec.ts`7项均已通过，最后只改强制颜色的主按钮规则，不影响这些非强制颜色场景，复用证据。相关ESLint与Web入口内typecheck/build均exit0；未重复模型或Rust检查。
+- 截图核查发现浏览器强制颜色背景板遮住主要按钮文字，已改成明确系统颜色对并关闭该按钮的再次颜色替换，补对比度断言后通过；两张最终截图均视觉检查。构建压缩把100ms改成.1s的断言问题已修为统一毫秒后仍精确比较0/100，没有改动产品时长或性能门槛。最终日志`.artifacts/T114/logs/{web-media-primary-colors-final,lint-media-primary-final}.log`，相关10项证据在`web-media-status.log`（该轮媒体时长断言失败，不记整轮通过）。最终截图位于`.artifacts/playwright-results/2026-11-02T12-46-27-587Z-56f9411c-cedc-4037-bef2-fa368b6649f1/media-accessibility-browse-{e9cef-us-with-light-system-colors,39448-cus-with-dark-system-colors}/forced-colors-{light,dark}.png`；早期日志/截图/trace全部保留。
+- 既有Web及原生tabs的精确描述断言同步完整新文案，不降低断言；原生tabs本轮未执行，仍待T114相关Release验证。当前是浏览器AX/媒体仿真辅助证据，未声称实际Windows读屏、高对比、减少动效或125/150/200%系统缩放通过。下一c2补设置分类方向键/语义，然后d平台验收；T114/G1未完成，未构建Release、未跑整体/故障/大目录/性能专项，未提交整项，清理清单与产物保留。
+
+### 2026-11-02 T114.b2：键盘区域导航与窄屏焦点（整项T114仍待验）
+
+- F-DESK-010部分：新增`src/shared/ui/focus-navigation.ts`并接入`Shell.tsx`，F6/Shift+F6按可见区域循环，页面初始body也可进入，记住仍可达的上次控件；跳过关闭区域、disabled/inert/隐藏控件及已退出Tab顺序的旧标签，标签区回到当前活动项。正文往返保持选区和undo，模态与IME不切后台区域。`keyboard.ts`保留F6导航键，`app.css`补状态栏焦点圈，App成功选择已打开文件也能关闭窄屏覆盖侧栏，五个生产文件，无新IPC/依赖。
+- 窄屏侧栏打开后聚焦控件，Escape关闭并回切换按钮；CtrlB关闭导致焦点随DOM移除时返回可见按钮，F6进入正文/操作区后收起覆盖层，设置弹窗的Escape只关闭弹窗。浏览器真实键盘验证了窄屏已打开树文件再次选择时不重复缓冲、不丢dirty正文；文件/目录来源为Web mock，不证明原生IO。
+- `vitest run keyboard.test.ts registry.test.ts`2文件11项及受影响ESLint均exit0。相关Web首轮`focus-navigation/shell/accessibility`9 passed/21.5秒/exit0；最后补当前标签变化边界后，`focus-navigation.spec.ts`4 passed/15.5秒/exit0，复用无相关修改的壳层2项/Tab焦点3项证据。Web启动包含类型检查/前端构建，均通过。日志`.artifacts/T114/logs/{unit-region-navigation,web-region-navigation-final,web-region-roving-final,lint-region-roving-final}.log`；截图`.artifacts/playwright-results/2026-11-02T12-31-04-103Z-8acbe66e-5439-4439-a340-dff807a3e9ed/focus-navigation-narrow-si-7e091-t-and-returns-visible-focus/narrow-region-focus.png`已视觉检查。
+- 下一c补读屏状态、高对比、减少动效；T114整项、真实Release、Windows读屏及125/150/200%系统缩放仍待验。未执行Rust/Release/原生综合/满盘/100k/强杀/性能专项，未提交未完成的T114，全部既有修改、清理清单与测试产物保留。
+
+### 2026-11-02 T114.b1：编辑字号缩放与持久化（整项T114仍待验）
+
+- F-EDIT-012部分：统一注册放大/缩小/恢复14px命令（Ctrl+=与Ctrl++同义、Ctrl+-、Ctrl+0），支持重映射和禁用原因；编辑区真实Ctrl滚轮复用字号动作，8–40px范围只改字体，状态栏显示当前字号，不改变系统/页面缩放或正文/选区/undo。生产改动为`src/features/editor/view-settings.ts`、`src/shared/commands/keyboard.ts`、`src/app/{register-commands.ts,App.tsx}`、`src/features/desktop/settings.ts`五文件。
+- 字号立即响应，复用版本化设置串行队列，当前写入期间的新输入只保留最新目标；保留未知字段、最近记录及设置页的新预览。外部冲突不重试覆盖，未知回执只做完整配置/版本/revision读回核对，迟到回执不覆盖后读配置；失败保留本次字号并显示提示，后续成功可解除提示。计划关闭在已有安全退出前等待已发起的字号写入，未改正文恢复/会话的安全流程；无新增IPC/依赖/工具。
+- 定向`vitest run settings.test.ts view-settings.test.ts keyboard.test.ts registry.test.ts`4文件29项exit0，覆盖合并连续输入、最近记录串行、预览/迟到Ack/冲突/未知回执/非法值、边界与命令重映射；受影响ESLint exit0。Web `view-settings.spec.ts`3项、`commands.spec.ts`5项、`settings.spec.ts`3项共11 passed/21.0秒/exit0；包含真实浏览器按键/Ctrl滚轮、重载恢复、页面宽度/DPR/zoom不变、正文/选区/undo、失败恢复及模态边界。Web启动内`tsc --noEmit && vite build`通过；设置存储仍为mock，不代表原生Release或系统缩放通过。
+- 相关设置Web回归发现T113最近记录保存已把初始版本从1推进到2；夹具现等待该成功记录可见后冻结版本，仍严格断言导入预览不写入，增加初始版本2的明确断言。React回调依赖修复后ESLint通过。最终日志`.artifacts/T114/logs/{unit-zoom-ui,lint-zoom-ui-final,web-zoom-ui-final}.log`，早期失败日志与trace保留；截图`.artifacts/playwright-results/2026-11-02T12-15-06-472Z-3df7423d-b8cd-40e4-9188-f30eedc0132c/view-settings-Web-mock-key-b7219-g-the-page-or-changing-undo/font-zoom-restored.png`已视觉检查。
+- 下一b2实现键盘区域导航，然后补读屏状态/高对比/减少动效及相关真实Release、Windows读屏和125/150/200%系统缩放。T114保持进行中，未提交整项；未重跑Rust/Release/原生综合/专项性能或故障测试，所有既有产物和清理清单保留。
+
+### 2026-11-02 T114.a：编辑器Tab焦点模式（整项T114仍待验）
+
+- F-DESK-010部分：新增`src/features/editor/keyboard-focus.ts`并接入`editor-state.ts`，Ctrl+M切换Tab缩进/移动焦点，编辑器底部显示模式及Esc后Tab离开提示；CodeMirror公告只在切换时发出，模式随编辑器状态保留，通过切标签、缩进设置重建view后不丢失。只读编辑器始终允许Tab离开，模式切换不改正文/选区、dirty、bufferVersion或undo。`app.css`补紧凑键盘栏；控制台检查发现缺少favicon，`index.html`与`public/favicon.svg`补用既有羽毛标识的离线资源。无新依赖/工具/原生IPC。
+- 最终定向`vitest run keyboard-focus.test.ts documents.test.ts settings-effects.test.ts`3文件34项、受影响ESLint均exit0；`pnpm test:e2e tests/e2e/accessibility.spec.ts`3项/13.3秒/exit0，包含Ctrl+M/ShiftTab/EscTab、选区/undo、标签与view重建、只读离开和无控制台错误。相同生产代码的既有`editor.spec.ts`5项已通过，复用该证据；Web入口包含`tsc --noEmit && vite build`，类型/前端构建通过。Web使用真实CodeMirror，文件读取与只读来源为mock，不证明原生IO或实际屏幕阅读器播报。
+- 初始化插件早于CodeMirror输入状态、选区简化消耗Escape的失败已修复；短时公告读取改为预先观察实际DOM公告事件，保持内容断言且无重试/放宽超时。原始失败trace和日志保留。最终日志`.artifacts/T114/logs/{unit-focus-final,lint-focus-observed-announcements-final,web-focus-observed-announcements-final}.log`；既有编辑5项证据在`web-focus-final.log`（该轮新公告断言失败不记整轮通过）。截图`.artifacts/playwright-results/2026-11-02T12-00-54-483Z-ce458cab-4a52-4bd7-8fb7-3f1aa910a14b/accessibility-editor-Tab-f-526c6-ned-through-view-recreation/editor-tab-focus.png`已视觉检查。
+- 下一T114.b补Ctrl滚轮/字号快捷键、区域导航及后续读屏状态/高对比/减少动效。T114相关真实Release、Windows读屏和125/150/200%系统缩放仍待验，未重跑Rust/Release/原生综合/满盘/100k/性能专项；暂不提交未完成的整项T114，原有清理清单与全部测试产物保留。
 
 ### 2026-11-02 T113完成：最近记录与隐私关闭
 

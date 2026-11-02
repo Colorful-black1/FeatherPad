@@ -40,6 +40,8 @@ export class SettingsCoordinator {
   private unsubscribe: (() => void) | null = null;
   private root: FileRef | null = null;
   private persistenceQueue: Promise<unknown> = Promise.resolve();
+  private pendingFontSize: number | null = null;
+  private fontPersistence: Promise<ResultEnvelope<unknown>> | null = null;
 
   constructor(private readonly bridge: typeof settingsBridge = settingsBridge,
     private readonly exportFile: typeof files.saveAs = files.saveAs) {}
@@ -201,6 +203,67 @@ export class SettingsCoordinator {
         return result;
       });
     } finally { this.publish({ saving: false }); }
+  }
+
+  setFontSize(size: number): Promise<ResultEnvelope<unknown>> {
+    if (!isSettingValue('fontSize', size)) return Promise.resolve(fail('编辑字号必须是8–40之间的整数。'));
+    this.setSession('fontSize', size);
+    this.pendingFontSize = size;
+    if (this.fontPersistence) return this.fontPersistence;
+    const operation = this.enqueuePersistence(async (): Promise<ResultEnvelope<unknown>> => {
+      let result: ResultEnvelope<unknown> = { ok: true, value: null };
+      try {
+        while (this.pendingFontSize !== null) {
+          const captured = this.pendingFontSize;
+          this.pendingFontSize = null;
+          result = await this.persistFontSize(captured);
+          if (!result.ok) break;
+        }
+      } catch {
+        result = fail('字号保存结果未确认，请重新读取设置后再试。');
+      }
+      if (!result.ok) {
+        this.pendingFontSize = null;
+        this.publish({ error: `${result.error.message} 编辑字号仅本次生效。` });
+      }
+      return result;
+    }).finally(() => { if (this.fontPersistence === operation) this.fontPersistence = null; });
+    this.fontPersistence = operation;
+    return operation;
+  }
+
+  flushFontSize(): Promise<ResultEnvelope<unknown>> {
+    return this.fontPersistence ?? Promise.resolve({ ok: true, value: null });
+  }
+
+  private async persistFontSize(size: number): Promise<ResultEnvelope<SavedSettings>> {
+    if (this.snapshot.version === null) return fail('尚未读取到设置版本。');
+    const request = { expectedVersion: this.snapshot.version, expectedRevision: this.snapshot.revision,
+      settings: { ...structuredClone(this.user), fontSize: size } };
+    let result = await this.bridge.save(request);
+    if (!result.ok && result.error.code === 'IPC_UNAVAILABLE') {
+      const observed = await this.bridge.load();
+      if (observed.ok && observed.value.version === request.expectedVersion + 1
+        && same(observed.value.settings, request.settings) && observed.value.revision) {
+        result = { ok: true, value: { version: observed.value.version, revision: observed.value.revision } };
+      }
+    }
+    if (!result.ok) return result;
+    if (this.snapshot.version !== request.expectedVersion || this.snapshot.revision !== request.expectedRevision) {
+      return fail('字号保存回执晚于另一次配置读取，请重新核对设置。');
+    }
+    const previewChanges = this.draft ? settingsChanges(this.user, this.draft) : [];
+    this.user = request.settings;
+    if (this.draft) {
+      this.draft = structuredClone(this.user);
+      for (const change of previewChanges) {
+        if (change.after === undefined) delete this.draft[change.key];
+        else this.draft[change.key] = structuredClone(change.after);
+      }
+    }
+    if (this.session.fontSize === size) delete this.session.fontSize;
+    this.publish({ version: result.value.version, revision: result.value.revision, error: null });
+    return result;
   }
 
   async updatePersistedValue(key: string, value: JsonValue): Promise<ResultEnvelope<SavedSettings>> {

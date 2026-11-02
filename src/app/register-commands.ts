@@ -1,7 +1,8 @@
 import { CommandRegistry, type CommandDefinition } from '../shared/commands/registry';
 
 export const appCommandIds = ['file.new', 'file.open', 'workspace.open', 'file.save', 'file.saveAs', 'file.saveCopy',
-  'file.saveAll', 'file.close', 'editor.find', 'tabs.pin', 'view.sidebar', 'view.theme', 'settings.open', 'commands.open', 'files.quickOpen'] as const;
+  'file.saveAll', 'file.close', 'editor.find', 'editor.fontIncrease', 'editor.fontDecrease', 'editor.fontReset',
+  'tabs.pin', 'view.sidebar', 'view.theme', 'settings.open', 'commands.open', 'files.quickOpen'] as const;
 export type AppCommandId = typeof appCommandIds[number];
 export interface AppCommandState {
   hasDocument: boolean;
@@ -29,6 +30,9 @@ const commandInfo: CommandInfo[] = [
   ['file.saveAll', '全部保存', 'save all', null, state => saveBusy(state) ?? (state.hasDirty ? null : '没有未保存修改。')],
   ['file.close', '关闭当前标签', 'close tab', 'Ctrl+W', state => hasDocument(state) ?? (state.batchBusy || state.closing ? '请等待当前操作结束。' : null)],
   ['editor.find', '文件内查找与替换', 'find search replace 搜索', 'Ctrl+F', state => hasDocument(state) ?? (state.closing ? '正在关闭文档。' : null)],
+  ['editor.fontIncrease', '放大编辑字号', 'font zoom in 字体 放大', 'Ctrl+=', state => hasDocument(state) ?? (state.closing ? '正在关闭文档。' : null)],
+  ['editor.fontDecrease', '缩小编辑字号', 'font zoom out 字体 缩小', 'Ctrl+-', state => hasDocument(state) ?? (state.closing ? '正在关闭文档。' : null)],
+  ['editor.fontReset', '恢复默认编辑字号', 'font zoom reset 14px 默认 字体', 'Ctrl+0', state => hasDocument(state) ?? (state.closing ? '正在关闭文档。' : null)],
   ['tabs.pin', '固定标签', 'pin preview 预览', null, state => hasDocument(state) ?? (state.closing ? '正在关闭文档。' : state.isPreview ? null : '当前标签已固定。')],
   ['view.sidebar', '切换资源管理器', 'sidebar explorer 侧栏', 'Ctrl+B', () => null],
   ['view.theme', '切换亮暗主题', 'theme dark light', null, () => null],

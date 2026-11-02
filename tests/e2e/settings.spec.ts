@@ -35,6 +35,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: '打开文件', exact: true }).click();
   await expect(page.locator('.document-view .cm-content')).toHaveText('body');
+  await expect(page.locator('.recent-panel').getByRole('button', { name: '打开settings-test.txt', exact: true })).toBeVisible();
 });
 
 test('system theme follows media and cancelling a theme/font preview restores the prior effective settings', async ({ page }) => {
@@ -77,13 +78,15 @@ test('real CodeMirror view preferences preview without changing document text, d
 });
 
 test('import has an explicit preview, retains unknown fields and failed persistence remains visibly temporary at 200%', async ({ page }) => {
+  const baselineVersion = await page.evaluate(() => (Reflect.get(window, 'settingsFixture') as { get: () => { version: number } }).get().version);
+  expect(baselineVersion).toBe(2); // Initial settings plus the successful-open recent history write.
   await page.getByRole('button', { name: '打开设置', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '设置', exact: true });
   await dialog.getByLabel('导入设置文件', { exact: true }).setInputFiles({ name: 'settings.json', mimeType: 'application/json',
     buffer: Buffer.from(JSON.stringify({ schemaVersion: 1, settings: { theme: 'dark', fontSize: 18, futureImport: { retained: true } } })) });
   const preview = dialog.getByRole('region', { name: '导入设置预览', exact: true });
   await expect(preview).toContainText('fontSize');
-  expect(await page.evaluate(() => (Reflect.get(window, 'settingsFixture') as { get: () => { version: number } }).get().version)).toBe(1);
+  expect(await page.evaluate(() => (Reflect.get(window, 'settingsFixture') as { get: () => { version: number } }).get().version)).toBe(baselineVersion);
   await preview.getByRole('button', { name: '应用导入预览', exact: true }).click();
   await dialog.getByRole('button', { name: '保存设置', exact: true }).click();
   await expect(dialog.getByRole('status')).toContainText('设置已保存');
@@ -99,4 +102,107 @@ test('import has an explicit preview, retains unknown fields and failed persiste
   await expect(dialog.getByRole('alert')).toContainText('仅本次生效');
   await expect(page.locator('.document-view .cm-scroller')).toHaveCSS('font-size', '20px');
   await page.screenshot({ path: test.info().outputPath('settings-200.png') });
+});
+
+test('settings category tabs support roving focus, arrows, Home/End and a labelled content panel without saving previews', async ({ page }) => {
+  const origin = page.getByRole('button', { name: '打开设置', exact: true });
+  await expect(origin).toHaveAttribute('title', '打开设置');
+  await origin.click();
+  const dialog = page.getByRole('dialog', { name: '设置', exact: true });
+  const tabs = dialog.getByRole('tablist', { name: '设置分类', exact: true });
+  const all = tabs.getByRole('tab', { name: '全部', exact: true });
+  const appearance = tabs.getByRole('tab', { name: '外观', exact: true });
+  const editor = tabs.getByRole('tab', { name: '编辑器', exact: true });
+  const privacy = tabs.getByRole('tab', { name: '隐私', exact: true });
+  await expect(tabs).toHaveAttribute('aria-orientation', 'vertical');
+  await page.keyboard.press('Tab');
+  await expect(all).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(appearance).toBeFocused();
+  await expect(appearance).toHaveAttribute('aria-selected', 'true');
+  const panel = dialog.getByRole('tabpanel', { name: '外观', exact: true });
+  await expect(appearance).toHaveAttribute('aria-controls', (await panel.getAttribute('id'))!);
+  await expect(panel).toHaveAttribute('aria-labelledby', (await appearance.getAttribute('id'))!);
+  await expect(tabs.locator('[tabindex="0"]')).toHaveCount(1);
+  await page.keyboard.press('Tab');
+  await expect(panel).toBeFocused();
+  await expect(panel).toHaveCSS('outline-style', 'solid');
+  await page.keyboard.press('Tab');
+  await expect(panel.getByRole('combobox', { name: '主题', exact: true })).toBeFocused();
+  await panel.getByRole('spinbutton', { name: '编辑字号', exact: true }).fill('20');
+  await appearance.focus();
+  await page.keyboard.press('ArrowDown');
+  await expect(editor).toBeFocused();
+  await expect(dialog.getByRole('tabpanel', { name: '编辑器', exact: true }).getByRole('checkbox', { name: '显示行号', exact: true })).toBeVisible();
+  await page.keyboard.press('End');
+  await expect(privacy).toBeFocused();
+  await expect(dialog.getByRole('tabpanel', { name: '隐私', exact: true }).getByRole('checkbox', { name: '记录最近打开', exact: true })).toBeVisible();
+  await page.keyboard.press('ArrowDown');
+  await expect(all).toBeFocused();
+  await page.keyboard.press('ArrowUp');
+  await expect(privacy).toBeFocused();
+  await page.keyboard.press('Home');
+  await expect(all).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(dialog.getByRole('spinbutton', { name: '编辑字号', exact: true })).toHaveValue('20');
+  expect(await page.evaluate(() => (Reflect.get(window, 'settingsFixture') as { get: () => { version: number } }).get().version)).toBe(2);
+  await page.keyboard.press('Escape');
+  await expect(origin).toBeFocused();
+  await expect(page.locator('.document-view .cm-scroller')).toHaveCSS('font-size', '14px');
+});
+
+test('empty category search keeps its Tab exit, ignores composition arrows and shortcut navigation restores editor focus', async ({ page }) => {
+  await page.getByRole('button', { name: '打开设置', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '设置', exact: true });
+  await dialog.getByRole('searchbox', { name: '搜索设置', exact: true }).fill('编辑字号');
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('End');
+  const privacy = dialog.getByRole('tab', { name: '隐私', exact: true });
+  await expect(privacy).toBeFocused();
+  const panel = dialog.getByRole('tabpanel', { name: '隐私', exact: true });
+  await expect(panel).toContainText('没有匹配设置');
+  await privacy.dispatchEvent('keydown', { key: 'ArrowUp', isComposing: true, bubbles: true });
+  await expect(privacy).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('Tab');
+  await expect(panel).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(privacy).toBeFocused();
+  await page.keyboard.press('Home');
+  await expect(dialog.getByRole('tab', { name: '全部', exact: true })).toBeFocused();
+  const shortcuts = dialog.getByRole('button', { name: '自定义快捷键…', exact: true });
+  await shortcuts.focus();
+  await page.keyboard.press('Enter');
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: '命令面板', exact: true }).getByRole('combobox', { name: '搜索命令', exact: true })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('textbox', { name: '文档内容', exact: true })).toBeFocused();
+});
+
+test('compact settings tabs update orientation and keep previews through resizing, high contrast and 200% CSS zoom', async ({ page }) => {
+  await page.getByRole('button', { name: '打开设置', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '设置', exact: true });
+  const tabs = dialog.getByRole('tablist', { name: '设置分类', exact: true });
+  const appearance = tabs.getByRole('tab', { name: '外观', exact: true });
+  await appearance.click();
+  await dialog.getByRole('spinbutton', { name: '编辑字号', exact: true }).fill('20');
+  await page.setViewportSize({ width: 640, height: 800 });
+  await expect(tabs).toHaveAttribute('aria-orientation', 'horizontal');
+  await appearance.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(tabs.getByRole('tab', { name: '编辑器', exact: true })).toBeFocused();
+  await page.keyboard.press('ArrowLeft');
+  await expect(appearance).toBeFocused();
+  await expect(dialog.getByRole('spinbutton', { name: '编辑字号', exact: true })).toHaveValue('20');
+  await page.emulateMedia({ forcedColors: 'active', colorScheme: 'dark' });
+  await expect(appearance).toHaveCSS('outline-style', 'solid');
+  await expect(appearance).toHaveCSS('outline-width', '2px');
+  await page.screenshot({ path: test.info().outputPath('settings-category-compact.png') });
+  await page.setViewportSize({ width: 1600, height: 1120 });
+  await page.evaluate(() => { document.documentElement.style.zoom = '2'; });
+  await expect(tabs).toHaveAttribute('aria-orientation', 'vertical');
+  await expect(appearance).toBeInViewport();
+  await expect(dialog.getByRole('button', { name: '取消并还原预览', exact: true })).toBeInViewport();
+  await expect(dialog.getByRole('spinbutton', { name: '编辑字号', exact: true })).toHaveValue('20');
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('button', { name: '打开设置', exact: true })).toBeFocused();
 });

@@ -1,0 +1,48 @@
+@media (forced-colors: active) {
+  :root, [data-theme="dark"] {
+    --bg-app: Canvas;
+    --bg-title: Canvas;
+    --bg-sidebar: Canvas;
+    --bg-editor: Canvas;
+    --bg-surface: Canvas;
+    --bg-hover: Canvas;
+    --bg-selected: Canvas;
+    --bg-code: Canvas;
+    --text-primary: CanvasText;
+    --text-secondary: CanvasText;
+    --text-muted: GrayText;
+    --accent: Highlight;
+    --accent-hover: Highlight;
+    --accent-soft: Canvas;
+    --border: CanvasText;
+    --border-strong: CanvasText;
+    --warning: CanvasText;
+    --warning-bg: Canvas;
+    --danger: CanvasText;
+    --focus: Highlight;
+    --syntax-blue: CanvasText;
+    --syntax-brown: CanvasText;
+    --shadow: none;
+  }
+
+  button:disabled { opacity: 1; color: GrayText; border-color: GrayText; }
+  .primary-button:not(:disabled) { background: Highlight; color: HighlightText; forced-color-adjust: none; }
+  button[aria-pressed="true"], .settings-tabs [aria-selected="true"], .tree-row[aria-selected="true"], .tree-row[aria-current="page"],
+  .palette-results [aria-selected="true"] { outline: 2px solid Highlight; outline-offset: -2px; }
+  .document-tab[data-active="true"] { border-bottom-color: Highlight; }
+  .cm-editor .cm-activeLine, .cm-editor .cm-matchingBracket { outline: 1px solid Highlight; outline-offset: -1px; }
+  .cm-editor .cm-nonmatchingBracket { outline: 2px dashed CanvasText; }
+  .cm-editor .cm-searchMatch { background: Highlight; color: HighlightText; forced-color-adjust: none; }
+  .cm-editor .cm-searchMatch-current { outline: 2px solid CanvasText; }
+  .error-notice, .trash-error { border-inline-start: 3px solid CanvasText; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0s !important;
+    scroll-behavior: auto !important;
+  }
+  .cm-cursorLayer, .cm-cursor, .cm-dropCursor { animation: none !important; }
+}

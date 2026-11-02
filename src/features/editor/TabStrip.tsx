@@ -39,7 +39,9 @@ export function TabStrip({ documents, activeId, previewId, busy, onSelect, onPin
       return <div key={document.id} className="document-tab" role="presentation" data-active={selected}>
         <button id={`tab-${document.id}`} role="tab" aria-selected={selected}
           aria-controls={selected ? `panel-${document.id}` : undefined}
-          aria-description={preview ? '预览标签，双击固定' : '固定标签'}
+          aria-description={[preview ? '预览标签，双击固定' : '固定标签',
+            document.dirty ? '有未保存修改' : '没有未保存修改', document.readOnlyReason ? '只读' : null,
+            document.missing ? '原文件当前不可用' : null].filter(Boolean).join('；')}
           tabIndex={selected ? 0 : -1} title={`${document.displayPath ?? document.title}${preview ? '（预览，双击固定）' : ''}`}
           onClick={() => onSelect(document.id)} onDoubleClick={() => onPin(document.id)}
           onKeyDown={event => navigate(event, index)}>
@@ -48,7 +50,7 @@ export function TabStrip({ documents, activeId, previewId, busy, onSelect, onPin
           </span>
           {document.dirty && <span className="dirty-marker" aria-label="有未保存修改">●</span>}
         </button>
-        <button type="button" className="tab-close" aria-label={`关闭 ${document.title}${parent ? `，${parent}` : ''}`}
+        <button type="button" className="tab-close" aria-label={`关闭 ${document.title}${parent ? `，${parent}` : ''}${document.dirty ? '，有未保存修改' : ''}${document.readOnlyReason ? '，只读' : ''}`}
           tabIndex={selected ? 0 : -1} disabled={busy || document.closing}
           title="关闭标签（Ctrl+W）" onClick={() => onClose(document.id)}>×</button>
       </div>;

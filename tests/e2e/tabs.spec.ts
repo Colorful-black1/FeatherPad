@@ -94,9 +94,9 @@ test('Web mock: clean preview replacement, double-click/edit pinning and tab key
   await expect(page.getByRole('tab')).toHaveCount(1);
   await page.getByRole('treeitem', { name: 'b.txt', exact: true }).click();
   await expect(page.getByRole('tab')).toHaveCount(1);
-  await expect(page.getByRole('tab', { name: 'b.txt', exact: true })).toHaveAttribute('aria-description', '预览标签，双击固定');
+  await expect(page.getByRole('tab', { name: 'b.txt', exact: true })).toHaveAttribute('aria-description', '预览标签，双击固定；没有未保存修改');
   await page.getByRole('treeitem', { name: 'b.txt', exact: true }).dblclick();
-  await expect(page.getByRole('tab', { name: 'b.txt', exact: true })).toHaveAttribute('aria-description', '固定标签');
+  await expect(page.getByRole('tab', { name: 'b.txt', exact: true })).toHaveAttribute('aria-description', '固定标签；没有未保存修改');
   await page.getByRole('treeitem', { name: 'a.txt', exact: true }).click();
   const before = await page.evaluate(() => (Reflect.get(window, 'tabCalls') as unknown[]).length);
   await editor(page).focus();
@@ -104,7 +104,7 @@ test('Web mock: clean preview replacement, double-click/edit pinning and tab key
   await page.keyboard.insertText(' dirty');
   expect(await page.evaluate(() => (Reflect.get(window, 'tabCalls') as unknown[]).length)).toBe(before);
   await page.keyboard.press('Control+z');
-  await expect(page.getByRole('tab', { name: 'a.txt', exact: true })).toHaveAttribute('aria-description', '固定标签');
+  await expect(page.getByRole('tab', { name: 'a.txt', exact: true })).toHaveAttribute('aria-description', '固定标签；没有未保存修改');
   await page.getByRole('treeitem', { name: 'c.txt', exact: true }).click();
   await page.getByRole('treeitem', { name: 'd.txt', exact: true }).click();
   await expect(page.getByRole('tab')).toHaveCount(3);
@@ -185,17 +185,17 @@ test('Web mock: an unknown release keeps a read-only full copy that explicit Sav
 test('Web mock: pin metadata survives reload, explicit close clears it, and duplicate names show parents', async ({ page }) => {
   await folder(page);
   await page.getByRole('treeitem', { name: 'b.txt', exact: true }).dblclick();
-  await expect(page.getByRole('tab', { name: 'b.txt', exact: true })).toHaveAttribute('aria-description', '固定标签');
+  await expect(page.getByRole('tab', { name: 'b.txt', exact: true })).toHaveAttribute('aria-description', '固定标签；没有未保存修改');
   await page.reload();
   await folder(page);
   await page.getByRole('treeitem', { name: 'b.txt', exact: true }).click();
-  await expect(page.getByRole('tab', { name: 'b.txt', exact: true })).toHaveAttribute('aria-description', '固定标签');
+  await expect(page.getByRole('tab', { name: 'b.txt', exact: true })).toHaveAttribute('aria-description', '固定标签；没有未保存修改');
   await page.getByRole('button', { name: '关闭 b.txt', exact: true }).click();
   await expect(page.getByRole('tab')).toHaveCount(0);
   await page.reload();
   await folder(page);
   await page.getByRole('treeitem', { name: 'b.txt', exact: true }).click();
-  await expect(page.getByRole('tab', { name: 'b.txt', exact: true })).toHaveAttribute('aria-description', '预览标签，双击固定');
+  await expect(page.getByRole('tab', { name: 'b.txt', exact: true })).toHaveAttribute('aria-description', '预览标签，双击固定；没有未保存修改');
   await page.getByRole('treeitem', { name: 'one', exact: true }).click();
   await page.getByRole('treeitem', { name: 'note.txt', exact: true }).dblclick();
   await page.getByRole('treeitem', { name: 'one', exact: true }).click();
@@ -210,7 +210,7 @@ test('Web mock: a late chunk cannot replace the retained page after an uncertain
   await page.getByRole('treeitem', { name: 'large.txt', exact: true }).click();
   await page.getByRole('button', { name: '下一块', exact: true }).click();
   await fault(page, 'release-uncertain');
-  await page.getByRole('button', { name: '关闭 large.txt', exact: true }).click();
+  await page.getByRole('button', { name: '关闭 large.txt，只读', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('受控关闭回执丢失');
   await page.evaluate(() => { (Reflect.get(window, 'completeTabChunk') as () => void)(); });
   await expect(page.getByRole('button', { name: '下一块', exact: true })).toBeDisabled();

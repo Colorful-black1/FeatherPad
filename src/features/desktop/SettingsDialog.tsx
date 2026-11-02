@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent } from 'react';
 import type { JsonValue, RawSettings } from '../../shared/contracts/settings';
 import { defaultSettings, mergeSettings, parseSettingsImport, settingDefinitions, settingsChanges,
   type SettingDefinition, type SettingGroup, type Settings, type SettingSource } from './settings-schema';
@@ -6,6 +6,7 @@ import type { SettingsCoordinator } from './settings';
 
 const sourceNames: Record<SettingSource, string> = { default: '内置默认', user: '用户设置', workspace: '工作区设置', session: '本次预览 / 会话' };
 const display = (value: JsonValue | undefined) => value === undefined ? '恢复上层值' : JSON.stringify(value).slice(0, 160);
+const settingGroups = [['all', '全部'], ['appearance', '外观'], ['editor', '编辑器'], ['privacy', '隐私']] as const;
 
 function SettingField({ definition, value, onChange }: {
   definition: SettingDefinition; value: Settings[keyof Settings]; onChange: (value: Settings[keyof Settings]) => void;
@@ -37,10 +38,13 @@ export function SettingsDialog({ coordinator, onClose, onShortcuts }: {
 }) {
   const snapshot = useSyncExternalStore(coordinator.subscribe, coordinator.getSnapshot);
   const dialog = useRef<HTMLDialogElement>(null);
+  const categories = useRef<HTMLDivElement>(null);
+  const categoryId = useId();
   const search = useRef<HTMLInputElement>(null);
   const importing = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState('');
   const [group, setGroup] = useState<SettingGroup | 'all'>('all');
+  const [horizontal, setHorizontal] = useState(() => window.matchMedia('(max-width: 700px)').matches);
   const [imported, setImported] = useState<RawSettings | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [working, setWorking] = useState(false);
@@ -60,6 +64,25 @@ export function SettingsDialog({ coordinator, onClose, onShortcuts }: {
     coordinator.beginPreview(); element?.showModal(); search.current?.focus();
     return () => element?.close();
   }, [coordinator]);
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 700px)');
+    const sync = () => setHorizontal(media.matches);
+    media.addEventListener('change', sync);
+    return () => media.removeEventListener('change', sync);
+  }, []);
+
+  function navigateCategory(event: KeyboardEvent<HTMLButtonElement>, index: number) {
+    if (busy || confirmRestore || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229
+      || event.ctrlKey || event.altKey || event.metaKey) return;
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? settingGroups.length - 1
+      : ['ArrowDown', 'ArrowRight'].includes(event.key) ? (index + 1) % settingGroups.length
+        : ['ArrowUp', 'ArrowLeft'].includes(event.key) ? (index + settingGroups.length - 1) % settingGroups.length : null;
+    const selected = next === null ? undefined : settingGroups[next];
+    if (!selected || next === null) return;
+    event.preventDefault();
+    setGroup(selected[0]);
+    categories.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
+  }
 
   function cancel() { coordinator.cancelPreview(); onClose(); }
   async function run(action: () => Promise<unknown>) {
@@ -81,11 +104,14 @@ export function SettingsDialog({ coordinator, onClose, onShortcuts }: {
       <input ref={search} type="search" value={query} onChange={event => setQuery(event.currentTarget.value)} placeholder="主题、字体、缩进…" /></label></header>
     <div className="settings-content">
       <nav aria-label="设置分类">
-        {([['all', '全部'], ['appearance', '外观'], ['editor', '编辑器'], ['privacy', '隐私']] as const).map(([id, label]) =>
-          <button key={id} className="plain-button" aria-pressed={group === id} onClick={() => setGroup(id)}>{label}</button>)}
-        <button className="plain-button" disabled={busy} onClick={() => { coordinator.cancelPreview(); onShortcuts(); }}>自定义快捷键…</button>
+        <div ref={categories} role="tablist" aria-label="设置分类" aria-orientation={horizontal ? 'horizontal' : 'vertical'} className="settings-tabs">
+          {settingGroups.map(([id, label], index) => <button key={id} id={`${categoryId}-${id}`} role="tab"
+            className="plain-button" aria-selected={group === id} aria-controls={`${categoryId}-panel`}
+            tabIndex={group === id ? 0 : -1} disabled={busy || confirmRestore}
+            onKeyDown={event => navigateCategory(event, index)} onClick={() => setGroup(id)}>{label}</button>)}
+        </div>
       </nav>
-      <div className="settings-fields">
+      <div id={`${categoryId}-panel`} className="settings-fields" role="tabpanel" aria-labelledby={`${categoryId}-${group}`} tabIndex={0}>
         <p className="settings-intro">修改会即时预览。保存写入本机配置；取消会还原本次预览。工作区设置和文档临时选择可能覆盖用户值。</p>
         <datalist id="local-editor-fonts">{fontOptions}</datalist>
         <fieldset disabled={busy || confirmRestore}>
@@ -135,6 +161,7 @@ export function SettingsDialog({ coordinator, onClose, onShortcuts }: {
     </div>
     <footer>
       <div className="settings-tools">
+        <button className="plain-button" disabled={busy} onClick={() => { coordinator.cancelPreview(); onShortcuts(); }}>自定义快捷键…</button>
         <input ref={importing} type="file" accept=".json,application/json" aria-label="导入设置文件" hidden
           onChange={event => { void readImport(event.currentTarget.files?.[0]); event.currentTarget.value = ''; }} />
         <button className="plain-button" disabled={busy} onClick={() => importing.current?.click()}>导入…</button>

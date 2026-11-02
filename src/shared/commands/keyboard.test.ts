@@ -23,3 +23,16 @@ it('does not dispatch composition, dead keys, Meta or unmodified typing', () => 
   expect(shortcutForEvent({ ...event, metaKey: true })).toBeNull();
   expect(shortcutForEvent({ ...event, ctrlKey: false })).toBeNull();
 });
+
+it('maps plus/equal zoom aliases consistently while keeping malformed modifiers invalid', () => {
+  for (const value of ['Ctrl+=', 'Ctrl++', 'Ctrl+Shift+=', 'Ctrl+Shift++']) expect(normalizeShortcut(value)).toBe('Ctrl+=');
+  expect(normalizeShortcut('Ctrl+-')).toBe('Ctrl+-');
+  expect(shortcutForEvent({ key: '+', ctrlKey: true, shiftKey: true, altKey: false, metaKey: false, isComposing: false })).toBe('Ctrl+=');
+  for (const value of ['Ctrl+Ctrl++', 'Ctrl++P', '+', 'Shift++']) expect(normalizeShortcut(value)).toBeNull();
+});
+
+it('reserves F6 navigation in both directions without reserving unrelated function keys', () => {
+  expect(shortcutRestriction('F6')).toContain('区域导航');
+  expect(shortcutRestriction('Shift+F6')).toContain('区域导航');
+  expect(shortcutRestriction('F8')).toBeNull();
+});

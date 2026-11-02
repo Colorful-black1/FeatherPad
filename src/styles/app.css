@@ -5,6 +5,7 @@ button, input, select { font: inherit; }
 button { color: inherit; cursor: pointer; }
 button:disabled { cursor: default; opacity: 0.55; }
 button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.statusbar:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 svg { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .app-shell { height: 100%; display: flex; flex-direction: column; min-width: 320px; }
 .app-heading { height: 36px; flex: 0 0 auto; display: flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-3); background: var(--bg-title); border-bottom: 1px solid var(--border); font-weight: 600; }
@@ -111,6 +112,9 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round
 .document-heading span:first-child { flex: 1; overflow-wrap: anywhere; }
 .document-heading span:last-child { flex: 0 0 auto; }
 .codemirror-host { flex: 1; min-height: 0; }
+.editor-keyboard-panel { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); padding: var(--space-1) var(--space-2); color: var(--text-secondary); background: var(--bg-sidebar); font: 11px/1.5 var(--font-ui); }
+.editor-keyboard-panel button { border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 0 var(--space-2); min-height: 24px; background: var(--bg-surface); }
+.editor-keyboard-panel button[aria-pressed="true"] { background: var(--bg-selected); color: var(--accent); border-color: var(--accent); }
 .large-file-view { display: flex; flex: 1; min-height: 0; flex-direction: column; background: var(--bg-editor); }
 .large-file-toolbar { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-4); border-bottom: 1px solid var(--border); color: var(--text-secondary); font-size: 12px; flex-wrap: wrap; }
 .large-file-toolbar strong { color: var(--text-primary); font-weight: 600; }
@@ -197,8 +201,10 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round
 .settings-dialog input:not([type="checkbox"]), .settings-dialog select { min-width: 0; min-height: 30px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: var(--space-1) var(--space-2); background: var(--bg-editor); color: var(--text-primary); }
 .settings-content { display: flex; min-height: 0; overflow: hidden; }
 .settings-content nav { display: flex; flex-direction: column; gap: var(--space-2); flex: 0 0 136px; padding: var(--space-3); border-right: 1px solid var(--border); background: var(--bg-sidebar); overflow: auto; }
-.settings-content nav [aria-pressed="true"] { background: var(--bg-selected); border-color: var(--accent); }
+.settings-tabs { display: flex; flex-direction: column; gap: var(--space-2); }
+.settings-content nav [aria-selected="true"] { background: var(--bg-selected); border-color: var(--accent); }
 .settings-fields { min-width: 0; overflow: auto; padding: var(--space-3) var(--space-4); }
+.settings-fields:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .settings-intro, .settings-row small, .settings-recovery p, .settings-import p { color: var(--text-secondary); font-size: 11px; overflow-wrap: anywhere; }
 .settings-fields fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
 .settings-row { display: grid; grid-template-columns: minmax(130px, 1fr) minmax(110px, 180px) auto; align-items: center; gap: var(--space-2); padding: var(--space-3) 0; border-bottom: 1px solid var(--border); }
@@ -217,6 +223,7 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round
 @media (max-width: 700px) {
   .settings-content { display: block; overflow: auto; }
   .settings-content nav { flex-direction: row; flex-wrap: wrap; border-right: 0; border-bottom: 1px solid var(--border); }
+  .settings-tabs { flex-direction: row; flex-wrap: wrap; }
   .settings-fields { overflow: visible; }
   .settings-row { grid-template-columns: minmax(0, 1fr) auto; }
   .settings-row > div { grid-column: 1 / -1; }

@@ -5,6 +5,7 @@ import { CommandPalette } from '../shared/ui/CommandPalette';
 import { files } from '../bridge/files';
 import { EditorDocument } from '../features/editor/EditorDocument';
 import { EditorStatus } from '../features/editor/EditorStatus';
+import { fontSizeAfterZoom, listenEditorFontWheel, type FontZoomAction } from '../features/editor/view-settings';
 import { languageLabel, languageOptions, type LanguageId } from '../features/editor/editor-language';
 import { documents } from '../features/editor/documents';
 import { tabs } from '../features/editor/tabs';
@@ -118,6 +119,7 @@ export function App() {
     void appWindow.onCloseRequested(async event => {
       event.preventDefault();
       await startupReady;
+      await settings.flushFontSize();
       if (active) await hotExit.prepare();
     }).then(unlisten => {
       if (active) unlistenClose = unlisten;
@@ -278,6 +280,10 @@ export function App() {
   ): Promise<string | null> => {
     const result = await tabs.open(reference, intent);
     if (result.ok) {
+      if (window.matchMedia('(max-width: 1099px)').matches && window.document.activeElement?.closest('.sidebar')) {
+        setSidebarOpen(false);
+        requestAnimationFrame(() => documents.focus(result.value.id));
+      }
       if (remember) await rememberRecentFile(result.value.id);
       else session.markGrantAvailable(reference.grantId);
       if (result.value.warning && result.value.warning !== tabs.getSnapshot().warning) setNotice(result.value.warning);
@@ -289,7 +295,7 @@ export function App() {
       ) ? candidates : [...candidates, reference]);
     }
     return result.error.message;
-  }, [rememberRecentFile]);
+  }, [rememberRecentFile, setSidebarOpen]);
 
   const openFile = useCallback(async () => {
     if (opening.current) return;
@@ -545,16 +551,30 @@ export function App() {
     if (paletteOrigin.current?.isConnected) paletteOrigin.current.focus();
     else { const id = documents.getSnapshot().activeId; if (id) documents.focus(id); }
   }, []);
+  const zoomEditor = useCallback((action: FontZoomAction) => {
+    const id = documents.getSnapshot().activeId;
+    if (!id || documents.getDocument(id)?.summary.closing || documents.isHotExitFrozen()) return;
+    const current = settings.getSnapshot();
+    const size = fontSizeAfterZoom(current.settings.fontSize, action);
+    if (size === current.settings.fontSize && size === current.user.fontSize) return;
+    void settings.setFontSize(size).then(result => {
+      if (!result.ok) setNotice(`编辑字号仅本次生效：${result.error.message}`);
+      else setNotice(previous => previous?.startsWith('编辑字号仅本次生效：') ? null : previous);
+    });
+  }, [setNotice]);
+  useEffect(() => listenEditorFontWheel(window, zoomEditor, () => documents.isHotExitFrozen()), [zoomEditor]);
   const commandActions = useMemo<AppCommandActions>(() => ({
     'file.new': newFile, 'file.open': openFile, 'workspace.open': openFolder, 'file.save': saveCurrent,
     'file.saveAs': () => saveDestination(), 'file.saveCopy': () => saveDestination('copy'),
     'file.saveAll': async () => { await saveAll.run(); },
     'file.close': async () => { const id = documents.getSnapshot().activeId; if (id) await requestClose(id); },
     'editor.find': openFind, 'tabs.pin': () => { const id = documents.getSnapshot().activeId; if (id) tabs.pin(id); },
+    'editor.fontIncrease': () => zoomEditor('in'), 'editor.fontDecrease': () => zoomEditor('out'),
+    'editor.fontReset': () => zoomEditor('reset'),
     'view.sidebar': () => setSidebarOpen(open => !open),
     'view.theme': () => settings.setSession('theme', dark ? 'light' : 'dark'), 'settings.open': openSettings,
     'commands.open': () => openPalette('commands'), 'files.quickOpen': () => openPalette('files'),
-  }), [newFile, openFile, openFolder, saveCurrent, saveDestination, requestClose, openFind, openPalette, openSettings, dark]);
+  }), [newFile, openFile, openFolder, saveCurrent, saveDestination, requestClose, openFind, openPalette, openSettings, dark, zoomEditor]);
 
   const executeCommand = useCallback(async (id: string, targetId?: DocumentId) => {
     const actions = targetId ? { ...commandActions, 'file.close': () => requestClose(targetId), 'tabs.pin': () => tabs.pin(targetId) } : commandActions;
@@ -590,6 +610,7 @@ export function App() {
   return (
     <Shell
       railActions={<button className="icon-button" aria-label="打开设置" {...commandProps('settings.open')}
+        title={commands.disabledReason('settings.open', commandAvailability) ?? '打开设置'}
         onClick={() => void executeCommand('settings.open')}>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6l1 4 3 2 3 1v4l-3 1-3 2-1 4H9l-1-4-3-2-3-1v-4l3-1 3-2Z" /><circle cx="12" cy="12" r="3" /></svg>
       </button>}
@@ -617,7 +638,7 @@ export function App() {
             void applyRecentRenames(renamed);
           }} />
       </div>}
-      status={<><span>{closingCount > 0 || current?.closing ? '正在关闭…' : batchBusy ? '正在全部保存…' : savingCount > 0 ? '正在保存…' : busy ? '正在打开…' : current ? current.readOnlyReason ? '只读' : current.dirty ? '未保存修改' : current.displayPath ? '未修改' : '未命名' : '就绪'}</span>{current && <EditorStatus registry={documents} id={current.id} summary={current} />}<span className="status-end">{current ? `${current.format.encoding.toUpperCase()}${current.format.bom === 'none' ? '' : ' BOM'} · ${current.format.lineEnding.toUpperCase()}` : '轻羽 FeatherPad'}</span></>}
+      status={<><span>{closingCount > 0 || current?.closing ? '正在关闭…' : batchBusy ? '正在全部保存…' : savingCount > 0 ? '正在保存…' : busy ? '正在打开…' : current ? current.readOnlyReason ? '只读' : current.dirty ? '未保存修改' : current.displayPath ? '未修改' : '未命名' : '就绪'}</span>{current && <><span role="group" aria-label="光标与字数" aria-live="off"><EditorStatus registry={documents} id={current.id} summary={current} /></span><span aria-label="编辑字号">{settingsState.settings.fontSize}px</span></>}<span className="status-end">{current ? `${current.format.encoding.toUpperCase()}${current.format.bom === 'none' ? '' : ' BOM'} · ${current.format.lineEnding.toUpperCase()}` : '轻羽 FeatherPad'}</span></>}
     >
       {error && <div className="notice error-notice" role="alert"><span>{error}</span><button onClick={() => setError(null)}>关闭提示</button></div>}
       {notice && <div className="notice error-notice" aria-live="polite"><span>{notice}</span><button onClick={() => setNotice(null)}>关闭提示</button></div>}

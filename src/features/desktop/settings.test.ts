@@ -33,6 +33,77 @@ function setup(raw: RawSettings = {}, version = 0) {
 }
 afterEach(() => vi.unstubAllGlobals());
 
+it('coalesces in-flight font changes and serializes history without reverting the latest visible size', async () => {
+  const { coordinator, bridge } = setup({ fontSize: 14, future: 'retained' }, 1);
+  await coordinator.load();
+  let acknowledge!: (value: ResultEnvelope<SavedSettings>) => void;
+  bridge.save.mockImplementationOnce(() => new Promise(resolve => { acknowledge = resolve; }));
+  const first = coordinator.setFontSize(15);
+  await vi.waitFor(() => expect(bridge.save).toHaveBeenCalledTimes(1));
+  const second = coordinator.setFontSize(16);
+  const latest = coordinator.setFontSize(17);
+  const history = coordinator.updatePersistedValue('recentHistoryItems', { schemaVersion: 1, entries: [] });
+  expect(second).toBe(first); expect(latest).toBe(first);
+  expect(coordinator.getSnapshot().settings.fontSize).toBe(17);
+  const flush = coordinator.flushFontSize();
+  acknowledge(ok({ version: 2, revision: revision('b') }));
+  expect(await flush).toMatchObject({ ok: true });
+  expect(await history).toMatchObject({ ok: true });
+  expect(bridge.save.mock.calls.map(([request]) => [request.expectedVersion, request.settings.fontSize]))
+    .toEqual([[1, 15], [2, 17], [3, 17]]);
+  expect(coordinator.getSnapshot()).toMatchObject({ version: 4, settings: { fontSize: 17 },
+    user: { fontSize: 17, future: 'retained', recentHistoryItems: { schemaVersion: 1, entries: [] } }, session: {} });
+});
+
+it('rebases a settings preview opened during a font save without overwriting its newer edits', async () => {
+  const { coordinator, bridge } = setup({ fontSize: 14, theme: 'light' }, 1);
+  await coordinator.load();
+  let acknowledge!: (value: ResultEnvelope<SavedSettings>) => void;
+  bridge.save.mockImplementationOnce(() => new Promise(resolve => { acknowledge = resolve; }));
+  const saving = coordinator.setFontSize(15);
+  await vi.waitFor(() => expect(bridge.save).toHaveBeenCalledTimes(1));
+  coordinator.beginPreview(); coordinator.setPreview('fontSize', 20); coordinator.setPreview('theme', 'dark');
+  acknowledge(ok({ version: 2, revision: revision('b') }));
+  expect(await saving).toMatchObject({ ok: true });
+  expect(coordinator.getSnapshot()).toMatchObject({ user: { fontSize: 15, theme: 'light' },
+    draft: { fontSize: 20, theme: 'dark' }, settings: { fontSize: 20, theme: 'dark' } });
+  coordinator.cancelPreview();
+  expect(coordinator.getSnapshot().settings.fontSize).toBe(15);
+});
+
+it('font conflicts keep the session size and never retry an external settings overwrite', async () => {
+  const { coordinator, bridge } = setup({ fontSize: 14 }, 1); await coordinator.load();
+  bridge.save.mockResolvedValueOnce({ ok: false, error: { code: 'CONFLICT', message: '配置已变化', retryable: false } });
+  expect(await coordinator.setFontSize(19)).toMatchObject({ ok: false });
+  expect(bridge.save).toHaveBeenCalledTimes(1);
+  expect(coordinator.getSnapshot()).toMatchObject({ version: 1, user: { fontSize: 14 }, settings: { fontSize: 19 } });
+  expect(coordinator.getSnapshot().error).toContain('仅本次生效');
+});
+
+it('reconciles an unknown font write by exact readback and rejects a stale acknowledgment', async () => {
+  const { coordinator, bridge } = setup({ fontSize: 14 }, 1); await coordinator.load();
+  bridge.save.mockResolvedValueOnce({ ok: false, error: { code: 'IPC_UNAVAILABLE', message: 'unknown', retryable: false } });
+  bridge.load.mockResolvedValueOnce(ok({ ...loaded({ fontSize: 18 }, 2), revision: revision('b') }));
+  expect(await coordinator.setFontSize(18)).toMatchObject({ ok: true });
+  expect(bridge.save).toHaveBeenCalledTimes(1);
+  let acknowledge!: (value: ResultEnvelope<SavedSettings>) => void;
+  bridge.save.mockImplementationOnce(() => new Promise(resolve => { acknowledge = resolve; }));
+  const saving = coordinator.setFontSize(19);
+  await vi.waitFor(() => expect(bridge.save).toHaveBeenCalledTimes(2));
+  bridge.load.mockResolvedValueOnce(ok(loaded({ fontSize: 21 }, 4)));
+  await coordinator.load();
+  acknowledge(ok({ version: 3, revision: revision('c') }));
+  expect(await saving).toMatchObject({ ok: false });
+  expect(coordinator.getSnapshot()).toMatchObject({ version: 4, user: { fontSize: 21 }, settings: { fontSize: 19 } });
+});
+
+it('invalid font sizes never change the session or call storage', async () => {
+  const { coordinator, bridge } = setup({ fontSize: 14 }); await coordinator.load();
+  for (const size of [7, 41, 14.5, Number.NaN]) expect(await coordinator.setFontSize(size)).toMatchObject({ ok: false });
+  expect(bridge.save).not.toHaveBeenCalled();
+  expect(coordinator.getSnapshot()).toMatchObject({ settings: { fontSize: 14 }, session: {} });
+});
+
 it('previews changes instantly and cancellation restores the user and temporary session choices', async () => {
   const { coordinator } = setup({ theme: 'light', fontSize: 14, future: true });
   await coordinator.load(); coordinator.setSession('theme', 'dark');
