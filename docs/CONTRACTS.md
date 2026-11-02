@@ -131,6 +131,7 @@ export interface SaveAck {
 | `stat_document` | `{documentId}` | `FileMetadata` | 核对未知保存结果或磁盘变化 |
 | `reopen_with_encoding` | `{documentId,encoding,discardVersion?}` | `OpenDocument` | dirty先由UI明确保存/放弃；不得隐式丢弃 |
 | `release_document` | `{documentId}` | `{released:boolean}` | 仅释放资源，不删除文件/恢复快照 |
+| `discard_recovery` | `{documentId,throughVersion}` | `{documentId,throughVersion,discarded:true}` | 显式放弃授权；先持久化标记、再清理对应版本快照，失败不关闭；同文档保存/回收互斥 |
 
 T107.a资源释放决策（2026-11-02）：请求严格只含规范UUID的documentId。释放该文档的文件身份索引、lease、分块标志和全部分块句柄，不撤销可供再次打开的原始grant；同一会话重试已释放ID返回released=false，无原生lease的无标题/缺失缓冲同样是正常结果。重开原文件建立新DocumentId，其他已打开文档及其句柄不受影响。IPC先取得与保存/回收共用的逐文档许可，在途保存返回BUSY且不释放；成功回执后前端才移除对应缓冲。释放不代表放弃，不删除或屏蔽任何恢复副本；显式放弃另行持久化tombstone，失败保留标签。T107完整验收仍需标签交互、脏关闭与放弃链路。
 

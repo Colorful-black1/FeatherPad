@@ -33,6 +33,24 @@ fn fixture() -> (PathBuf, PathBuf, RecoveryStore, SaveRequest) {
 }
 
 #[test]
+fn discard_request_rejects_paths_missing_or_noninteger_versions() {
+    use featherpad_lib::models::DiscardRecoveryRequest;
+    let id = uuid::Uuid::new_v4().to_string();
+    assert!(serde_json::from_value::<DiscardRecoveryRequest>(
+        serde_json::json!({"documentId": id, "throughVersion": 1})
+    )
+    .is_ok());
+    for value in [
+        serde_json::json!({"documentId": id, "throughVersion": 1, "path": "not allowed"}),
+        serde_json::json!({"documentId": id, "throughVersion": -1}),
+        serde_json::json!({"documentId": id, "throughVersion": 1.5}),
+        serde_json::json!({"documentId": id}),
+    ] {
+        assert!(serde_json::from_value::<DiscardRecoveryRequest>(value).is_err());
+    }
+}
+
+#[test]
 fn discarded_versions_stay_discarded_after_restart_and_cannot_be_recreated_by_late_writes() {
     let (root, source, store, mut request) = fixture();
     let first = store

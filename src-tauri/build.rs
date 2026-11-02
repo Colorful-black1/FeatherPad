@@ -10,6 +10,7 @@ fn main() {
             "trash_entry",
             "open_document",
             "release_document",
+            "discard_recovery",
             "read_document_chunk",
             "save_document",
             "save_document_as",

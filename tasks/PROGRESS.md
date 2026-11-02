@@ -5,7 +5,7 @@
 - 产品名称：**轻羽 FeatherPad**。
 - 当前交付：完整产品方案、86项功能矩阵、模块规格、UI规范与离线交互原型、技术/本机环境文档、M0–M5实现计划、57个开发任务、agent执行入口。
 - 产品代码：**M0/G0、M1/T101、T102、T103、T104、T105、T106及T108通过**。真实Release保存/另存/副本/批次/覆盖/硬链接/进程终止、真实小容量满盘安全失败、<20MiB正常/降级编辑、20MiB分块只读、>100MiB显式预览、单根懒加载目录树、CodeMirror编辑/语言/系统中文IME，以及文件内搜索替换和只读保护均已验证；恢复和其余M1项仍未完成，G1未通过，更不是完整v1。
-- 下一项：**T107标签与关闭保护**。T105新建/重命名/仅回收站删除已通过真实Release验收，包含dirty快照先落盘、失败保树、目录后代缓冲及缺失后另存。恢复与热退出/G1及以后仍未完成，继续M0–M5全部86项必需功能。
+- 当前：**T107标签与关闭保护进行中，下一切片c标签/关闭UI**。a资源释放和b版本化放弃/对应恢复副本清理的严格IPC均已通过真实Release；标签交互和保存/放弃/取消尚未接入。恢复与热退出/G1及以后仍未完成，继续M0–M5全部86项必需功能。
 - 本次交付检查：详见 [DELIVERY-CHECK](../docs/DELIVERY-CHECK.md)，不代表产品关卡G0–G5通过。
 
 ## 已核查环境
@@ -31,6 +31,16 @@
 | 2026-11-01 / T001.a,b | F-DESK-013 | manifests/双锁、TS/Vite/ESLint、Tauri骨架与图标 | 冻结offline安装、typecheck/lint/build:web、Rust fmt/clippy/test均0；audit exit 1仅开发工具moderate | 编译级原生；当时Rust行为测试0个 | `docs/acceptance/M0.md`、`.artifacts/T001/` | T001通过；minimatch受控lint模式，2026-12-01复核 |
 | 2026-11-01 / T002 | app-shell | React Shell/App/token/CSS、Web及原生测试 | typecheck/lint exit 0；Web 2 passed；真实WebView2 debug 1 passed | Web与原生范围分开，未测OS对话框 | .artifacts/T002/及docs/acceptance/M0.md | T002通过；下一T003 |
 | 2026-11-01 / T003.a–d（进行中） | F-DESK-013 | Rust models/grants/files/commands、AppManifest ACL、TS contracts/bridge、CodeMirror只读UI、测试与脚本 | typecheck/lint/TS单测3、Rust原生5、Web4、Release smoke1均exit 0；check.ps1 -Desktop exit 0；交互选择器三次超时，后次显式exit 1 | 原生Rust磁盘+junction，真实Release IPC/WebView2，Web mock独立 | docs/acceptance/M0.md；.artifacts/T003；.artifacts/T002/native-release.json | T003未完成OS选取验收，G0不勾选 |
+
+## T107.b3 放弃恢复严格IPC及Release验收（2026-11-02，进行中）
+
+- discard_recovery只接受documentId/throughVersion，返回相同ID/版本及discarded=true；严格DTO拒绝path、多余字段、负数/非整数，核心拒绝非规范UUID和超过JS安全整数的版本。app内部派生恢复根，main最小allow-discard-recovery，先取与保存/回收/释放共用许可；不在该入口释放原生lease或清理save-transactions歧义保存候选。
+- TS共享契约/typed bridge绑定原请求ID与版本校验回执。单测拒绝false/缺字段/不安全版本，并用mock transport验证其他文档或其他版本的“成功”回执会变为IPC_UNAVAILABLE，不能用错回执关闭文档。9项discard_recovery Rust文件/DTO测试通过；当前scripts/check.ps1 exit0（.artifacts/T107-discard-check.log）：typecheck/lint、TS87、Rust102 passed/1个100k benchmark ignored、Web31、fmt/clippy。pnpm audit --audit-level high exit0，仍1条既有开发工具moderate（.artifacts/T107-discard-audit.log）。
+- pnpm build exit0（.artifacts/T107-discard-build.log）；最新Release为10,984,960 bytes，SHA256 6A0C4525C824C39D0A804FA25CE70CB4A5E286F79D2D5568E1CCF7CFF1412E41；Vite主chunk628.72kB/gzip202.46kB警告保留。桌面启动fixture记录hash已与该新产物核对相等，未把旧产物当新功能证据。
+- pnpm test:desktop exit0，1 passed（1.3分钟），.artifacts/T107-discard-desktop.log。真实硬链接保存确认期间调用discard_recovery得到BUSY，随后保存/取消正常；新discard.ts在T105草稿/回收验收之后，对已另存的fixture文档明确放弃：非法请求保body，两份对应before-trash快照目录实际消失，tombstone内容读回匹配，重复同意图相同Ack，native stat仍可读且磁盘revision/元数据不变；另一dirty后代草稿正文保留。
+- .artifacts/T102/native-release.json的nativeWorkspaceObservation中nativeDiscardValidated、nativeDiscardRemovesOnlyMatchingDrafts、nativeDiscardIdempotentAndSourceLeasePreserved均true，discardedDraftReceipts记录本次主动清理的两个受控receipt；failedDraft的正文是在T105断言完成后作为T107验收明确清理，directoryDraft仍保留。不是用户恢复数据清理，也不清空系统回收站。
+- 已按版本绑定、许可互斥、路径边界、幂等/部分失败和证据范围自审，无新增依赖/安装工具。本轮真实范围为原生核心及IPC；T107.c还需预览/固定、关闭保存/放弃/取消、CodeMirror/view资源和焦点清理，并验证旧Ack/新输入、取消另存及存储失败。
+- c阶段须处理“放弃标记可能已写入但清理失败或回执未知”：保留缓冲/标签/lease，撤销不再可靠的recoveryProtected；继续保留时要用更高bufferVersion的新恢复代次，正文/undo/磁盘基线不变，不能将已放弃旧版本重新声明已保护。T110再实现启动扫描/认领、会话与热退出，并让save-transactions候选恢复查询同一tombstone。G1和完整v1仍未完成。
 
 ## T107.b2 对应恢复副本物理清理（2026-11-02，进行中）
 

@@ -294,6 +294,21 @@ pub struct ReleaseDocumentResult {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DiscardRecoveryRequest {
+    pub document_id: String,
+    pub through_version: u64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscardRecoveryResult {
+    pub document_id: String,
+    pub through_version: u64,
+    pub discarded: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ReadChunkRequest {
     pub document_id: String,
     pub handle_id: String,

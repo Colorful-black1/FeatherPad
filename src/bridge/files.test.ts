@@ -1,5 +1,6 @@
-import { expect, it } from 'vitest';
-import { isChosenFiles, isChosenFolder, isDirectoryPage, isFileRef, isOpenDocument, isReleaseDocumentResult, isRenameEntryResult, isSaveAck, isSaveAsAck, isTextChunk, isTrashImpact, isTrashEntryResult } from './files';
+import { expect, it, vi } from 'vitest';
+import type { DocumentId } from '../shared/contracts/files';
+import { files, isChosenFiles, isChosenFolder, isDirectoryPage, isDiscardRecoveryResult, isFileRef, isOpenDocument, isReleaseDocumentResult, isRenameEntryResult, isSaveAck, isSaveAsAck, isTextChunk, isTrashImpact, isTrashEntryResult } from './files';
 
 const valid = {
   documentId: 'document-fixture', ref: { grantId: 'fixture-grant', relativePath: '' },
@@ -14,6 +15,33 @@ it('accepts released and already-unleased results but rejects an ambiguous relea
   for (const value of [null, {}, { released: 'true' }, { released: null }, { released: 1 }]) {
     expect(isReleaseDocumentResult(value)).toBe(false);
   }
+});
+
+it('requires an explicit versioned discard receipt and rejects unsafe versions and false acknowledgements', () => {
+  const receipt = { documentId: valid.documentId, throughVersion: 1, discarded: true };
+  expect(isDiscardRecoveryResult(receipt)).toBe(true);
+  for (const value of [null, {}, { ...receipt, documentId: '' }, { ...receipt, discarded: false },
+    { ...receipt, throughVersion: -1 }, { ...receipt, throughVersion: 1.5 },
+    { ...receipt, throughVersion: Number.MAX_SAFE_INTEGER + 1 }]) {
+    expect(isDiscardRecoveryResult(value)).toBe(false);
+  }
+});
+
+it('never accepts a discard acknowledgement for a different document or version', async () => {
+  const request = { documentId: valid.documentId as DocumentId, throughVersion: 2 };
+  let reply = { ...request, discarded: true };
+  vi.stubGlobal('window', { __TAURI_INTERNALS__: { invoke: async (command: string, args: unknown) => {
+    expect(command).toBe('discard_recovery');
+    expect(args).toEqual(request);
+    return { ok: true, value: reply };
+  } } });
+  try {
+    expect((await files.discardRecovery(request)).ok).toBe(true);
+    reply = { ...reply, throughVersion: 1 };
+    expect(await files.discardRecovery(request)).toMatchObject({ ok: false, error: { code: 'IPC_UNAVAILABLE' } });
+    reply = { ...reply, throughVersion: 2, documentId: 'another-document' as DocumentId };
+    expect(await files.discardRecovery(request)).toMatchObject({ ok: false, error: { code: 'IPC_UNAVAILABLE' } });
+  } finally { vi.unstubAllGlobals(); }
 });
 
 it('rejects malformed or duplicate trash impacts and inconsistent missing-document receipts', () => {

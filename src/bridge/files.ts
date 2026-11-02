@@ -1,4 +1,4 @@
-import type { ChosenFiles, ChosenFolder, CreateEntryRequest, DirectoryEntry, DirectoryPage, DocumentId, FileRef, ListDirectoryRequest, OpenDocument, ReadChunkRequest, ReleaseDocumentResult, RenameEntryRequest, RenameEntryResult, SaveAck, SaveAsAck, SaveAsRequest, SaveRequest, TextChunk, TrashEntryRequest, TrashEntryResult, TrashImpact, TrashImpactRequest } from '../shared/contracts/files';
+import type { ChosenFiles, ChosenFolder, CreateEntryRequest, DirectoryEntry, DirectoryPage, DiscardRecoveryRequest, DiscardRecoveryResult, DocumentId, FileRef, ListDirectoryRequest, OpenDocument, ReadChunkRequest, ReleaseDocumentResult, RenameEntryRequest, RenameEntryResult, SaveAck, SaveAsAck, SaveAsRequest, SaveRequest, TextChunk, TrashEntryRequest, TrashEntryResult, TrashImpact, TrashImpactRequest } from '../shared/contracts/files';
 import { callCommand, isAppError, isRecord } from './invoke';
 
 const nonemptyString = (value: unknown): value is string => typeof value === 'string' && value.length > 0;
@@ -144,6 +144,10 @@ export function isReleaseDocumentResult(value: unknown): value is ReleaseDocumen
   return isRecord(value) && typeof value.released === 'boolean';
 }
 
+export function isDiscardRecoveryResult(value: unknown): value is DiscardRecoveryResult {
+  return isRecord(value) && opaqueId(value.documentId) && safeCount(value.throughVersion) && value.discarded === true;
+}
+
 export const files = {
   chooseFiles: (multiple = false) => callCommand('choose_files', { multiple }, isChosenFiles),
   chooseFolder: () => callCommand('choose_folder', {}, isChosenFolder),
@@ -154,6 +158,9 @@ export const files = {
   trashEntry: (request: TrashEntryRequest) => callCommand('trash_entry', { ...request }, isTrashEntryResult),
   open: (ref: FileRef, mode?: 'head-preview') => callCommand('open_document', mode ? { ref, mode } : { ref }, isOpenDocument),
   release: (documentId: DocumentId) => callCommand('release_document', { documentId }, isReleaseDocumentResult),
+  discardRecovery: (request: DiscardRecoveryRequest) => callCommand('discard_recovery', { ...request },
+    (value): value is DiscardRecoveryResult => isDiscardRecoveryResult(value)
+      && value.documentId === request.documentId && value.throughVersion === request.throughVersion),
   readChunk: (request: ReadChunkRequest) => callCommand('read_document_chunk', { ...request }, isTextChunk),
   save: (request: SaveRequest) => callCommand('save_document', { ...request }, isSaveAck),
   saveAs: (request: SaveAsRequest) => callCommand('save_document_as', { ...request }, isSaveAsAck),

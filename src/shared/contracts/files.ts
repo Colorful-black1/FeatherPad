@@ -105,6 +105,12 @@ export type OpenDocument = OpenDocumentBase & (
 );
 export interface ReleaseDocumentResult { released: boolean }
 
+export interface DiscardRecoveryRequest {
+  readonly documentId: DocumentId;
+  readonly throughVersion: number;
+}
+export interface DiscardRecoveryResult extends DiscardRecoveryRequest { discarded: true }
+
 export interface ReadChunkRequest {
   documentId: DocumentId;
   handleId: string;

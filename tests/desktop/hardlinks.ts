@@ -30,11 +30,13 @@ export async function verifyNativeHardlinks(page: Page, dataDir: string,
       expectedDiskRevision: stat.value.diskRevision, text: 'Controlled concurrent save must not write',
       format: { encoding: 'utf-8', bom: 'none', lineEnding: 'lf' } });
     const release = await native.invoke('release_document', { documentId });
-    return { stat, save, release };
+    const discard = await native.invoke('discard_recovery', { documentId, throughVersion: 1 });
+    return { stat, save, release, discard };
   }, tabId.slice(4));
   expect(concurrent.stat).toMatchObject({ ok: true });
   expect(concurrent.save).toMatchObject({ ok: false, error: { code: 'BUSY' } });
   expect(concurrent.release).toMatchObject({ ok: false, error: { code: 'BUSY' } });
+  expect(concurrent.discard).toMatchObject({ ok: false, error: { code: 'BUSY' } });
   expect(await readFile(selected, 'utf8')).toBe(original);
   expect(await readFile(alias, 'utf8')).toBe(original);
   await nativeAction('reject-hardlink', selected);

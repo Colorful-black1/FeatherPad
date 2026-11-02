@@ -1,8 +1,8 @@
 use crate::{
     models::{
-        AppError, ChosenFiles, ChosenFolder, DirectoryPage, ErrorCode, ListDirectoryRequest,
-        OpenDocument, ReadChunkRequest, ReleaseDocumentRequest, ReleaseDocumentResult,
-        ResultEnvelope, TextChunk,
+        AppError, ChosenFiles, ChosenFolder, DirectoryPage, DiscardRecoveryRequest,
+        DiscardRecoveryResult, ErrorCode, ListDirectoryRequest, OpenDocument, ReadChunkRequest,
+        ReleaseDocumentRequest, ReleaseDocumentResult, ResultEnvelope, TextChunk,
     },
     services::{
         files::{FileService, OpenRequestMode},
@@ -156,6 +156,46 @@ pub async fn open_document(
     .await
     .unwrap_or_else(|_| Err(internal_error()))
     .into()
+}
+
+#[tauri::command]
+pub async fn discard_recovery(
+    app: AppHandle,
+    request: Request<'_>,
+) -> Result<ResultEnvelope<DiscardRecoveryResult>, ()> {
+    let value = match request.body() {
+        InvokeBody::Json(value) => value.clone(),
+        _ => {
+            return Ok(Err(AppError::new(
+                ErrorCode::InvalidInput,
+                "放弃恢复请求必须为JSON对象。",
+            ))
+            .into())
+        }
+    };
+    let active = app
+        .state::<Arc<crate::services::save_requests::InFlightSaves>>()
+        .inner()
+        .clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let request: DiscardRecoveryRequest = serde_json::from_value(value)
+            .map_err(|_| AppError::new(ErrorCode::InvalidInput, "放弃恢复请求格式无效。"))?;
+        let _permit = active.reserve_documents(
+            std::slice::from_ref(&request.document_id),
+            &uuid::Uuid::new_v4().to_string(),
+        )?;
+        let recovery = save::journal_root(&app)?.with_file_name("recovery");
+        crate::services::recovery::RecoveryStore::new(recovery)
+            .discard_through(&request.document_id, request.through_version)?;
+        Ok(DiscardRecoveryResult {
+            document_id: request.document_id,
+            through_version: request.through_version,
+            discarded: true,
+        })
+    })
+    .await
+    .unwrap_or_else(|_| Err(internal_error()));
+    Ok(result.into())
 }
 
 #[tauri::command]
