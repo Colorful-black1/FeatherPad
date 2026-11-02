@@ -17,6 +17,20 @@ it('accepts released and already-unleased results but rejects an ambiguous relea
   }
 });
 
+it('accepts explicit full or truncated text previews but rejects inconsistent byte counts', () => {
+  const preview = { ...valid, mode: 'text-preview', content: {
+    kind: 'head', text: 'a␀b', previewBytes: 3, totalBytes: 3, truncated: false,
+  } };
+  expect(isOpenDocument(preview)).toBe(true);
+  expect(isOpenDocument({ ...preview, content: { ...preview.content, truncated: true } })).toBe(false);
+  const truncated = { ...preview, metadata: { ...valid.metadata, sizeBytes: 1024 * 1024 * 20 },
+    content: { ...preview.content, totalBytes: 1024 * 1024 * 20, truncated: true } };
+  expect(isOpenDocument(truncated)).toBe(true);
+  expect(isOpenDocument({ ...truncated, content: { ...truncated.content, truncated: false } })).toBe(false);
+  expect(isOpenDocument({ ...preview, content: { ...preview.content, previewBytes: 4 } })).toBe(false);
+  expect(isOpenDocument({ ...preview, content: { ...preview.content, text: 'a\rb' } })).toBe(false);
+});
+
 it('requires an explicit versioned discard receipt and rejects unsafe versions and false acknowledgements', () => {
   const receipt = { documentId: valid.documentId, throughVersion: 1, discarded: true };
   expect(isDiscardRecoveryResult(receipt)).toBe(true);

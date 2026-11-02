@@ -89,6 +89,15 @@ fn session_manifest_round_trips_atomically_and_clear_is_idempotent() {
 }
 
 #[test]
+fn explicit_text_preview_mode_survives_session_storage_without_becoming_normal() {
+    let (_, store) = fixture();
+    let mut saved = manifest();
+    saved.windows[0].views[0].open_mode = "text-preview".into();
+    store.save(&saved).unwrap();
+    assert_eq!(store.load().unwrap().session, Some(saved));
+}
+
+#[test]
 fn session_manifest_rejects_inconsistent_references_and_unsafe_positions() {
     let (_root, store) = fixture();
     let valid = manifest();

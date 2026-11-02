@@ -55,7 +55,9 @@ impl FileService {
         };
         // Keep the source DocumentId even if an external atomic replacement changed file ID.
         // Head previews retain their explicit bounded-reading choice.
-        let mode = if self.documents.is_head_preview(id)
+        let mode = if self.documents.is_text_preview(id) {
+            OpenRequestMode::TextPreview
+        } else if self.documents.is_head_preview(id)
             && self
                 .grants
                 .open_file(&lease.reference)?

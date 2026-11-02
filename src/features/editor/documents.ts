@@ -65,6 +65,18 @@ function failure(code: 'NOT_FOUND' | 'CONFLICT' | 'READ_ONLY' | 'UNSUPPORTED' | 
   return { ok: false, error: { code, message, retryable: false } };
 }
 
+const isPlainTextMode = (mode: OpenDocument['mode'] | undefined) => mode === 'degraded' || mode === 'text-preview';
+const textPreviewReason = '只读文本试开仅供查看，显示内容不能保存、另存、保存副本或覆盖源文件。';
+
+function previewPreferences(state: EditorState, mode: OpenDocument['mode'] | undefined, preferences: EditorPreferences): EditorPreferences {
+  if (mode === 'text-preview') {
+    for (const line of state.doc.iterLines()) {
+      if (line.length > 100_000) return { ...preferences, wordWrap: false };
+    }
+  }
+  return preferences;
+}
+
 export class DocumentRegistry {
   private readonly documents = new Map<DocumentId, ManagedDocument>();
   private readonly listeners = new Set<() => void>();
@@ -169,7 +181,7 @@ export class DocumentRegistry {
     const id = document.documentId;
     if (!this.documents.has(id)) {
       const fragment = document.content.kind === 'text' ? null : document.content;
-      const reason = fragment
+      const reason = document.mode === 'text-preview' ? textPreviewReason : fragment
         ? document.content.kind === 'chunked'
           ? '大文件以只读分块方式打开，无法保存完整文件'
           : '内容为前1MiB截断预览，无法保存'
@@ -179,8 +191,11 @@ export class DocumentRegistry {
         : document.content.kind === 'chunked'
           ? document.content.initialChunk.text
           : document.content.text;
-      const languageId = document.mode === 'degraded' ? 'plaintext' : detectLanguage(document.metadata.displayPath);
-      const state = createEditorState(initialText, this.hotExitFrozen || reason !== null);
+      const languageId = isPlainTextMode(document.mode) ? 'plaintext' : detectLanguage(document.metadata.displayPath);
+      const initialState = createEditorState(initialText, this.hotExitFrozen || reason !== null);
+      const state = document.mode === 'text-preview'
+        ? reconfigureEditorPreferences(initialState, previewPreferences(initialState, document.mode, this.editorPreferences))
+        : initialState;
       const newlineMap = document.content.kind === 'text'
         ? document.content.newlineMap
         : { documentVersion: 0 as const, endings: [] as ('lf' | 'crlf' | 'cr')[] };
@@ -461,7 +476,7 @@ export class DocumentRegistry {
     let changed = false;
     for (const [id, document] of this.documents) {
       const indentWidth = document.summary.indentOverridden ? document.summary.indentWidth : preferences.indentWidth;
-      const next = reconfigureEditorPreferences(document.state, { ...preferences, indentWidth });
+      const next = reconfigureEditorPreferences(document.state, previewPreferences(document.state, document.source?.mode, { ...preferences, indentWidth }));
       if (next === document.state) continue;
       document.state = next;
       document.summary = { ...document.summary, indentWidth };
@@ -476,7 +491,7 @@ export class DocumentRegistry {
     const document = this.documents.get(id);
     if (!document) return;
     const languageId = selection === 'auto'
-      ? document.source?.mode === 'degraded' ? 'plaintext' : detectLanguage(document.summary.displayPath)
+      ? isPlainTextMode(document.source?.mode) ? 'plaintext' : detectLanguage(document.summary.displayPath)
       : selection;
     const languageSource = selection === 'auto' ? 'auto' : 'manual';
     if (document.summary.languageId === languageId && document.summary.languageSource === languageSource) return;
@@ -532,11 +547,14 @@ export class DocumentRegistry {
     const text = opened.content.kind === 'text' ? opened.content.text
       : opened.content.kind === 'chunked' ? opened.content.initialChunk.text : opened.content.text;
     const fragment = opened.content.kind === 'text' ? null : opened.content;
-    const reason = fragment ? '磁盘文件以只读预览方式打开，无法保存完整文件'
+    const reason = opened.mode === 'text-preview' ? textPreviewReason : fragment ? '磁盘文件以只读预览方式打开，无法保存完整文件'
       : readOnlyReason(opened.metadata, opened.format);
     const previousSelection = document.state.selection.ranges;
     const version = expectedVersion + 1;
     document.state = createEditorState(text, reason !== null, document.summary);
+    if (opened.mode === 'text-preview') {
+      document.state = reconfigureEditorPreferences(document.state, previewPreferences(document.state, opened.mode, this.editorPreferences));
+    }
     document.state = document.state.update({ selection: EditorSelection.create(previousSelection.map(range =>
       EditorSelection.range(Math.min(range.anchor, text.length), Math.min(range.head, text.length)))) }).state;
     document.savedText = document.state.doc;
@@ -553,7 +571,7 @@ export class DocumentRegistry {
       recoveryProtected: false, recoveryError: null, readOnlyReason: reason, canSaveAs: fragment === null,
       format: opened.format, displayPath: opened.metadata.displayPath,
       title: opened.metadata.displayPath.split(/[\\/]/).pop() || opened.metadata.displayPath,
-      languageId: opened.mode === 'degraded' ? 'plaintext' : document.summary.languageSource === 'auto'
+      languageId: isPlainTextMode(opened.mode) ? 'plaintext' : document.summary.languageSource === 'auto'
         ? detectLanguage(opened.metadata.displayPath) : document.summary.languageId };
     const view = this.views.get(opened.documentId);
     if (view) { view.setState(document.state); this.restoreViewScroll(opened.documentId, view, document.scroll); }
@@ -578,7 +596,7 @@ export class DocumentRegistry {
     if (result.ok) {
       const document = this.documents.get(captured.request.documentId);
       if (document?.summary.languageSource === 'auto') {
-        const languageId = document.source?.mode === 'degraded' ? 'plaintext' : detectLanguage(document.summary.displayPath);
+        const languageId = isPlainTextMode(document.source?.mode) ? 'plaintext' : detectLanguage(document.summary.displayPath);
         if (languageId !== document.summary.languageId) {
           document.state = reconfigureLanguage(document.state, []);
           document.summary = {
@@ -609,7 +627,7 @@ export class DocumentRegistry {
         displayPath: mapping.displayPath,
       };
       if (document.summary.languageSource === 'auto') {
-        const languageId = document.source.mode === 'degraded' ? 'plaintext' : detectLanguage(mapping.displayPath);
+        const languageId = isPlainTextMode(document.source.mode) ? 'plaintext' : detectLanguage(mapping.displayPath);
         if (languageId !== document.summary.languageId) {
           document.state = reconfigureLanguage(document.state, []);
           document.summary = {

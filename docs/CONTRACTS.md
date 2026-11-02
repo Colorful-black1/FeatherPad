@@ -125,7 +125,7 @@ export interface SaveAck {
 |---|---|---|---|
 | `choose_files` | `{multiple:boolean}` | `{grants:FileRef[],failures:{selectionIndex:number,error:AppError}[]}` | 系统选择器取消返回两个空列表；单项失败不影响其他成功授权 |
 | `choose_folder` | `{}` | `{grant: FileRef|null}` | 明确选中后建立 root grant |
-| `open_document` | `{ref,encodingOverride?,mode?}` | `OpenDocument` | 先大小/二进制检查；同一文件复用 DocumentId |
+| `open_document` | `{ref,encodingOverride?,mode?:normal或head-preview或text-preview,documentId?}` | `OpenDocument` | 常规打开严格识别；显式试开只读；同一文件复用DocumentId，documentId用于会话恢复 |
 | `save_document` | `SaveRequest` | `SaveAck` | 同一文档串行，冲突不覆盖；超时结果可能未知 |
 | `read_document_chunk` | `{documentId,handleId,expectedDiskRevision,byteOffset,maxBytes}` | `TextChunk` | maxBytes默认64KiB最大1MiB；编码边界对齐、行位置正确，磁盘变化返回CONFLICT，绝不把片段作为可保存全文 |
 | `save_document_as` | `{documentId,requestId,documentVersion,text,format,newlineMap?,intent?:'save-as'|'copy'}` | `{documentId,ref,metadata:FileMetadata,ack:SaveAck}` | 原生保存选择器；取消CANCELLED；覆盖确认绑定目标revision；copy不改源绑定 |
@@ -194,6 +194,8 @@ T111会话授权衔接：未经接纳的外部替换继续不更新持久identit
 G1身份复核（2026-11-02）：已打开路径被外部替换后，再次`open_document`继续返回既有逻辑DocumentId；只读磁盘快照的canonicalIdentity和diskRevision反映新磁盘对象，不替换既有lease或更新持久grant。释放后再次打开才创建新DocumentId。T101旧测试已按T111既有行为补强物理身份与lease断言，不改变生产契约。
 
 G1恢复锁竞争补正：仅私有恢复/保存总预算锁的`WouldBlock`返回`BUSY`且`retryable:true`，此时尚未获得锁或开始该次写入。周期恢复保留未保护提示，并按原1秒调度再次尝试同一最新版本；成功Ack才清除提示/标保护。其他BUSY、满盘、权限、未知IPC结果仍按失败版本停止自动重试，热退出仍须成功落盘或显示失败，不因可重试而自行退出。
+
+G1二进制只读试开决策（2026-11-02已通过相关Release）：`open_document`新增显式`mode:"text-preview"`，沿用既有FileRef授权，不自动试开、不接受任意路径。<20MiB完整读取，≥20MiB仅显示前1MiB并明确截断；均核对全文件revision，读取窗口外的变化也可检测。返回`mode:"text-preview"`及`content.kind:"head"`、`previewBytes/totalBytes/truncated:boolean`，truncated必须等于previewBytes小于totalBytes。BOM优先解释UTF16/UTF8，无BOM按UTF8试读；无效序列以替代字符显示并明确提示，控制字符以可见符号显示，原始字节不改变。该展示不是可保存正文，前后端均禁止保存/覆盖/另存/副本，lease保留只读标志，重载及会话恢复必须保留模式。已有可编辑缓冲只聚焦，不被试开替换。CodeMirror只读显示，超过100,000字符的长行关闭软换行并提示水平滚动，不减少试读范围；证据见PROGRESS，G1整体报告仍待完成。
 
 T111边界：比较仅返回完整<20MiB文本，大文件返回READ_ONLY提示并继续使用受限重载/分页，不返回已释放的临时分块句柄。监听最多4个订阅，每订阅256引用/64父目录；原生64KiB通知缓冲非递归，100ms前端合并后核对所有已打开引用，overflow会核对并重建订阅。停止取消在途原生读取后才释放其缓冲；失败可见，一次成功stat不代表监听已恢复。外部文件名不穿过IPC，实际kind为changed，缺失/权限/离线由stat结果判断。
 

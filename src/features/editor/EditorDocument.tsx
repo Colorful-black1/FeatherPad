@@ -45,8 +45,10 @@ export function EditorDocument({ registry, id, autoFocus }: { registry: Document
   }, [id, registry, autoFocus, readOnlyReason, indentWidth, languageId, languageRevision,
     bracketMatching, closeBrackets, closing, hotExitFrozen]);
   if (!document) return null;
+  const textPreview = document.source?.mode === 'text-preview' && document.fragment?.kind === 'head'
+    ? document.fragment : null;
   return <section className="document-view" role="tabpanel" id={`panel-${id}`} aria-labelledby={`tab-${id}`} tabIndex={-1}>
-    <header className="document-heading"><span>{document.summary.displayPath ?? document.summary.title}</span><span>{document.source?.mode === 'large-readonly' ? '只读分块' : document.source?.mode === 'head-preview' ? '限量预览' : document.summary.readOnlyReason ? '只读' : document.source?.mode === 'degraded' ? '纯文本 · 降级' : '文本'}</span></header>
+    <header className="document-heading"><span>{document.summary.displayPath ?? document.summary.title}</span><span>{document.source?.mode === 'text-preview' ? '只读试开' : document.source?.mode === 'large-readonly' ? '只读分块' : document.source?.mode === 'head-preview' ? '限量预览' : document.summary.readOnlyReason ? '只读' : document.source?.mode === 'degraded' ? '纯文本 · 降级' : '文本'}</span></header>
     {document.summary.missing && <p className="notice" role="note">原文件当前不可用，当前内容仍保留。
       {document.fragment ? '预览不能继续分页或保存，请从系统回收站恢复原文件。'
         : document.summary.recoveryProtected ? '草稿已获得落盘保护。请另存为保留文件。' : '最近修改仍在内存中，请另存为保留。'}</p>}
@@ -58,8 +60,11 @@ export function EditorDocument({ registry, id, autoFocus }: { registry: Document
       {!document.summary.recoveryProtected && '当前副本尚未确认新的恢复快照，原恢复记录仍保留。'}
     </p>}
     {document.summary.readOnlyReason && <p className="notice">{document.summary.readOnlyReason}</p>}
+    {textPreview && <p className="notice">已试读 {textPreview.previewBytes.toLocaleString('zh-CN')} / {textPreview.totalBytes.toLocaleString('zh-CN')} 字节
+      {textPreview.truncated ? '，内容已截断。' : '，已完整显示文件的只读文本解释。'}</p>}
     {document.source?.warnings.map(warning => <p className="notice" key={warning}>{warning}</p>)}
     {error && <p className="notice" role="alert">{error}</p>}
-    {document.fragment ? <LargeFileView document={document} /> : <div className="codemirror-host" ref={parent} />}
+    {document.fragment && document.source?.mode !== 'text-preview'
+      ? <LargeFileView document={document} /> : <div className="codemirror-host" ref={parent} />}
   </section>;
 }

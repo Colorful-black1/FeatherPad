@@ -199,7 +199,10 @@ pub(crate) fn validate_manifest(manifest: SessionManifest) -> Result<SessionMani
                     revision.len() != 64 || !revision.bytes().all(|byte| byte.is_ascii_hexdigit())
                 })
                 || view.file_ref.is_some() != view.disk_revision.is_some()
-                || !matches!(view.open_mode.as_str(), "normal" | "head-preview")
+                || !matches!(
+                    view.open_mode.as_str(),
+                    "normal" | "head-preview" | "text-preview"
+                )
                 || !safe_text(&view.title, 32_767)
                 || view
                     .display_path

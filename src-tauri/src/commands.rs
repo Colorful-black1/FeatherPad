@@ -145,6 +145,7 @@ pub async fn open_document(
         let open_mode = match mode.as_deref() {
             None | Some("normal") => OpenRequestMode::Auto,
             Some("head-preview") => OpenRequestMode::HeadPreview,
+            Some("text-preview") => OpenRequestMode::TextPreview,
             Some(_) => {
                 return Err(AppError::new(
                     ErrorCode::Unsupported,

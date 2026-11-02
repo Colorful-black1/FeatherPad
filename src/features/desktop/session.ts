@@ -150,7 +150,7 @@ export class SessionCoordinator {
       if (sources.has(view.documentId)) continue;
       const opened = await this.openTransport(
         view.fileRef,
-        view.openMode === 'head-preview' ? 'head-preview' : undefined,
+        view.openMode === 'normal' ? undefined : view.openMode,
         view.documentId,
       );
       if (!opened.ok) {
@@ -273,7 +273,8 @@ export class SessionCoordinator {
           : null,
         fileRef: record?.source?.ref ?? null,
         diskRevision: record?.source?.metadata.diskRevision ?? null,
-        openMode: record?.fragment && (record.source?.metadata.sizeBytes ?? 0) > 100 * 1024 * 1024
+        openMode: record?.source?.mode === 'text-preview' ? 'text-preview'
+          : record?.fragment && (record.source?.metadata.sizeBytes ?? 0) > 100 * 1024 * 1024
           ? 'head-preview'
           : 'normal',
         title: document.title,

@@ -47,7 +47,7 @@ Q/R/W/D/B命令已建立；具体通过范围见PROGRESS，命令存在不等于
 | [x] T112 设置与主题 | T002,T110 | F-DESK-001..002 | a受保护设置存储/版本/损坏隔离；b合并/导入预览/工作区允许项；c主题/字体/编辑器即时预览；d设置页和真实验收 | src/features/desktop/settings.ts、src/features/desktop/SettingsDialog.tsx、src-tauri/src/services/settings.rs | 2026-11-02 TS45/Rust6、Web3 mock、ESLint/typecheck/fmt/clippy/build exit0；真实settings 1 passed/3.5秒，同版本外改拒绝/坏JSON隔离在Rust，Release验证保存/重启/未知字段/旧副本恢复/200%。见PROGRESS/M1验收 |
 | [x] T113 最近记录 | T104,T112 | F-WORK-007 | 50项去重、缺失修复、单删/清空和关闭记录不再落盘 | src/features/workspace/RecentList.tsx、src/features/workspace/recent.ts | 2026-11-02 TS57/Rust相关4+3+6/受影响ESLint/typecheck/clippy、Web1 mock及真实Release1/10.7秒exit0；验证文件/工作区记录、身份去重、重启授权恢复、缺失重选、单删/清空、关闭后跨重启保留且不新增。见PROGRESS/M1验收 |
 | [x] T114 视图与无障碍 | T106,T112 | F-EDIT-012,F-DESK-010 | a编辑器Tab焦点；b字号缩放/区域导航；c读屏/媒体/设置分类；d1相关Release、d2平台验收 | src/features/editor/view-settings.ts、src/shared/ui/focus-navigation.ts、src/styles/accessibility.css | a/b/c定向TS/Web通过；d1真实accessibility1及tabs/settings2通过，Release/ESLint/类型/文档检查exit0；d2实际Win11讲述人8条/深浅高对比/减少动效/125–200%系统缩放通过，系统已恢复；整项证据见PROGRESS |
-| [~] T115 G1 MVP验收 | T103,T105,T108..114 | M1全部 | 原生从打开到保存恢复闭环，矩阵M1逐项证据，保留可试用包 | tasks/PROGRESS.md、docs/acceptance/M1.md | 整体检查后修复恢复BUSY，相关新Release4项通过；F-FILE-015手动只读试开、最终矩阵/试用包待补，G1未通过 |
+| [~] T115 G1 MVP验收 | T103,T105,T108..114 | M1全部 | 原生从打开到保存恢复闭环，矩阵M1逐项证据，保留可试用包 | tasks/PROGRESS.md、docs/acceptance/M1.md | 恢复BUSY已修复；F-FILE-015只读试开补齐，相关真实试开/mvp/recovery3项通过；最终矩阵/试用包待补，G1未通过 |
 
 ## M2 效率与可靠性补齐（依赖：G1）
 

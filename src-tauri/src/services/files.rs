@@ -20,6 +20,7 @@ use sha2::{Digest, Sha256};
 pub enum OpenRequestMode {
     Auto,
     HeadPreview,
+    TextPreview,
 }
 
 #[derive(Default)]
@@ -84,7 +85,20 @@ impl FileService {
                         "外部替换已改变预览文件，请重新载入原标签。",
                     ));
                 }
+                if self.documents.is_text_preview(id) {
+                    let id = id.to_owned();
+                    return self.open_text_preview(reference, file, Some(&id));
+                }
             }
+        }
+        if requested_mode == OpenRequestMode::TextPreview {
+            let identity = super::identity::identify(&file, &path);
+            if let Some(id) = self.documents.owner_of(&identity) {
+                if !self.documents.is_fragment(id) {
+                    return self.get_disk_snapshot(id);
+                }
+            }
+            return self.open_text_preview(reference, file, preferred_document_id);
         }
         let initial_size = file.metadata().map_err(crate::models::io_error)?.len();
         match (OpenPolicy::for_size(initial_size), requested_mode) {
@@ -390,7 +404,7 @@ impl FileService {
     }
 }
 
-fn canonical_identity(identity: &FileIdentity) -> String {
+pub(super) fn canonical_identity(identity: &FileIdentity) -> String {
     format!("{:x}", Sha256::digest(identity.revision_tag()))
 }
 

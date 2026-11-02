@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type {
-  DocumentId, LoadedRecoveryEntry, OpenDocument, ResultEnvelope, SessionClearResult,
+  DocumentId, LoadedRecoveryEntry, OpenDocument, OpenMode, ResultEnvelope, SessionClearResult,
   SessionLoadResult, SessionManifest, SessionSaveResult,
 } from '../../shared/contracts/files';
 import { DocumentRegistry } from '../editor/documents';
@@ -82,7 +82,7 @@ function workspaceStore() {
 
 function fixture(options: {
   save?: (manifest: SessionManifest) => Promise<ResultEnvelope<SessionSaveResult>>;
-  open?: (ref: OpenDocument['ref'], mode?: 'head-preview', documentId?: DocumentId)
+  open?: (ref: OpenDocument['ref'], mode?: Exclude<OpenMode, 'normal'>, documentId?: DocumentId)
     => Promise<ResultEnvelope<OpenDocument>>;
 } = {}) {
   const registry = new DocumentRegistry();
@@ -164,13 +164,14 @@ describe('SessionCoordinator', () => {
     expect(h.tabs.getSnapshot().previewId).toBe(preview);
   });
 
-  it('restores an authorized workspace root and clean file with its stable session identity', async () => {
+  it.each(['head-preview', 'text-preview'] as const)('restores an authorized workspace and %s with stable identity and mode', async mode => {
     const id = crypto.randomUUID() as DocumentId;
     const rootId = crypto.randomUUID();
     const base = clean(id, 'large.txt');
     const source: OpenDocument = {
       ...base,
-      mode: 'head-preview',
+      mode,
+      metadata: { ...base.metadata, sizeBytes: 120 * 1024 * 1024 },
       content: {
         kind: 'head',
         text: 'clean',
@@ -182,7 +183,7 @@ describe('SessionCoordinator', () => {
     const h = fixture({
       open: async (ref, mode, documentId) => {
         expect(ref).toEqual(base.ref);
-        expect(mode).toBe('head-preview');
+        expect(mode).toBe(source.mode);
         expect(documentId).toBe(id);
         return { ok: true, value: source };
       },
@@ -204,7 +205,7 @@ describe('SessionCoordinator', () => {
           recoveryReceiptId: null,
           fileRef: base.ref,
           diskRevision: base.metadata.diskRevision,
-          openMode: 'head-preview',
+          openMode: mode,
           title: 'large.txt',
           displayPath: base.metadata.displayPath,
           isPreview: false,
@@ -231,6 +232,7 @@ describe('SessionCoordinator', () => {
     await h.coordinator.flush();
     expect(h.registry.getDocument(id)?.summary.version).toBe(11);
     expect(h.save.mock.calls[0]?.[0].windows[0]?.views[0]?.bufferVersion).toBe(11);
+    expect(h.save.mock.calls[0]?.[0].windows[0]?.views[0]?.openMode).toBe(mode);
   });
 
   it('keeps unauthorized roots and files missing without opening an arbitrary path', async () => {

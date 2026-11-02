@@ -4,6 +4,8 @@ import { Shell } from '../shared/ui/Shell';
 import { CommandPalette } from '../shared/ui/CommandPalette';
 import { files } from '../bridge/files';
 import { EditorDocument } from '../features/editor/EditorDocument';
+import { ReadOnlyOpenChoices } from '../features/editor/ReadOnlyOpenChoices';
+import { offerReadOnlyOpen, type ReadOnlyOpenCandidate } from '../features/editor/read-only-open';
 import { EditorStatus } from '../features/editor/EditorStatus';
 import { fontSizeAfterZoom, listenEditorFontWheel, type FontZoomAction } from '../features/editor/view-settings';
 import { languageLabel, languageOptions, type LanguageId } from '../features/editor/editor-language';
@@ -65,7 +67,8 @@ export function App() {
   const recentEntries = readRecentHistory(settingsState.user[recentHistoryItemsSetting]);
   const batchBusy = batch.phase === 'running' || batch.phase === 'cancelling';
   const current = snapshot.documents.find(document => document.id === snapshot.activeId);
-  const currentReference = current ? documents.getDocument(current.id)?.source?.ref : undefined;
+  const currentSource = current ? documents.getDocument(current.id)?.source : undefined;
+  const currentReference = currentSource?.ref;
   const [autoFocus, setAutoFocus] = useState(true);
   const [openingCount, setOpeningCount] = useState(0);
   const busy = openingCount > 0;
@@ -79,7 +82,7 @@ export function App() {
   const [notice, setNotice] = useState<string | null>(null);
   const [findOpen, setFindOpen] = useState(false);
   const [findRequest, setFindRequest] = useState<FindRequest | null>(null);
-  const [previewCandidates, setPreviewCandidates] = useState<FileRef[]>([]);
+  const [previewCandidates, setPreviewCandidates] = useState<ReadOnlyOpenCandidate[]>([]);
   const [trashEntry, setTrashEntry] = useState<DirectoryEntry | null>(null);
   const opening = useRef(false);
   const [commands] = useState(createAppCommands);
@@ -289,11 +292,7 @@ export function App() {
       if (result.value.warning && result.value.warning !== tabs.getSnapshot().warning) setNotice(result.value.warning);
       return null;
     }
-    if (result.error.code === 'TOO_LARGE') {
-      setPreviewCandidates(candidates => candidates.some(candidate =>
-        candidate.grantId === reference.grantId && candidate.relativePath === reference.relativePath,
-      ) ? candidates : [...candidates, reference]);
-    }
+    setPreviewCandidates(candidates => offerReadOnlyOpen(candidates, reference, result.error));
     return result.error.message;
   }, [rememberRecentFile, setSidebarOpen]);
 
@@ -326,17 +325,23 @@ export function App() {
     } finally { setBusy(false); }
   }, [openOne, setBusy, setError]);
 
-  const openHeadPreview = useCallback(async (reference: FileRef) => {
+  const openReadOnlyPreview = useCallback(async (candidate: ReadOnlyOpenCandidate) => {
+    if (opening.current) return;
+    opening.current = true;
     setError(null);
     setBusy(true);
+    setAutoFocus(true);
     try {
-      const result = await tabs.open(reference, 'pinned', 'head-preview');
+      const result = await tabs.open(candidate.ref, 'pinned', candidate.mode);
       if (result.ok) {
         await rememberRecentFile(result.value.id);
-        setPreviewCandidates(candidates => candidates.filter(candidate => candidate !== reference));
-      } else setError(result.error.message);
-    } finally { setBusy(false); }
-  }, [rememberRecentFile, setBusy, setError]);
+        setPreviewCandidates(candidates => candidates.filter(item => item !== candidate));
+      } else {
+        setError(result.error.message);
+        setPreviewCandidates(candidates => offerReadOnlyOpen(candidates, candidate.ref, result.error));
+      }
+    } finally { opening.current = false; setBusy(false); }
+  }, [rememberRecentFile, setBusy, setError, setAutoFocus]);
 
   const newFile = useCallback(async () => { setAutoFocus(true); await tabs.createUntitled(); }, [setAutoFocus]);
 
@@ -648,15 +653,10 @@ export function App() {
         missingSources={sessionState.missingSources} onForget={id => session.forgetMissing(id)}
         onReselect={kind => { if (kind === 'workspace') void openFolder(); else void openFile(); }}
         blocked={exitState.phase !== 'idle' || busy || savingCount > 0 || batchBusy || closingCount > 0} />
-      {previewCandidates.length > 0 && <div className="notice preview-choice" aria-live="polite">
-        <span>超过100MiB的文件不会自动加载完整内容。请选择是否只读预览前1MiB。</span>
-        <span className="preview-choice-actions">
-          {previewCandidates.map((reference, index) => <button key={reference.grantId} className="plain-button" disabled={busy} onClick={() => void openHeadPreview(reference)}>
-            预览所选文件 {index + 1} 的前1MiB
-          </button>)}
-          <button className="plain-button" onClick={() => setPreviewCandidates([])}>取消预览</button>
-        </span>
-      </div>}
+      <ReadOnlyOpenChoices candidates={previewCandidates}
+        busy={busy || savingCount > 0 || batchBusy || closingCount > 0 || exitState.phase !== 'idle'}
+        onOpen={candidate => void openReadOnlyPreview(candidate)}
+        onCancel={mode => setPreviewCandidates(candidates => candidates.filter(candidate => candidate.mode !== mode))} />
       {current && snapshot.activeId ? <>
         <div className="document-toolbar" aria-label="文件操作">
           <button className="plain-button" {...commandProps('file.new')} onClick={() => void executeCommand('file.new')}>新建文本</button>
@@ -677,7 +677,8 @@ export function App() {
             </select>
           </label>
           <label className="toolbar-field">语言
-            <select aria-label="语言模式" value={current.languageSource === 'auto' ? 'auto' : current.languageId}
+            <select aria-label="语言模式" disabled={currentSource?.mode === 'text-preview'}
+              value={current.languageSource === 'auto' ? 'auto' : current.languageId}
               onChange={event => documents.setLanguage(current.id, event.currentTarget.value as 'auto' | LanguageId)}>
               <option value="auto">自动（{languageLabel(current.languageId)}）</option>
               {languageOptions.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}

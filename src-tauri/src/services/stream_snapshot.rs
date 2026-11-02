@@ -87,9 +87,28 @@ pub fn read_stream_snapshot(
 }
 
 fn read_stream_snapshot_observed(
+    file: File,
+    limit: u64,
+    window: Range<u64>,
+    after_read: impl FnMut(u64) -> Result<(), AppError>,
+) -> Result<StreamSnapshot, AppError> {
+    read_stream_snapshot_validated(file, limit, window, true, after_read)
+}
+
+// Explicit diagnostic previews may show invalid text, but retain the same bounded
+// window, full-object revision and concurrent-change checks as ordinary reads.
+pub(super) fn read_raw_preview_window(
+    file: File,
+    window: Range<u64>,
+) -> Result<StreamSnapshot, AppError> {
+    read_stream_snapshot_validated(file, u64::MAX, window, false, |_| Ok(()))
+}
+
+fn read_stream_snapshot_validated(
     mut file: File,
     limit: u64,
     window: Range<u64>,
+    strict_text: bool,
     mut after_read: impl FnMut(u64) -> Result<(), AppError>,
 ) -> Result<StreamSnapshot, AppError> {
     if window.end < window.start || window.end - window.start > MAX_WINDOW_BYTES {
@@ -121,7 +140,7 @@ fn read_stream_snapshot_observed(
     let encoding = detect_encoding(&prefix);
     file.seek(SeekFrom::Start(0)).map_err(io_error)?;
     let mut validator = StreamValidator::new(encoding);
-    let validate_text = window.end > window.start;
+    let validate_text = strict_text && window.end > window.start;
     let mut bom_remaining = encoding.bom_len();
     let mut retained = Vec::with_capacity((window.end.min(before.len()) - window.start) as usize);
     let mut buffer = [0u8; 64 * 1024];

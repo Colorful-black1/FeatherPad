@@ -1,6 +1,7 @@
 import type { ChosenFiles, ChosenFolder, CreateEntryRequest, DirectoryEntry, DirectoryPage, DiscardRecoveryRequest, DiscardRecoveryResult, DocumentId, FileRef, ListDirectoryRequest, LoadedRecoveryEntry, LoadRecoveryEntryRequest, LoadSessionRequest, OpenDocument, ReadChunkRequest, RecoveryEntry, RecoveryInventory, RecoverySnapshotAck, ReleaseDocumentResult, RenameEntryRequest, RenameEntryResult, SaveAck, SaveAsAck, SaveAsRequest, SaveRequest, SessionClearResult, SessionLoadResult, SessionManifest, SessionSaveResult, TextChunk, TextFormat, TrashEntryRequest, TrashEntryResult, TrashImpact, TrashImpactRequest, WriteRecoverySnapshotRequest } from '../shared/contracts/files';
 import { callCommand, isAppError, isRecord } from './invoke';
 import type { LoadedSaveTransaction, SaveTransactionCandidate } from '../shared/contracts/files';
+import type { OpenMode } from '../shared/contracts/files';
 
 const nonemptyString = (value: unknown): value is string => typeof value === 'string' && value.length > 0;
 const safeCount = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
@@ -141,11 +142,12 @@ export function isOpenDocument(value: unknown): value is OpenDocument {
     return nonemptyString(content.handleId) && safeCount(content.totalBytes)
       && content.totalBytes === metadata.sizeBytes && isTextChunk(content.initialChunk);
   }
-  if (value.mode === 'head-preview' && content.kind === 'head') {
+  if ((value.mode === 'head-preview' || value.mode === 'text-preview') && content.kind === 'head') {
     return typeof content.text === 'string' && !content.text.includes('\r')
       && safeCount(content.previewBytes) && safeCount(content.totalBytes)
       && content.previewBytes <= content.totalBytes && content.totalBytes === metadata.sizeBytes
-      && content.truncated === true;
+      && (value.mode === 'head-preview' ? content.truncated === true
+        : typeof content.truncated === 'boolean' && content.truncated === (content.previewBytes < content.totalBytes));
   }
   return false;
 }
@@ -273,7 +275,7 @@ export function isSessionManifest(value: unknown): value is SessionManifest {
         || (view.fileRef !== null && !isFileRef(view.fileRef))
         || (view.diskRevision !== null && (typeof view.diskRevision !== 'string' || !revision(view.diskRevision)))
         || ((view.fileRef === null) !== (view.diskRevision === null))
-        || (view.openMode !== 'normal' && view.openMode !== 'head-preview')
+        || (view.openMode !== 'normal' && view.openMode !== 'head-preview' && view.openMode !== 'text-preview')
         || !nonemptyString(view.title) || view.title.length > 32_767
         || (view.displayPath !== null && (!nonemptyString(view.displayPath) || view.displayPath.length > 32_767))
         || typeof view.isPreview !== 'boolean' || typeof view.dirty !== 'boolean'
@@ -318,7 +320,7 @@ export const files = {
   renameEntry: (request: RenameEntryRequest) => callCommand('rename_entry', { ...request }, isRenameEntryResult),
   trashImpact: (request: TrashImpactRequest) => callCommand('get_trash_impact', { ...request }, isTrashImpact),
   trashEntry: (request: TrashEntryRequest) => callCommand('trash_entry', { ...request }, isTrashEntryResult),
-  open: (ref: FileRef, mode?: 'head-preview', documentId?: DocumentId) => callCommand(
+  open: (ref: FileRef, mode?: Exclude<OpenMode, 'normal'>, documentId?: DocumentId) => callCommand(
     'open_document',
     { ref, ...(mode ? { mode } : {}), ...(documentId ? { documentId } : {}) },
     isOpenDocument,

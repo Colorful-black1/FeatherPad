@@ -30,6 +30,40 @@ it('creates independent untitled documents with no path and UTF8/CRLF defaults',
   expect(registry.getDocument(first)?.summary).toMatchObject({ displayPath: null, dirty: false, format: { encoding: 'utf-8', bom: 'none', lineEnding: 'crlf' } });
 });
 
+it('keeps complete text previews read-only for transactions, saving and reload', () => {
+  const base = fixture();
+  const preview: OpenDocument = { ...base, mode: 'text-preview', content: {
+    kind: 'head', text: 'a␀�', previewBytes: 7, totalBytes: 7, truncated: false,
+  } };
+  const registry = new DocumentRegistry();
+  const id = registry.openDocument(preview);
+  const document = registry.getDocument(id)!;
+  expect(document.summary).toMatchObject({ canSaveAs: false, languageId: 'plaintext', dirty: false });
+  expect(document.summary.readOnlyReason).toContain('只读文本试开');
+  expect(registry.commit(id, [document.state.update({ changes: { from: 0, insert: 'forged' } })]))
+    .toMatchObject({ ok: false, error: { code: 'READ_ONLY' } });
+  expect(registry.captureSave(id)).toMatchObject({ ok: false, error: { code: 'READ_ONLY' } });
+  expect(registry.captureSaveAs(id)).toMatchObject({ ok: false, error: { code: 'READ_ONLY' } });
+  expect(registry.captureSaveAs(id, 'copy')).toMatchObject({ ok: false, error: { code: 'READ_ONLY' } });
+  const loaded: OpenDocument = { ...preview, metadata: { ...preview.metadata, diskRevision: 'b'.repeat(64) as OpenDocument['metadata']['diskRevision'] },
+    content: { ...preview.content, text: 'reloaded' } };
+  expect(registry.applyDiskReload(loaded, 0, preview.metadata.diskRevision)).toMatchObject({ ok: true });
+  expect(registry.getDocument(id)?.summary).toMatchObject({ canSaveAs: false, dirty: false, version: 1 });
+  expect(registry.getDocument(id)?.state.doc.toString()).toBe('reloaded');
+});
+
+it('opens a bounded all-control binary preview without creating a writable document', () => {
+  const base = fixture();
+  const source: OpenDocument = { ...base, metadata: { ...base.metadata, sizeBytes: 20 * 1024 * 1024 },
+    mode: 'text-preview', content: { kind: 'head', text: '␀'.repeat(1024 * 1024),
+      previewBytes: 1024 * 1024, totalBytes: 20 * 1024 * 1024, truncated: true } };
+  expect(isOpenDocument(source)).toBe(true);
+  const registry = new DocumentRegistry();
+  const id = registry.openDocument(source);
+  expect(registry.getDocument(id)?.state.doc.length).toBe(1024 * 1024);
+  expect(registry.getDocument(id)?.summary).toMatchObject({ dirty: false, canSaveAs: false, languageId: 'plaintext' });
+});
+
 it('opens transaction text as an independent dirty copy without claiming a recovery receipt', () => {
   const registry = new DocumentRegistry();
   const original = registry.openDocument(fixture());

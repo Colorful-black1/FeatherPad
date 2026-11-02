@@ -26,6 +26,7 @@ pub struct DocumentRegistry {
     identities: HashMap<FileIdentity, String>,
     documents: HashMap<String, DocumentLease>,
     fragment_documents: HashSet<String>,
+    text_previews: HashSet<String>,
     chunk_handles: HashMap<String, String>,
 }
 
@@ -48,6 +49,9 @@ impl DocumentRegistry {
         self.replace(id, lease);
         if source.fragment_documents.contains(id) {
             self.fragment_documents.insert(id.to_owned());
+        }
+        if source.text_previews.contains(id) {
+            self.text_previews.insert(id.to_owned());
         }
         self.chunk_handles.extend(source.chunk_handles);
         Ok(())
@@ -110,6 +114,17 @@ impl DocumentRegistry {
         self.fragment_documents.contains(id)
     }
 
+    pub(super) fn mark_text_preview(&mut self, id: &str) {
+        self.mark_fragment(id);
+        if self.documents.contains_key(id) {
+            self.text_previews.insert(id.to_owned());
+        }
+    }
+
+    pub(super) fn is_text_preview(&self, id: &str) -> bool {
+        self.text_previews.contains(id)
+    }
+
     pub(super) fn is_head_preview(&self, id: &str) -> bool {
         self.is_fragment(id) && !self.chunk_handles.values().any(|owner| owner == id)
     }
@@ -137,6 +152,7 @@ impl DocumentRegistry {
             self.identities.remove(&document.identity);
         }
         let was_fragment = self.fragment_documents.remove(id);
+        self.text_previews.remove(id);
         let handles_before = self.chunk_handles.len();
         self.chunk_handles.retain(|_, owner| owner != id);
         document.is_some() || was_fragment || handles_before != self.chunk_handles.len()

@@ -26,6 +26,7 @@ pub mod services {
     pub mod stream_snapshot;
     pub mod targets;
     pub mod text;
+    pub mod text_preview;
     pub mod trash;
     pub mod watch;
     pub mod windows_file;

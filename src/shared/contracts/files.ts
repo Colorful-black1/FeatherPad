@@ -67,6 +67,7 @@ export interface TextChunk {
   text: string;
   hasMore: boolean;
 }
+export type OpenMode = 'normal' | 'head-preview' | 'text-preview';
 export interface OpenDocumentBase {
   documentId: DocumentId;
   canonicalIdentity?: string;
@@ -101,6 +102,16 @@ export type OpenDocument = OpenDocumentBase & (
       previewBytes: number;
       totalBytes: number;
       truncated: true;
+    };
+  }
+  | {
+    mode: 'text-preview';
+    content: {
+      kind: 'head';
+      text: string;
+      previewBytes: number;
+      totalBytes: number;
+      truncated: boolean;
     };
   }
 );
@@ -192,7 +203,7 @@ export interface SessionView {
   recoveryReceiptId: string | null;
   fileRef: FileRef | null;
   diskRevision: DiskRevision | null;
-  openMode: 'normal' | 'head-preview';
+  openMode: OpenMode;
   title: string;
   displayPath: string | null;
   isPreview: boolean;

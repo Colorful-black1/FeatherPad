@@ -215,7 +215,7 @@ impl FileService {
         if self.documents.is_fragment(document_id) {
             return Err(AppError::new(
                 ErrorCode::ReadOnly,
-                "大文件分页或限量预览没有完整编辑正文，不能保存或另存。",
+                "只读试开、大文件分页或限量预览不能保存或另存。",
             ));
         }
         Ok(())

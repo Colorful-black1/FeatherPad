@@ -5,7 +5,7 @@
 - 产品名称：**轻羽 FeatherPad**。
 - 当前交付：完整产品方案、86项功能矩阵、模块规格、UI规范与离线交互原型、技术/本机环境文档、M0–M5实现计划、57个开发任务、agent执行入口。
 - 产品代码：**M0/G0、M1/T101–T114通过**。保存/编辑/树/搜索/标签/命令/恢复、外部变化与安全冲突处理、设置/主题/字体、最近记录与隐私关闭、字号与键盘导航均有相关真实Release证据。T114实际Windows 11平台样本也已完成；G1整体关卡尚未通过，更不是完整v1。
-- 当前：**T114已提交`810a9bd`；T115/G1审计发现的恢复锁竞争已修复并通过相关Release，下一切片补F-FILE-015手动只读试开**。G1仍未通过，需补齐入口、最终逐项报告和试用包；完整范围保持M0–M5全部86项必需功能。
+- 当前：**T115/G1恢复锁竞争修复已提交`60a41e9`；F-FILE-015手动只读试开已补齐并通过相关Release，下一步M1逐项证据审计与试用包**。G1仍未通过，完整范围保持M0–M5全部86项必需功能。
 - 本次交付检查：详见 [DELIVERY-CHECK](../docs/DELIVERY-CHECK.md)，不代表产品关卡G0–G5通过。
 
 ## 已核查环境
@@ -13,6 +13,17 @@
 复用本机Node22.13.0、pnpm10.32.1、Rust1.99.1、VS2022 Build Tools C++、Windows SDK10.0.26100.0、WebView2。未安装新开发工具。严格遵守新增安装与缓存仅在E:\Codeing，入口见 [ENVIRONMENT](../docs/ENVIRONMENT.md)。
 
 ## 实施证据（未来逐任务追加）
+
+### 2026-11-02 T115补齐F-FILE-015：显式只读文本试开
+
+- `open_document`显式`text-preview`：BOM优先，无法无损解释的字节仅在试开显示为替代字符，控制字符可见化；<20MiB完整显示，≥20MiB保留前1MiB且全文件revision参与校验。既有grant/物理身份去重不变，不升级已有可编辑lease；试开lease沿用只读保护，原生保存/覆盖/另存/副本全拒绝，重载/会话保留模式。无新依赖/权限/联网入口。
+- `text_preview.rs`读取/解释，`stream_snapshot.rs`复用固定窗口与全对象校验；files/documents/external/session接入模式，commands只扩展既有枚举值。TS契约/bridge校验、session/tabs、`read-only-open.ts`/`ReadOnlyOpenChoices.tsx`及App/EditorDocument接入用户选择与真实CM只读视图；显示试读字节/截断/替代提示，语言和保存操作禁用，不执行HTML内容。
+- 定向TS最终3文件54项、Rust核心4项及相关集成30项、Web mock6项（含200% CSS缩放）通过，typecheck/受影响ESLint/fmt/clippy均exit0。日志`.artifacts/T115/logs/{text-preview-model-final,text-preview-core-verified,text-preview-rust-related,text-preview-longline-web,text-preview-lint-release,text-preview-clippy-final}.log`，Web mock不证明原生IO。
+- 原生发现百万控制符单行软换行渲染问题：回调约60ms收到完整1MiB数据，模型快，Web同用例约15.8秒。按产品100,000字符长行规则关闭试开软换行、提示水平滚动后，Web该用例约0.6秒；内容/超时不变。这些单次时间用于定位，不代替M5性能分布。测试快照嵌套IPC参数、TS品牌类型、Fast Refresh导出及Rust collect类型推断问题已修，原失败日志/截图和回调长度诊断保留，不记录正文。
+- `pnpm build`exit0：12,432,896 bytes、SHA256 `50BD6B3E0FAA4772BC3D342FD22F080B9F5E1E1A870111DAC09A6BB13813398B`，WebView2 156.0.4314.58，主JS778.93kB/gzip246.08kB警告保留。真实`text-preview/mvp/recovery`3 passed/38.0秒/exit0，试开8.7秒；验证显式选择、非可编辑CM、四种合法格式原生写请求READ_ONLY、20MiB二进制限量1MiB、真正UTF16不误判、正常退出/重启仍只读及三份源SHA不变。七种文件和恢复回归通过，此轮恢复包含既有强杀，未另跑满盘/100k/性能专项。
+- 证据`.artifacts/native/2026-11-02T15-49-49-011Z-798a581d-21bd-47f6-b3fc-901f20ecd468/{text-preview,mvp,recovery}/native-release.json`；小文件/大文件截图已视觉检查，重启截图及私有会话保留。日志`{text-preview-longline-release-checked,text-preview-native-final}.log`。F-FILE-015当前M1范围通过；G1逐项报告/试用包待完成，完整编码/转换继续T201，M2–M5未通过。全部历史产物与清理清单保留。
+- 收尾将两个启动实例的控制台/请求诊断都纳入断言，并补重启后脚本不执行检查，同一Release试开复验1 passed/7.4秒（总8.3秒）/exit0；最终单项证据`.artifacts/native/2026-11-02T15-58-17-070Z-8dc23935-4a8d-41d2-b618-f2958a8a2f72/text-preview/native-release.json`和`text-preview-native-diagnostics-final.log`。code-review-and-quality复核读取上界、BOM/截断边界、已有lease、重载/会话标志及所有写入口，无新增必改项。
+- 2026-11-03收尾类型/文档/差异校验均exit0，日志`{text-preview-typecheck-final,text-preview-docs-checkpoint,text-preview-diff-checkpoint}.log`；同哈希exe保留于`.artifacts/T115/release-50BD6B3E/featherpad.exe`，尚未将单个exe当G1试用包。下一M1逐项审计与试用包。
 
 ### 2026-11-02 T115进行中：整体回归及恢复锁竞争修复
 
