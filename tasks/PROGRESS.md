@@ -26,6 +26,13 @@
 | 2026-11-01 / T002 | app-shell | React Shell/App/token/CSS、Web及原生测试 | typecheck/lint exit 0；Web 2 passed；真实WebView2 debug 1 passed | Web与原生范围分开，未测OS对话框 | .artifacts/T002/及docs/acceptance/M0.md | T002通过；下一T003 |
 | 2026-11-01 / T003.a–d（进行中） | F-DESK-013 | Rust models/grants/files/commands、AppManifest ACL、TS contracts/bridge、CodeMirror只读UI、测试与脚本 | typecheck/lint/TS单测3、Rust原生5、Web4、Release smoke1均exit 0；check.ps1 -Desktop exit 0；交互选择器三次超时，后次显式exit 1 | 原生Rust磁盘+junction，真实Release IPC/WebView2，Web mock独立 | docs/acceptance/M0.md；.artifacts/T003；.artifacts/T002/native-release.json | T003未完成OS选取验收，G0不勾选 |
 
+## T107.a 原生资源释放核心（2026-11-02，进行中）
+
+- F-EDIT-013/F-FILE-018关闭链路的基础切片：documents.rs清理指定文档的身份索引/lease/fragment标志/全部chunk句柄；files.rs校验规范UUID，未知/未命名lease重复释放返回false，不触碰源文件、grant或恢复副本。CONTRACTS先记录释放与显式放弃分离、保存许可及重开新ID语义。
+- 新增真实Windows测试release_document.rs：关闭前独占打开失败、释放后成功；硬链接仍共享新DocumentId；源字节和已落盘中文emoji草稿保留；两次打开同一大文件所得旧句柄均失效，新句柄及其他文档正常；非法ID拒绝，未知UUID正常no-op。cargo test --locked --offline --test release_document exit0，3 passed，日志.artifacts/T107-release-service.log。
+- cargo clippy --locked --offline --all-targets -- -D warnings exit0（.artifacts/T107-release-core-clippy.log）；cargo test --locked --offline exit0（.artifacts/T107-release-core-rust.log，92 passed、1个100k benchmark ignored）。cargo fmt已执行；本切片未改TS/UI，未冒称新Tauri/Release关闭验收。已按正确性、资源边界、幂等、独立文档影响自审，无新依赖。
+- 下一步：release_document严格DTO/最小ACL/typed bridge、逐文档保存许可；再接单预览/固定/关闭UI及持久化放弃标记。T107整体仍[~]，T110/G1及后续阶段未完成。
+
 ## T105 树内变更完成（2026-11-02，M1/G1仍未完成）
 
 - F-FILE-017、F-WORK-004、F-WORK-005完成本任务M1验收。此前a切片已验排他新建/不覆盖改名/dirty后代目录改名，本轮补齐真实回收站删除的完整入口、确认、草稿保护、失败保树与缺失缓冲另存。M1按单项操作验收；多选、拖放及逐项批量编排继续由T206跟踪，没有删除后续需求。

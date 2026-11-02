@@ -31,6 +31,18 @@ pub struct FileService {
 }
 
 impl FileService {
+    pub fn release_document(&mut self, document_id: &str) -> Result<bool, AppError> {
+        if uuid::Uuid::parse_str(document_id)
+            .ok()
+            .map(|id| id.to_string())
+            .as_deref()
+            != Some(document_id)
+        {
+            return Err(AppError::new(ErrorCode::InvalidInput, "文档标识无效。"));
+        }
+        Ok(self.documents.release(document_id))
+    }
+
     pub fn document_lease(&self, document_id: &str) -> Option<&DocumentLease> {
         self.documents.get(document_id)
     }

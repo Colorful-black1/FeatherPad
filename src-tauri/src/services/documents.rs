@@ -77,6 +77,17 @@ impl DocumentRegistry {
         self.documents.get(id)
     }
 
+    pub(super) fn release(&mut self, id: &str) -> bool {
+        let document = self.documents.remove(id);
+        if let Some(document) = &document {
+            self.identities.remove(&document.identity);
+        }
+        let was_fragment = self.fragment_documents.remove(id);
+        let handles_before = self.chunk_handles.len();
+        self.chunk_handles.retain(|_, owner| owner != id);
+        document.is_some() || was_fragment || handles_before != self.chunk_handles.len()
+    }
+
     pub(super) fn under<'a>(
         &'a self,
         root: &'a Path,
