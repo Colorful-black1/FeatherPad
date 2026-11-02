@@ -184,6 +184,14 @@ T105.b2回收编排决策（2026-11-02，已实现）：impact与执行只接受
 
 watch 事件：`filesystem_changed {watchId, sequence, entries:[{ref,kind,diskRevision?}],overflow:boolean}`。去抖、合并、自写标记仅做优化；overflow 和窗口重新聚焦后 stat 兜底，不能只依赖事件判断源文件安全。
 
+T111实施决策（2026-11-02，已通过相关验收）：比较使用`get_disk_snapshot {documentId}`返回`OpenDocument`但不改原lease/授权；`reload_document {documentId,expectedDiskRevision}`重新读取并核对绑定的revision后才接纳新lease，保持DocumentId。替换目标已属于另一个已打开identity时拒绝接纳。前端在同文档保存队列内编排，回执到达时再次核对bufferVersion、原绑定和dirty/退出状态，迟到读取不覆盖新输入；显式dirty重载前必须确认最新草稿已落盘。新正文单调推进bufferVersion，不沿用磁盘DTO的初始0版本。外部rename未能安全跟随时显示原路径缺失，保留正文并提供另存/重新核对，不扩大文件grant为父目录授权。watch只传受授权引用，不泄露父目录其他条目；overflow、序列缺口及窗口聚焦触发重新stat。覆盖仍须明确确认并绑定最新磁盘revision，比较后再次修改会拒绝旧确认。
+
+T111覆盖接口`overwrite_document`接受与`save_document`相同的SaveRequest；expectedDiskRevision必须来自最新比较/核对。原生再次核对后显示默认可取消的确认框，确认返回后重新读取同revision并接纳lease，再进入既有完整事务保存/硬链接确认/替换前复核。不是force开关，不绕过权限、只读、配额、grant或保存队列。共用SaveHistory和请求摘要，传输未知只复用同一requestId/快照核对；回执只更新捕获版本，新输入仍dirty。删除后的正文保留引用以便聚焦核对重新出现，普通保存转到原生另存选择器，由用户明确选择重新创建目标。
+
+T111会话授权衔接：未经接纳的外部替换继续不更新持久identity；仅`reload_document`已核对revision、唯一identity、原grant与当前句柄最终路径并接纳新lease后，更新该file grant的持久identity，使已接纳的clean正文可在后续会话重开。比较本身不更新。保存和重载复用同一句柄/授权校验原语，不引入任意路径授权。
+
+T111边界：比较仅返回完整<20MiB文本，大文件返回READ_ONLY提示并继续使用受限重载/分页，不返回已释放的临时分块句柄。监听最多4个订阅，每订阅256引用/64父目录；原生64KiB通知缓冲非递归，100ms前端合并后核对所有已打开引用，overflow会核对并重建订阅。停止取消在途原生读取后才释放其缓冲；失败可见，一次成功stat不代表监听已恢复。外部文件名不穿过IPC，实际kind为changed，缺失/权限/离线由stat结果判断。
+
 ## 4. 搜索与批量替换 search-tools
 
 ```ts
@@ -280,7 +288,7 @@ T110事务读取契约（2026-11-02，已实现）：list_recovery_entries增加
 
 T110启动版本判定（2026-11-02）：SessionView记录bufferVersion。已成功重新打开的clean会话文档，旧恢复副本版本不高于该clean版本时不自动叠加；快照比会话新时仍须恢复，防止崩溃前最后成功快照被旧clean清单遮蔽。缺源文件时保留可读恢复候选，不由clean清单删除唯一正文。所有版本仍为JS安全整数；未验收的旧实验清单不兼容时隔离保留，不能静默丢正文。
 
-T110缺失源占位（2026-11-02）：缺根/缺文件保留原会话引用并展示重新选择/移除占位，后续会话保存继续保留未解决项目；重新选择仍走原生选择器，移除占位不删除文件或恢复正文。保存会话可保留已在受校验grants.json中存在但当前不可用的授权元数据，不能据此获得当前读写授权；新未知ID仍返回SESSION_INCOMPLETE。恢复时继续重新核对identity。应用自身原子保存成功后，从已验证的保存后句柄更新file grant的持久identity，外部替换不自动更新。
+T110缺失源占位（2026-11-02）：缺根/缺文件保留原会话引用并展示重新选择/移除占位，后续会话保存继续保留未解决项目；重新选择仍走原生选择器，移除占位不删除文件或恢复正文。保存会话可保留已在受校验grants.json中存在但当前不可用的授权元数据，不能据此获得当前读写授权；新未知ID仍返回SESSION_INCOMPLETE。恢复时继续重新核对identity。应用自身原子保存成功后，从已验证的保存后句柄更新file grant的持久identity，未经接纳的外部替换不自动更新；T111受校验重载接纳后的授权衔接见该节。
 
 ## 7. 接口测试要求
 

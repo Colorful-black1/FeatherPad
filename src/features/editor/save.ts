@@ -1,5 +1,6 @@
 import { files } from '../../bridge/files';
-import type { DocumentId, ResultEnvelope, SaveAck, SaveAsAck, SaveRequest } from '../../shared/contracts/files';
+import { externalFiles } from '../../bridge/external';
+import type { DiskRevision, DocumentId, ResultEnvelope, SaveAck, SaveAsAck, SaveRequest } from '../../shared/contracts/files';
 import { documents, type CapturedSaveAs, type DocumentRegistry } from './documents';
 
 type SaveTransport = (request: SaveRequest) => Promise<ResultEnvelope<SaveAck>>;
@@ -8,9 +9,11 @@ export class SaveCoordinator {
   private readonly pending = new Map<DocumentId, Promise<ResultEnvelope<unknown>>>();
   private readonly uncertain = new Set<DocumentId>();
   private readonly uncertainDestinations = new Map<DocumentId, CapturedSaveAs>();
+  private readonly uncertainOverwrites = new Map<DocumentId, { captured: CapturedSaveAs; request: SaveRequest }>();
 
   constructor(private readonly registry: DocumentRegistry, private readonly transport: SaveTransport = files.save,
-    private readonly stat: typeof files.stat = files.stat, private readonly destinationTransport: typeof files.saveAs = files.saveAs) {}
+    private readonly stat: typeof files.stat = files.stat, private readonly destinationTransport: typeof files.saveAs = files.saveAs,
+    private readonly overwriteTransport: SaveTransport = externalFiles.overwrite) {}
 
   save(id: DocumentId): Promise<ResultEnvelope<SaveAck>> {
     return this.enqueue(id, () => this.perform(id));
@@ -18,6 +21,24 @@ export class SaveCoordinator {
 
   saveAs(id: DocumentId, intent: 'save-as' | 'copy' = 'save-as'): Promise<ResultEnvelope<SaveAsAck>> {
     return this.enqueue(id, () => this.performDestination(id, intent));
+  }
+
+  overwrite(id: DocumentId, revision: DiskRevision): Promise<ResultEnvelope<SaveAck>> {
+    return this.enqueue(id, async () => {
+      const pending = this.uncertainOverwrites.get(id);
+      if (pending) return this.deliverOverwrite(id, pending);
+      const captured = this.registry.captureSaveAs(id, 'save-as');
+      if (!captured.ok) return captured;
+      if (!captured.value.baseSource || this.uncertainDestinations.has(id)) {
+        return { ok: false, error: { code: 'CONFLICT', message: '源绑定或另存结果尚未确认，请先重试另存。', retryable: false } };
+      }
+      return this.deliverOverwrite(id, { captured: captured.value,
+        request: { documentId: id, requestId: captured.value.request.requestId,
+          documentVersion: captured.value.request.documentVersion, text: captured.value.request.text,
+          format: captured.value.request.format,
+          ...(captured.value.request.newlineMap ? { newlineMap: captured.value.request.newlineMap } : {}),
+          expectedDiskRevision: revision } });
+    });
   }
 
   exclusive<T>(id: DocumentId, run: (save: () => Promise<ResultEnvelope<SaveAck>>) => Promise<ResultEnvelope<T>>): Promise<ResultEnvelope<T>> {
@@ -28,6 +49,7 @@ export class SaveCoordinator {
     if (this.registry.getDocument(id)) return;
     this.uncertain.delete(id);
     this.uncertainDestinations.delete(id);
+    this.uncertainOverwrites.delete(id);
   }
 
   private enqueue<T>(id: DocumentId, run: () => Promise<ResultEnvelope<T>>, continueAfterFailure = false): Promise<ResultEnvelope<T>> {
@@ -41,6 +63,11 @@ export class SaveCoordinator {
 
   private async perform(id: DocumentId): Promise<ResultEnvelope<SaveAck>> {
     try {
+      const overwrite = this.uncertainOverwrites.get(id);
+      if (overwrite) {
+        const resolved = await this.deliverOverwrite(id, overwrite);
+        if (!resolved.ok || !this.registry.getDocument(id)?.summary.dirty) return resolved;
+      }
       const pendingDestination = this.uncertainDestinations.get(id);
       if (pendingDestination) {
         const resolved = await this.deliverDestination(id, pendingDestination);
@@ -49,7 +76,7 @@ export class SaveCoordinator {
           return { ok: true, value: resolved.value.ack };
         }
       }
-      if (this.registry.getDocument(id)?.source === null) {
+      if (this.registry.getDocument(id)?.source === null || this.registry.getDocument(id)?.summary.missing) {
         const result = await this.performDestination(id, 'save-as');
         return result.ok ? { ok: true, value: result.value.ack } : result;
       }
@@ -78,6 +105,11 @@ export class SaveCoordinator {
   }
 
   private async performDestination(id: DocumentId, intent: 'save-as' | 'copy'): Promise<ResultEnvelope<SaveAsAck>> {
+    const overwrite = this.uncertainOverwrites.get(id);
+    if (overwrite) {
+      const resolved = await this.deliverOverwrite(id, overwrite);
+      if (!resolved.ok) return resolved;
+    }
     const previous = this.uncertainDestinations.get(id);
     if (previous) {
       const resolved = await this.deliverDestination(id, previous);
@@ -86,6 +118,26 @@ export class SaveCoordinator {
     const captured = this.registry.captureSaveAs(id, intent);
     if (!captured.ok) return captured;
     return this.deliverDestination(id, captured.value);
+  }
+
+  private async deliverOverwrite(id: DocumentId, pending: { captured: CapturedSaveAs; request: SaveRequest }): Promise<ResultEnvelope<SaveAck>> {
+    let result: ResultEnvelope<SaveAck>;
+    try { result = await this.overwriteTransport(pending.request); }
+    catch { result = { ok: false, error: { code: 'IPC_UNAVAILABLE', message: '覆盖结果未确认，正文仍保留；重试将核对同一请求。', retryable: false } }; }
+    if (!result.ok) {
+      if (result.error.code === 'IPC_UNAVAILABLE') this.uncertainOverwrites.set(id, pending);
+      else this.uncertainOverwrites.delete(id);
+      return result;
+    }
+    const source = this.registry.getDocument(id)?.source;
+    if (!source || !pending.captured.baseSource) return { ok: false, error: { code: 'CONFLICT', message: '源文档绑定已变化，覆盖回执未应用。', retryable: false } };
+    const acknowledged = this.registry.acknowledgeSaveAs(pending.captured, { documentId: id,
+      ref: pending.captured.baseSource.ref, metadata: { ...source.metadata, isReadOnly: false,
+        diskRevision: result.value.diskRevision, sizeBytes: result.value.sizeBytes, modifiedAt: result.value.savedAt }, ack: result.value });
+    if (!acknowledged.ok) { this.uncertainOverwrites.set(id, pending); return acknowledged; }
+    this.uncertainOverwrites.delete(id);
+    this.uncertain.delete(id);
+    return result;
   }
 
   private async deliverDestination(id: DocumentId, captured: CapturedSaveAs): Promise<ResultEnvelope<SaveAsAck>> {

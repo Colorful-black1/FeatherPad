@@ -30,6 +30,29 @@ pub struct DocumentRegistry {
 }
 
 impl DocumentRegistry {
+    pub(super) fn adopt(&mut self, id: &str, mut source: Self) -> Result<(), AppError> {
+        let lease = source
+            .documents
+            .remove(id)
+            .ok_or_else(|| AppError::new(ErrorCode::NotFound, "磁盘快照已释放，请重新读取。"))?;
+        if self
+            .owner_of(&lease.identity)
+            .is_some_and(|owner| owner != id)
+        {
+            return Err(AppError::new(
+                ErrorCode::Conflict,
+                "磁盘文件现已对应另一个已打开文档，请先处理重复身份。",
+            ));
+        }
+        self.release(id);
+        self.replace(id, lease);
+        if source.fragment_documents.contains(id) {
+            self.fragment_documents.insert(id.to_owned());
+        }
+        self.chunk_handles.extend(source.chunk_handles);
+        Ok(())
+    }
+
     pub fn owner_of(&self, identity: &FileIdentity) -> Option<&str> {
         self.identities.get(identity).map(String::as_str)
     }
@@ -85,6 +108,10 @@ impl DocumentRegistry {
 
     pub fn is_fragment(&self, id: &str) -> bool {
         self.fragment_documents.contains(id)
+    }
+
+    pub(super) fn is_head_preview(&self, id: &str) -> bool {
+        self.is_fragment(id) && !self.chunk_handles.values().any(|owner| owner == id)
     }
 
     pub fn issue_chunk_handle(&mut self, id: &str) -> Option<String> {

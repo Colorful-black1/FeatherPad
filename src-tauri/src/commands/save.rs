@@ -37,6 +37,22 @@ pub async fn save_document(
     app: AppHandle,
     request: Request<'_>,
 ) -> Result<ResultEnvelope<SaveAck>, ()> {
+    run_save(app, request, false).await
+}
+
+#[tauri::command]
+pub async fn overwrite_document(
+    app: AppHandle,
+    request: Request<'_>,
+) -> Result<ResultEnvelope<SaveAck>, ()> {
+    run_save(app, request, true).await
+}
+
+async fn run_save(
+    app: AppHandle,
+    request: Request<'_>,
+    overwrite: bool,
+) -> Result<ResultEnvelope<SaveAck>, ()> {
     let value = match request.body() {
         InvokeBody::Json(value) => value.clone(),
         _ => {
@@ -61,7 +77,12 @@ pub async fn save_document(
             SaveStart::Replay(result) => return result,
             SaveStart::Fresh(ticket) => ticket,
         };
-        let result = save_with_confirmation(&app, &service, request);
+        let result = if overwrite {
+            confirm_overwrite(&app, &service, &request)
+                .and_then(|()| save_with_confirmation(&app, &service, request))
+        } else {
+            save_with_confirmation(&app, &service, request)
+        };
         service
             .lock()
             .map_err(|_| internal_error())?
@@ -70,6 +91,38 @@ pub async fn save_document(
     .await
     .unwrap_or_else(|_| Err(internal_error()));
     Ok(result.into())
+}
+
+fn confirm_overwrite(
+    app: &AppHandle,
+    service: &SharedFiles,
+    request: &SaveRequest,
+) -> Result<(), AppError> {
+    let snapshot = service
+        .lock()
+        .map_err(|_| internal_error())?
+        .get_disk_snapshot(&request.document_id)?;
+    if snapshot.metadata.disk_revision != request.expected_disk_revision {
+        return Err(AppError::new(
+            ErrorCode::Conflict,
+            "磁盘在比较后再次变化，请重新比较后确认覆盖。",
+        ));
+    }
+    let parent = app.get_webview_window("main").ok_or_else(internal_error)?;
+    let confirmed = app.dialog().message(format!("将用当前缓冲替换磁盘文件：\n{}\n\n外部修改会被覆盖。保存前将再次核对磁盘版本；事务恢复副本会保留原件。是否继续？", snapshot.metadata.display_path))
+        .title("确认覆盖外部修改").parent(&parent).kind(MessageDialogKind::Warning)
+        .buttons(MessageDialogButtons::YesNo).blocking_show();
+    if !confirmed {
+        return Err(AppError::new(
+            ErrorCode::Cancelled,
+            "已取消覆盖，当前正文和外部文件均保留。",
+        ));
+    }
+    service
+        .lock()
+        .map_err(|_| internal_error())?
+        .reload_document(&request.document_id, &request.expected_disk_revision)?;
+    Ok(())
 }
 
 fn save_with_confirmation(

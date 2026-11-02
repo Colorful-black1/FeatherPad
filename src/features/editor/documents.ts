@@ -480,6 +480,59 @@ export class DocumentRegistry {
     return captureExisting(this.documents.get(id));
   }
 
+  markExternalMissing(id: DocumentId) {
+    const document = this.documents.get(id);
+    if (!document || document.summary.missing) return;
+    // Retain the ref for later stat/reappearance. Even a clean full buffer now needs
+    // recovery protection because its source path no longer holds these bytes.
+    document.summary = { ...document.summary, missing: true,
+      dirty: document.fragment ? document.summary.dirty : true, recoveryProtected: false };
+    this.publish(this.snapshot.activeId);
+  }
+
+  applyDiskReload(opened: OpenDocument, expectedVersion: number, expectedRevision: string,
+    allowDirty = false): ResultEnvelope<{ reloaded: true }> {
+    const document = this.documents.get(opened.documentId);
+    if (!document) return failure('NOT_FOUND', '文档已关闭。');
+    if (document.summary.version !== expectedVersion || document.source?.metadata.diskRevision !== expectedRevision
+      || document.source.ref.grantId !== opened.ref.grantId || document.source.ref.relativePath !== opened.ref.relativePath
+      || document.summary.closing || document.summary.hotExitFrozen || document.releaseUncertain
+      || (document.summary.dirty && (!allowDirty || !document.summary.recoveryProtected))) {
+      return failure('CONFLICT', '读取期间缓冲已变化，当前输入仍保留，请重新核对。');
+    }
+    if (!Number.isSafeInteger(expectedVersion + 1)) return failure('INVALID_INPUT', '文档版本超出可用范围，请另存。');
+    const text = opened.content.kind === 'text' ? opened.content.text
+      : opened.content.kind === 'chunked' ? opened.content.initialChunk.text : opened.content.text;
+    const fragment = opened.content.kind === 'text' ? null : opened.content;
+    const reason = fragment ? '磁盘文件以只读预览方式打开，无法保存完整文件'
+      : readOnlyReason(opened.metadata, opened.format);
+    const previousSelection = document.state.selection.ranges;
+    const version = expectedVersion + 1;
+    document.state = createEditorState(text, reason !== null, document.summary);
+    document.state = document.state.update({ selection: EditorSelection.create(previousSelection.map(range =>
+      EditorSelection.range(Math.min(range.anchor, text.length), Math.min(range.head, text.length)))) }).state;
+    document.savedText = document.state.doc;
+    document.savedVersion = version;
+    document.source = { documentId: opened.documentId, ref: opened.ref, metadata: opened.metadata,
+      mode: opened.mode, format: opened.format, warnings: opened.warnings };
+    document.fragment = fragment;
+    document.originalNewlines = { documentVersion: version,
+      endings: opened.content.kind === 'text' ? [...opened.content.newlineMap.endings] : [] };
+    document.characterCount = countCharacters(text);
+    document.summary = { ...document.summary, version, dirty: false, missing: false, recovered: false,
+      recoveryProtected: false, recoveryError: null, readOnlyReason: reason, canSaveAs: fragment === null,
+      format: opened.format, displayPath: opened.metadata.displayPath,
+      title: opened.metadata.displayPath.split(/[\\/]/).pop() || opened.metadata.displayPath,
+      languageId: opened.mode === 'degraded' ? 'plaintext' : document.summary.languageSource === 'auto'
+        ? detectLanguage(opened.metadata.displayPath) : document.summary.languageId };
+    const view = this.views.get(opened.documentId);
+    if (view) { view.setState(document.state); this.restoreViewScroll(opened.documentId, view, document.scroll); }
+    this.scheduleLanguage(opened.documentId);
+    this.publishMetrics(opened.documentId, document.state, document.characterCount);
+    this.publish(this.snapshot.activeId);
+    return { ok: true, value: { reloaded: true } };
+  }
+
   acknowledgeSave(captured: CapturedSave, ack: SaveAck): ResultEnvelope<{ dirty: boolean }> {
     const result = acknowledgeExisting(this.documents.get(captured.request.documentId), captured, ack);
     if (result.ok) this.publish(this.snapshot.activeId);

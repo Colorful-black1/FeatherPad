@@ -21,6 +21,7 @@ pub(crate) struct PersistedGrant {
     pub identity_sha256: String,
 }
 
+#[derive(Clone)]
 struct Grant {
     target: PathBuf,
     kind: GrantKind,
@@ -32,7 +33,7 @@ pub struct ResolvedEntry {
     pub metadata: Metadata,
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct GrantRegistry {
     grants: HashMap<String, Grant>,
 }
@@ -122,7 +123,7 @@ impl GrantRegistry {
         })
     }
 
-    pub(crate) fn confirm_saved_identity(
+    pub(crate) fn confirm_file_identity(
         &mut self,
         reference: &FileRef,
         file: &File,

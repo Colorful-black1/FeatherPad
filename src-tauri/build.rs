@@ -9,6 +9,10 @@ fn main() {
             "get_trash_impact",
             "trash_entry",
             "open_document",
+            "get_disk_snapshot",
+            "reload_document",
+            "start_watch",
+            "stop_watch",
             "release_document",
             "discard_recovery",
             "write_recovery_snapshot",
@@ -20,6 +24,7 @@ fn main() {
             "clear_session",
             "read_document_chunk",
             "save_document",
+            "overwrite_document",
             "save_document_as",
             "stat_document",
         ]));

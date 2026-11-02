@@ -12,9 +12,10 @@ import { verifyNativeDiskFull } from './disk-full';
 import { verifyNativeForcedExit } from './forced-exit';
 import { verifyNativeTabs } from './tabs';
 import { verifyNativeCommands } from './commands';
+import { verifyNativeExternal } from './external';
 
 const runFile = promisify(execFile);
-type ChooserAction = 'open' | 'open-folder' | 'open-degraded' | 'open-large-chunk' | 'open-head-preview' | 'open-fault' | 'save' | 'cancel';
+type ChooserAction = 'open' | 'open-folder' | 'open-degraded' | 'open-large-chunk' | 'open-head-preview' | 'open-fault' | 'save' | 'cancel' | 'inspect-external' | 'confirm-external' | 'reject-external';
 
 export interface NativeScenarioContext {
   page: Page;
@@ -51,6 +52,8 @@ export async function runFocusedNativeScenario(scenario: string, context: Native
   const { page, child, dataDir, evidence, cleanupTasks } = context;
   const chooser = new NativeChooser(context);
   switch (scenario) {
+    case 'external':
+      return verifyNativeExternal(page, dataDir, evidence, (action, target) => chooser.select(action, target));
     case 'commands':
       return verifyNativeCommands(page, dataDir, evidence, target => chooser.select('open-folder', target));
     case 'tabs':

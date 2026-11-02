@@ -201,7 +201,7 @@ impl PreparedSave {
         };
         service
             .grants
-            .confirm_saved_identity(&self.reference, &after.file, &after.path)
+            .confirm_file_identity(&self.reference, &after.file, &after.path)
             .map_err(|error| self.journal.failure(error, "bind-saved-identity"))?;
         service.documents.replace(
             &self.request.document_id,

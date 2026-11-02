@@ -203,7 +203,12 @@ impl FileService {
             .get(id)
             .ok_or_else(|| AppError::new(ErrorCode::NotFound, "此文档未打开。"))?;
         let (file, _) = self.grants.open_file(&document.reference)?;
-        Ok(read_stream_snapshot(file, super::save::MAX_FILE_BYTES, 0..0)?.metadata)
+        let limit = if self.documents.is_head_preview(id) {
+            u64::MAX
+        } else {
+            super::save::MAX_FILE_BYTES
+        };
+        Ok(read_stream_snapshot(file, limit, 0..0)?.metadata)
     }
 
     fn require_saveable(&self, document_id: &str) -> Result<(), AppError> {

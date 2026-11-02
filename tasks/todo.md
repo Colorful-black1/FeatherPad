@@ -1,7 +1,7 @@
 # 开发任务清单
 
 当前阶段：**M0/G0已通过，开始M1**。`[ ]` 待做，`[~]` 进行中，`[x]` 通过验收。禁止仅因代码存在就打勾；关联 [计划](plan.md)、[进度](PROGRESS.md) 与 [完整功能矩阵](../docs/FEATURE-MATRIX.md)。范围写 `F-FILE-001..005` 表示含端点的连续ID。
-执行更新（2026-11-02）：T000–T005/G0、T101–T110通过。T102已加入真实16MiB WSL2 `tmpfs`满盘场景：Release保存停在`write-temporary`，源文件不变、缓冲保持dirty、恢复正文和原件一致；Windows 9P错误31与NTFS错误112映射限制已明确记录。T106已用真实Release验证CodeMirror事务编辑、选区/字数、undo/redo、缩进、语言高亮、括号配对/匹配、剪贴板，以及Windows微软拼音候选窗提交；T108已用共享TS/Rust夹具和真实Release验证Unicode/大小写/整词、选区范围、零长度、非法式、捕获组、全部替换单次undo与只读保护。T105新建/重命名/仅回收站删除均通过真实Release验收。T107单预览/固定偏好、dirty关闭保存/放弃/取消、恢复副本清理及未知释放结果另存均通过相关真实Release。T109统一命令、重映射及受授权候选快速打开已验收；T110单组恢复/热退出已验收；下一项T111外部变化，G1尚未通过，不代表MVP或完整v1。
+执行更新（2026-11-02）：T000–T005/G0、T101–T111通过。T102已加入真实16MiB WSL2 `tmpfs`满盘场景：Release保存停在`write-temporary`，源文件不变、缓冲保持dirty、恢复正文和原件一致；Windows 9P错误31与NTFS错误112映射限制已明确记录。T106已用真实Release验证CodeMirror事务编辑、选区/字数、undo/redo、缩进、语言高亮、括号配对/匹配、剪贴板，以及Windows微软拼音候选窗提交；T108已用共享TS/Rust夹具和真实Release验证Unicode/大小写/整词、选区范围、零长度、非法式、捕获组、全部替换单次undo与只读保护。T105新建/重命名/仅回收站删除均通过真实Release验收。T107单预览/固定偏好、dirty关闭保存/放弃/取消、恢复副本清理及未知释放结果另存均通过相关真实Release。T109统一命令、重映射及受授权候选快速打开已验收；T110单组恢复/热退出、T111外部变化与安全冲突处理已验收；下一项T112设置与主题，G1尚未通过，不代表MVP或完整v1。
 
 ## 执行约定
 
@@ -43,7 +43,7 @@ Q/R/W/D/B命令已建立；具体通过范围见PROGRESS，命令存在不等于
 | [x] T108 文件内搜索替换 | T106 | F-SEARCH-001..003 | 一致正则/整词语法，选区范围、计数、替换单次undo | src/features/search-tools/{FindBar,search-query}.ts/tsx、src/workers/find.worker.ts、tests/fixtures/search-semantics.json | typecheck/lint、TS74、Rust67+1 ignored、Web27、Release build、真实桌面1（56.8秒）exit0；共享TS/Rust语义夹具、真实只读文件与单次undo原生化均验证，取消耗时25.64ms<250ms。见M1验收 |
 | [x] T109 命令入口与快捷键 | T107 | F-EDIT-017 | 统一注册/分发、命令与快速打开、重映射/冲突/焦点 | src/shared/commands/{keyboard,registry}.ts、src/shared/ui/CommandPalette.tsx、src/app/{register-commands,quick-candidates}.ts | 定向模型11/相关Web15/受影响eslint/typecheck/Release build exit0；真实commands1/5.2秒，OS选取、真实保存字节、只读保源、CM重映射、同名候选、偏好重载和默认重置通过。完整导航T210，原生设置整合T112，全局唤起T214。见PROGRESS |
 | [x] T110 恢复与热退出 | T102,T107 | F-FILE-010..011,F-DESK-011 | 周期快照/启动校验、事务副本、单组会话/授权/位置、退出flush/失败/放弃 | src/features/desktop/、editor/recovery.ts、src-tauri/src/services/{recovery,session,session_grants,startup_storage,storage_budget}.rs | 2026-11-02定向TS86/Rust相关51+授权4/事务与会话、fmt/clippy/typecheck/ESLint、相关Web21及Release均exit0；真实recovery1/18.2秒：WM_CLOSE/重启、坏副本回退、磁盘差异、存储失败保正文/代次、真实另存、放弃不复活、周期快照强杀恢复、越屏夹取。M1单组；见PROGRESS/M1验收 |
-| [ ] T111 外部变化 | T102,T110 | F-FILE-008 | clean重载/dirty横幅、外部删除可另存、聚焦补stat | src-tauri/src/services/watch.rs、src/features/editor/external-changes.ts、src/features/editor/ConflictBanner.tsx | Q/R/D：外部编辑/rename/delete/watch溢出 |
+| [x] T111 外部变化 | T102,T110 | F-FILE-008 | a只读磁盘快照/接纳lease；b监听/聚焦与clean重载；c脏冲突比较/保护重载/另存/覆盖 | src-tauri/src/services/{external,watch}.rs、src/features/editor/external-changes.ts、src/features/editor/ConflictBanner.tsx | 定向TS67/Rust50+授权5/Web17、fmt/clippy/lint/typecheck/build exit0；真实external1/12.7秒，编辑/对象替换/rename/delete、保护重载/原生确认覆盖和注入聚焦/overflow后的真实stat均通过。见PROGRESS/M1验收 |
 | [ ] T112 设置与主题 | T002,T110 | F-DESK-001..002 | 搜索/优先级/导入导出/重置、schema错误恢复、亮暗系统字体 | src/features/desktop/settings.ts、src/features/desktop/SettingsDialog.tsx、src-tauri/src/services/settings.rs | Q/R/W/D：坏JSON、字体不存在、200%缩放 |
 | [ ] T113 最近记录 | T104,T112 | F-WORK-007 | 50项去重、缺失修复、单删/清空和关闭记录不再落盘 | src/features/workspace/RecentList.tsx、src/features/workspace/recent.ts | Q/R/W：上限和隐私关闭重启 |
 | [ ] T114 视图与无障碍 | T106,T112 | F-EDIT-012,F-DESK-010 | 字号/换行/行号，键盘焦点、读屏状态、高对比、减少动效 | src/features/editor/view-settings.ts、src/shared/ui/FocusBoundary.tsx、src/styles/accessibility.css | Q/W/D：全键盘冒烟、读屏手查、125/150/200% |

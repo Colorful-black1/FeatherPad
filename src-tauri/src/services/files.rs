@@ -65,7 +65,26 @@ impl FileService {
         requested_mode: OpenRequestMode,
         preferred_document_id: Option<&str>,
     ) -> Result<OpenDocument, AppError> {
-        let (file, _) = self.grants.open_file(&reference)?;
+        let (file, path) = self.grants.open_file(&reference)?;
+        if preferred_document_id.is_none() {
+            if let Some(id) = self.documents.owner_at(&path) {
+                // A path reopened between an external replacement and its notification
+                // focuses its existing buffer; only explicit reload may adopt a new lease.
+                if !self.documents.is_fragment(id) {
+                    return self.get_disk_snapshot(id);
+                }
+                if self
+                    .documents
+                    .get(id)
+                    .is_some_and(|lease| lease.identity != super::identity::identify(&file, &path))
+                {
+                    return Err(AppError::new(
+                        ErrorCode::Conflict,
+                        "外部替换已改变预览文件，请重新载入原标签。",
+                    ));
+                }
+            }
+        }
         let initial_size = file.metadata().map_err(crate::models::io_error)?.len();
         match (OpenPolicy::for_size(initial_size), requested_mode) {
             (OpenPolicy::LargeReadOnly, OpenRequestMode::Auto) => {

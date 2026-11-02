@@ -5,6 +5,7 @@ pub mod services {
     pub mod directories;
     pub mod documents;
     pub mod encode;
+    pub mod external;
     pub mod file_ops;
     pub mod files;
     pub mod grants;
@@ -24,6 +25,7 @@ pub mod services {
     pub mod targets;
     pub mod text;
     pub mod trash;
+    pub mod watch;
     pub mod windows_file;
     pub mod windows_trash;
 }
@@ -37,6 +39,9 @@ pub fn run() {
         .manage(std::sync::Arc::new(
             services::save_requests::InFlightSaves::default(),
         ))
+        .manage(std::sync::Arc::new(std::sync::Mutex::new(
+            services::watch::WatchRegistry::default(),
+        )))
         .invoke_handler(tauri::generate_handler![
             commands::choose_files,
             commands::choose_folder,
@@ -46,6 +51,10 @@ pub fn run() {
             commands::file_ops::get_trash_impact,
             commands::file_ops::trash_entry,
             commands::open_document,
+            commands::external::get_disk_snapshot,
+            commands::external::reload_document,
+            commands::external::start_watch,
+            commands::external::stop_watch,
             commands::release_document,
             commands::discard_recovery,
             commands::write_recovery_snapshot,
@@ -57,6 +66,7 @@ pub fn run() {
             commands::clear_session,
             commands::read_document_chunk,
             commands::save::save_document,
+            commands::save::overwrite_document,
             commands::save_as::save_document_as,
             commands::save::stat_document
         ])

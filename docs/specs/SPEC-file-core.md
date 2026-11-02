@@ -89,6 +89,8 @@ T102.c3全部保存实施决策：开始时固定dirty文档的ID与顺序，不
 
 外部变更：clean且无正在保存快照可自动重载并提示；dirty不更改正文，提供“比较磁盘/重新载入/另存为/覆盖”。覆盖确认绑定最新磁盘revision，比较后再次变更必须重新确认；重载前保护草稿。外部删除显示缺失，保存可重新创建但必须明确确认；外部重命名可依据identity跟随并提示，无权限/离线状态区别于删除。
 
+T111按三段实施：a只读磁盘快照/绑定revision接纳新lease和定向Rust行为；b原生监听/聚焦兜底与clean安全重载；c脏冲突比较/保护后重载/另存/明确覆盖及相关真实Release。临时读取不修改文档注册表；外部原子替换接纳后仍保持原DocumentId，重复identity拒绝而不合并正文。无法安全跟随的外部改名按缺失保正文，不自动搜索父目录或扩权。小切片不提前标T111/F-FILE-008通过。
+
 ## 草稿、恢复与关闭（F-FILE-010/011/012/018）
 
 恢复存储是本地用户私有目录，便携位置由desktop提供。快照包括schemaVersion、documentId、原路径、源revision、bufferVersion、encoding/BOM、newlineMap、text与校验和，不持久化全量undo。内容快照先写临时文件并flush/rename，再更新manifest；保留上一份完整manifest。debounce1秒，持续输入最长5秒调度；“已恢复保护”仅在确认成功后显示。

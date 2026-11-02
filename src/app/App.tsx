@@ -12,6 +12,8 @@ import { TabStrip } from '../features/editor/TabStrip';
 import { CloseDialog, type CloseTarget } from '../features/editor/CloseDialog';
 import { saves } from '../features/editor/save';
 import { recoveries } from '../features/editor/recovery';
+import { externalChanges } from '../features/editor/external-changes';
+import { ConflictBanner } from '../features/editor/ConflictBanner';
 import { restoreRecoveryOnce } from '../features/desktop/recovery-startup';
 import { session } from '../features/desktop/session';
 import { hotExit } from '../features/desktop/hot-exit';
@@ -81,6 +83,7 @@ export function App() {
     let active = true;
     let stopRecovery: (() => void) | null = null;
     let stopSession: (() => void) | null = null;
+    let stopExternal: (() => void) | null = null;
     let unlistenClose: (() => void) | null = null;
     let releaseStartup!: () => void;
     const startupReady = new Promise<void>(resolve => { releaseStartup = resolve; });
@@ -160,6 +163,7 @@ export function App() {
         if (active) {
           stopRecovery = recoveries.start();
           stopSession = session.start();
+          stopExternal = externalChanges.start();
           if (notices.length > 0) setNotice(notices.join(' '));
         }
         releaseStartup();
@@ -171,6 +175,7 @@ export function App() {
       unlistenClose?.();
       stopRecovery?.();
       stopSession?.();
+      stopExternal?.();
       if (hotExit.getSnapshot().phase !== 'idle') hotExit.resume();
     };
   }, []);
@@ -491,6 +496,7 @@ export function App() {
         <TabStrip documents={snapshot.documents} activeId={snapshot.activeId} previewId={tabState.previewId}
           busy={busy || savingCount > 0 || batchBusy || closingCount > 0} onSelect={selectTab}
           onPin={id => { if (tabs.getSnapshot().previewId === id) void executeCommand('tabs.pin', id); }} onClose={id => void executeCommand('file.close', id)} />
+        <ConflictBanner key={`conflict-${snapshot.activeId}`} id={snapshot.activeId} registry={documents} coordinator={externalChanges} saving={saves} />
         <EditorDocument key={snapshot.activeId} registry={documents} id={snapshot.activeId} autoFocus={autoFocus} />
       </> : <div className="welcome">
         <div className="welcome-content">

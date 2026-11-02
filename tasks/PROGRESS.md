@@ -4,8 +4,8 @@
 
 - 产品名称：**轻羽 FeatherPad**。
 - 当前交付：完整产品方案、86项功能矩阵、模块规格、UI规范与离线交互原型、技术/本机环境文档、M0–M5实现计划、57个开发任务、agent执行入口。
-- 产品代码：**M0/G0、M1/T101–T110通过**。既有保存/编辑/树/搜索/标签/命令能力，以及M1单组会话恢复、周期快照与热退出均有相关真实Release证据；其余M1项仍未完成，G1未通过，更不是完整v1。
-- 当前：**T110已完成相关真实Release验收，下一项T111外部变化**。完整范围保持M0–M5全部86项必需功能；双组、多窗口和完整隐私管理继续由相应后续任务实现。
+- 产品代码：**M0/G0、M1/T101–T111通过**。既有保存/编辑/树/搜索/标签/命令/恢复能力，以及外部变化检测、冲突比较/保护重载/另存/明确覆盖均有相关真实Release证据；其余M1项仍未完成，G1未通过，更不是完整v1。
+- 当前：**T111已完成相关真实Release验收，下一项T112设置与主题**。完整范围保持M0–M5全部86项必需功能；双组、多窗口和完整隐私管理继续由相应后续任务实现。
 - 本次交付检查：详见 [DELIVERY-CHECK](../docs/DELIVERY-CHECK.md)，不代表产品关卡G0–G5通过。
 
 ## 已核查环境
@@ -13,6 +13,13 @@
 复用本机Node22.13.0、pnpm10.32.1、Rust1.99.1、VS2022 Build Tools C++、Windows SDK10.0.26100.0、WebView2。未安装新开发工具。严格遵守新增安装与缓存仅在E:\Codeing，入口见 [ENVIRONMENT](../docs/ENVIRONMENT.md)。
 
 ## 实施证据（未来逐任务追加）
+
+### 2026-11-02 T111完成：外部变化与安全冲突处理
+
+- F-FILE-008通过。Rust新增`services/{external,watch}.rs`与`commands/external.rs`，Windows原生ReadDirectoryChangesW父目录有界监听只返回授权ref；TS新增`external-changes.ts`、`ConflictBanner.tsx`、`DiskComparison.tsx`和typed bridge，接入App/文档/保存队列，新增5条精确ACL。clean自动重载同步已挂载CM并保选区/滚动、单调版本；dirty保正文/undo，比较两份只读快照、保护最新草稿后明确重载、原生另存或带revision的原生覆盖确认。保存/重载排队，过期确认与迟到读取不覆盖新输入，未知覆盖复用原请求。删除/改名无法安全跟随时保原引用/正文并显示缺失，普通保存转系统另存；权限/锁定/离线错误不伪报删除。重复路径和新identity不产生两个DocumentId；重载转入/退出分块模式会转移/作废对应句柄。
+- 最终`pnpm build` exit0：12,046,848 bytes，SHA256 `E73FA4190F4B10D481A9CF3EC684CCA07822E295162D38E8ACAAED7C45C274E7`，主JS726.42kB/gzip230.23kB警告保留。相关真实Release `pnpm exec playwright test --config desktop.config.ts --project external` 1 passed/12.7秒（总13.6秒）/exit0，证据`.artifacts/native/2026-11-02T08-33-20-315Z-f0bd467e-41be-4655-85b3-bac329dd7829/external/native-release.json`及截图/chooser回执。验证同长度同mtime改写、对象替换保ID、dirty不覆盖、真实比较、比较后再次改写拒绝重载、草稿真实读回、覆盖取消/确认期间再变化拒绝、明确覆盖字节、外部rename/delete后的系统另存与源hash。停止真实watch后分别注入DOM聚焦和overflow通知，核对真实stat/重载；不冒称OS真实溢出或物理窗口切焦。overflow后重建订阅，监听失败不会因一次stat成功而假装健康。
+- 定向TS5文件67项、Rust相关50项及接纳重载/持久授权5项、相关ESLint、typecheck（最终build内）、Rust fmt/lib与受影响test clippy均exit0；最终重验external/protected_save的23项。Web相关6文件17项exit0/15.6秒，含200%/键盘取消/迟到Ack/关闭/保存副本等回归，明确是mock。日志统一`.artifacts/T111/logs/`，最终为`unit-monitor-health-final.log`、`rust-final.log`、`rust-reload-grant.log`、`rust-session-grants.log`、`rust-accepted-reload-final.log`、`clippy-complete.log`、`fmt-complete.log`、`lint-complete.log`、`build-final-verified.log`、`web-complete.log`及`native-complete.log`。早期错误预期、CM标签优先级、并发恢复读取BUSY、创建完成前ENOENT和只读invoke观测失败的原始日志均保留，逐项修正后验收通过。
+- 比较不更新持久授权；仅核对grant/句柄/identity/revision后接纳的重载刷新file grant，真实Rust文件测试证明接纳后可恢复同一授权。M1比较完整<20MiB文本，超限使用已有只读重载/分页策略；不伪造分块快照的临时句柄。订阅上限4个、每订阅256引用/64目录，超限有可见错误和聚焦stat兜底。只补与lease切换直接相关的20MiB句柄正确性测试，未重跑100k、满盘、强杀、性能或M整体回归。未安装新工具/依赖，Windows API仅启用已锁windows-sys的必要features；历史产物和既有清理清单保留。自审无未解决T111阻断项。下一T112；G1和完整v1仍未完成。
 
 ### 2026-11-02 T110完成：恢复、会话与安全热退出
 
