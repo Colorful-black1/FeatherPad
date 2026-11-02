@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page } from './test-fixture';
 
 const palette = (page: Page) => page.getByRole('dialog', { name: '命令面板', exact: true });
 const query = (page: Page) => palette(page).getByRole('combobox', { name: '搜索命令', exact: true });

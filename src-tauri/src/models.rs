@@ -20,6 +20,7 @@ pub enum ErrorCode {
     Unsupported,
     Busy,
     PartialFailure,
+    SessionIncomplete,
     IpcUnavailable,
     Internal,
 }
@@ -143,14 +144,14 @@ pub enum Newline {
     Cr,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NewlineMap {
     pub document_version: u64,
     pub endings: Vec<Newline>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TextFormat {
     pub encoding: String,
@@ -158,7 +159,7 @@ pub struct TextFormat {
     pub line_ending: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SaveRequest {
     pub document_id: String,
@@ -187,7 +188,7 @@ pub enum SaveIntent {
     Copy,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SaveAsRequest {
     pub document_id: String,
@@ -305,6 +306,201 @@ pub struct DiscardRecoveryResult {
     pub document_id: String,
     pub through_version: u64,
     pub discarded: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WriteRecoverySnapshotRequest {
+    pub document_id: String,
+    pub document_version: u64,
+    pub reason: RecoverySnapshotReason,
+    pub base_disk_revision: Option<String>,
+    pub text: String,
+    pub format: TextFormat,
+    pub newline_map: Option<NewlineMap>,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RecoverySnapshotReason {
+    Periodic,
+    HotExit,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecoverySnapshotAck {
+    pub document_id: String,
+    pub durable_version: u64,
+    pub receipt_id: String,
+    pub written_at: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecoveryEntry {
+    pub receipt_id: String,
+    pub reason: String,
+    pub document_id: String,
+    pub buffer_version: u64,
+    pub source_path: Option<String>,
+    pub source_revision: Option<String>,
+    pub format: TextFormat,
+    pub newline_map: Option<NewlineMap>,
+    pub body_bytes: u64,
+    pub body_sha256: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecoveryFailure {
+    pub entry_id: String,
+    pub message: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecoveryInventory {
+    pub entries: Vec<RecoveryEntry>,
+    pub failures: Vec<RecoveryFailure>,
+    pub startup_warnings: Vec<String>,
+    pub storage_bytes: u64,
+    pub save_transactions: Vec<SaveTransactionCandidate>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveTransactionCandidate {
+    pub receipt_id: String,
+    pub display_name: String,
+    pub buffer_version: u64,
+    pub body_bytes: u64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LoadedSaveTransaction {
+    pub receipt_id: String,
+    pub display_name: String,
+    pub text: String,
+    pub format: TextFormat,
+    pub newline_map: NewlineMap,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ListRecoveryEntriesRequest {}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LoadRecoveryEntryRequest {
+    pub receipt_id: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LoadedRecoveryEntry {
+    pub entry: RecoveryEntry,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionBounds {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionSelection {
+    pub anchor: u64,
+    pub head: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionView {
+    pub view_id: String,
+    pub buffer_version: u64,
+    pub document_id: String,
+    pub recovery_receipt_id: Option<String>,
+    pub file_ref: Option<FileRef>,
+    pub disk_revision: Option<String>,
+    pub open_mode: String,
+    pub title: String,
+    pub display_path: Option<String>,
+    pub is_preview: bool,
+    pub dirty: bool,
+    pub selection: Vec<SessionSelection>,
+    pub scroll_anchor: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionGroup {
+    pub group_id: String,
+    pub view_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionWindow {
+    pub window_id: String,
+    pub bounds: SessionBounds,
+    pub root_ids: Vec<String>,
+    pub root_labels: Vec<String>,
+    pub active_view_id: Option<String>,
+    pub groups: Vec<SessionGroup>,
+    pub views: Vec<SessionView>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionManifest {
+    pub schema_version: u32,
+    pub session_id: String,
+    pub windows: Vec<SessionWindow>,
+    pub recovery_snapshot_refs: Vec<String>,
+    pub persisted_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SaveSessionRequest {
+    pub manifest: SessionManifest,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LoadSessionRequest {}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ClearSessionRequest {}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionLoadResult {
+    pub session: Option<SessionManifest>,
+    pub warning: Option<String>,
+    pub restored_grant_ids: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionSaveResult {
+    pub saved: bool,
+    pub persisted_at: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionClearResult {
+    pub cleared: bool,
 }
 
 #[derive(Debug, Deserialize)]

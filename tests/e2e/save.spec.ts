@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './test-fixture';
 
 test('Web mock: delayed save Ack keeps newer input dirty, next save uses its revision', async ({ page }) => {
   await page.addInitScript(() => {

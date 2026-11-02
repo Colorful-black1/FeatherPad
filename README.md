@@ -2,13 +2,14 @@
 
 **快开文件，专心编辑。** 一个免费、离线、面向常用文档、配置和代码文本的轻量桌面编辑器。
 
-本目录是轻羽桌面编辑器的独立工程。**M0/G0及M1/T101–T109已通过；真实Release保存/冲突/另存/副本/批次/覆盖/硬链接/进程终止、真实满盘故障、完整<20MiB降级编辑、大文件限量读取、单根懒加载目录树、CodeMirror编辑/语言/IME、文件内搜索替换，以及标签预览/固定和关闭保存/放弃/取消均已有原生产物证据。T105树内新建/重命名/仅回收站删除已验收，T107实际清理对应恢复副本、未知释放保留副本并另存也已验证；T109命令面板、快捷键重映射及受授权候选快速打开已通过相关真实Release；下一步T110恢复与热退出。完整恢复、其余M1及M2–M5尚未完成，G1未通过。** 不把原型、mock或早期Release视为成品。最新状态和证据见 [PROGRESS](tasks/PROGRESS.md)。
+本目录是轻羽桌面编辑器的独立工程。**M0/G0及M1/T101–T110已通过；真实Release保存/冲突/另存/副本/批次/覆盖/硬链接/进程终止、真实满盘故障、完整<20MiB降级编辑、大文件限量读取、单根懒加载目录树、CodeMirror编辑/语言/IME、文件内搜索替换，以及标签预览/固定和关闭保存/放弃/取消均已有原生产物证据。T105树内新建/重命名/仅回收站删除已验收，T107实际清理对应恢复副本、未知释放保留副本并另存也已验证；T109命令面板、快捷键重映射及受授权候选快速打开已通过相关真实Release；T110单组恢复与热退出已通过真实Release，下一步T111外部变化。其余M1及M2–M5尚未完成，G1未通过。** 不把原型、mock或早期Release视为成品。最新状态和证据见 [PROGRESS](tasks/PROGRESS.md)。
 
 ## 立即开始
 
 - 想看界面：双击 [交互原型](design/prototype.html)，无需安装依赖、无需服务器；CSS需与HTML同目录。可试目录/标签、编辑、搜索、命令面板、设置、主题。演示保存不写真实源文件。
 - 想理解产品：先读 [产品方案](docs/PRODUCT.md) 和 [86项完整功能矩阵](docs/FEATURE-MATRIX.md)。
 - 想继续开发：单独打开 `E:\Codeing\ai-workspace\featherpad`，阅读 [agent规则](AGENTS.md) 与 [PROGRESS](tasks/PROGRESS.md)，从 [任务清单](tasks/todo.md) 的进行中任务恢复，不重建工程。
+- 想了解未保存内容保护：阅读 [恢复指南](docs/RECOVERY.md)。
 - 想核查环境：执行 [环境探针](scripts/Probe-Environment.ps1)，再点源 [开发会话入口](scripts/Enter-Dev.ps1)。这些脚本不安装工具、不修改系统PATH。
 
 ```powershell
@@ -55,7 +56,7 @@ powershell.exe -NoProfile -File .\scripts\Probe-Environment.ps1
 ## 环境约束与当前事实
 
 本机复用 Node22.13.0、pnpm10.32.1、Rust1.99.1、VS2022 C++工具、Windows SDK和WebView2；没有升级全局工具链。项目依赖已在E盘安装，原生编译和运行的实际证据按阶段记录。
-项目依赖已精确安装并双锁，原生Rust/Tauri、Release WebView2离线重载和IPC越界拒绝已实际验证，见 [M0验收](docs/acceptance/M0.md)。保存/新目标另存/副本/全部保存及标签关闭保护见 [M1验收](docs/acceptance/M1.md)。开发使用上述会话入口后运行`pnpm dev`；日常按 [分层验收](docs/QUALITY-GATES.md) 运行定向检查，`powershell.exe -NoProfile -File scripts/check.ps1 -Desktop`仅用于整体关卡。当前早期Release尚无完整会话恢复和热退出；完整v1仍需全部后续阶段。
+项目依赖已精确安装并双锁，原生Rust/Tauri、Release WebView2离线重载和IPC越界拒绝已实际验证，见 [M0验收](docs/acceptance/M0.md)。保存/新目标另存/副本/全部保存及标签关闭保护见 [M1验收](docs/acceptance/M1.md)。开发使用上述会话入口后运行`pnpm dev`；日常按 [分层验收](docs/QUALITY-GATES.md) 运行定向检查，`powershell.exe -NoProfile -File scripts/check.ps1 -Desktop`仅用于整体关卡。当前Release已验证M1单组会话恢复和热退出；完整v1仍需全部后续阶段。
 
 优先复用 `E:\Codeing` 和默认目录的已有环境；确实缺失时，**所有新增开发工具/SDK/浏览器/安装包/缓存只能放在 `E:\Codeing` 下**，默认 `E:\Codeing\featherpad-dev`。全局Node不切换，系统PATH不修改。
 

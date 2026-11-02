@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './test-fixture';
 
 test('Web mock: first-save cancellation preserves the draft and copy keeps the source dirty', async ({ page }) => {
   await page.addInitScript(() => {

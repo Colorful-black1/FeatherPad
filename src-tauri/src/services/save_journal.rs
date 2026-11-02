@@ -1,4 +1,4 @@
-use super::{grants::opened_file_path, snapshot::DiskSnapshot};
+use super::{grants::opened_file_path, snapshot::DiskSnapshot, storage_budget::StorageBudget};
 use crate::models::{io_error, AppError, ErrorCode, SaveRequest, TextFormat};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -30,6 +30,7 @@ pub struct SaveManifest {
 pub struct SaveJournal {
     pub directory: PathBuf,
     pub manifest: SaveManifest,
+    _budget: StorageBudget,
 }
 
 pub enum SaveStage {
@@ -78,12 +79,12 @@ impl SaveJournal {
         original: Option<&[u8]>,
         body: &[u8],
     ) -> Result<Self, AppError> {
+        super::recovery::reject_reparse_chain(root)?;
         fs::create_dir_all(root).map_err(io_error)?;
         let root = root.canonicalize().map_err(io_error)?;
+        let budget = StorageBudget::lock(&root, "recovery")?;
         let receipt = uuid::Uuid::new_v4().to_string();
         let directory = root.join(&receipt);
-        fs::create_dir(&directory).map_err(io_error)?;
-        let directory = directory.canonicalize().map_err(io_error)?;
         let parent = target
             .parent()
             .ok_or_else(|| AppError::new(ErrorCode::InvalidInput, "目标目录无效。"))?;
@@ -105,12 +106,25 @@ impl SaveJournal {
                 body_bytes: body.len() as u64,
                 format: request.format.clone(),
             },
+            _budget: budget,
         };
-        journal.persist(
-            "manifest.json",
-            &serde_json::to_vec(&journal.manifest)
-                .map_err(|_| AppError::new(ErrorCode::Internal, "无法建立保存事务记录。"))?,
-        )?;
+        let manifest_bytes = serde_json::to_vec(&journal.manifest)
+            .map_err(|_| AppError::new(ErrorCode::Internal, "无法建立保存事务记录。"))?;
+        let mut required = manifest_bytes.len() as u64
+            + original.unwrap_or_default().len() as u64
+            + body.len() as u64;
+        for stage in [
+            SaveStage::Staged,
+            SaveStage::TemporaryReady,
+            SaveStage::Replacing,
+            SaveStage::Committed,
+            SaveStage::CleanupPending,
+        ] {
+            required += journal.stage_bytes(stage)?.len() as u64;
+        }
+        journal._budget.require_space(required)?;
+        fs::create_dir(&journal.directory).map_err(io_error)?;
+        journal.persist("manifest.json", &manifest_bytes)?;
         journal.persist("original.bin", original.unwrap_or_default())?;
         journal.persist("body.bin", body)?;
         journal.stage(SaveStage::Staged)?;
@@ -118,12 +132,16 @@ impl SaveJournal {
     }
 
     pub fn stage(&self, stage: SaveStage) -> Result<(), AppError> {
-        let stage = stage.name();
-        let bytes = serde_json::to_vec(
-            &serde_json::json!({ "receiptId": self.manifest.receipt_id, "stage": stage }),
-        )
-        .map_err(|_| AppError::new(ErrorCode::Internal, "无法记录保存阶段。"))?;
-        self.persist(&format!("{stage}.json"), &bytes)
+        let name = stage.name();
+        let bytes = self.stage_bytes(stage)?;
+        self.persist(&format!("{name}.json"), &bytes)
+    }
+
+    fn stage_bytes(&self, stage: SaveStage) -> Result<Vec<u8>, AppError> {
+        serde_json::to_vec(&serde_json::json!({
+            "receiptId": self.manifest.receipt_id, "stage": stage.name(),
+        }))
+        .map_err(|_| AppError::new(ErrorCode::Internal, "无法记录保存阶段。"))
     }
 
     pub fn failure(&self, mut error: AppError, stage: &str) -> AppError {

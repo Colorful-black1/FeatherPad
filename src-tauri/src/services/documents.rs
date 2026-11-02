@@ -41,13 +41,40 @@ impl DocumentRegistry {
         })
     }
     pub fn register(&mut self, lease: DocumentLease) -> String {
+        self.register_preferred(lease, None)
+            .expect("an unrestricted generated document id cannot conflict")
+    }
+
+    pub fn register_preferred(
+        &mut self,
+        lease: DocumentLease,
+        preferred_id: Option<&str>,
+    ) -> Result<String, AppError> {
         if let Some(id) = self.identities.get(&lease.identity) {
-            return id.clone();
+            return Ok(id.clone());
         }
-        let id = uuid::Uuid::new_v4().to_string();
+        let id = match preferred_id {
+            Some(id)
+                if uuid::Uuid::parse_str(id)
+                    .ok()
+                    .map(|parsed| parsed.to_string())
+                    .as_deref()
+                    == Some(id) =>
+            {
+                if self.documents.contains_key(id) {
+                    return Err(AppError::new(
+                        ErrorCode::Conflict,
+                        "会话文档标识已被其他文件占用。",
+                    ));
+                }
+                id.to_owned()
+            }
+            Some(_) => return Err(AppError::new(ErrorCode::InvalidInput, "会话文档标识无效。")),
+            None => uuid::Uuid::new_v4().to_string(),
+        };
         self.identities.insert(lease.identity.clone(), id.clone());
         self.documents.insert(id.clone(), lease);
-        id
+        Ok(id)
     }
 
     pub fn mark_fragment(&mut self, id: &str) {

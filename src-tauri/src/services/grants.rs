@@ -1,17 +1,30 @@
 use crate::models::{io_error, AppError, ChosenFiles, ErrorCode, FileRef, SelectionFailure};
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs::{self, File, Metadata};
 use std::path::{Component, Path, PathBuf};
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum GrantKind {
     File,
     Directory,
 }
 
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct PersistedGrant {
+    pub grant_id: String,
+    pub kind: GrantKind,
+    pub path_utf16: Vec<u16>,
+    pub identity_sha256: String,
+}
+
 struct Grant {
     target: PathBuf,
     kind: GrantKind,
+    identity_sha256: String,
 }
 
 pub struct ResolvedEntry {
@@ -70,18 +83,125 @@ impl GrantRegistry {
                 "所选项目类型不匹配。",
             ));
         }
+        let identity_sha256 = grant_identity(&target, kind)?;
         if let Some(existing) = self.grants.iter().find_map(|(grant_id, grant)| {
             (grant.kind == kind && grant.target == target).then(|| grant_id.clone())
         }) {
+            // A fresh native selection explicitly authorizes the currently selected object.
+            self.grants
+                .get_mut(&existing)
+                .ok_or_else(out_of_scope)?
+                .identity_sha256 = identity_sha256;
             return Ok(FileRef {
                 grant_id: existing,
                 relative_path: String::new(),
             });
         }
         let grant_id = uuid::Uuid::new_v4().to_string();
-        self.grants.insert(grant_id.clone(), Grant { target, kind });
+        self.grants.insert(
+            grant_id.clone(),
+            Grant {
+                target,
+                kind,
+                identity_sha256,
+            },
+        );
         Ok(FileRef {
             grant_id,
+            relative_path: String::new(),
+        })
+    }
+
+    pub(crate) fn persistent_grant(&self, grant_id: &str) -> Option<PersistedGrant> {
+        let grant = self.grants.get(grant_id)?;
+        Some(PersistedGrant {
+            grant_id: grant_id.to_owned(),
+            kind: grant.kind,
+            path_utf16: path_units(&grant.target),
+            identity_sha256: grant.identity_sha256.clone(),
+        })
+    }
+
+    pub(crate) fn confirm_saved_identity(
+        &mut self,
+        reference: &FileRef,
+        file: &File,
+        path: &Path,
+    ) -> Result<(), AppError> {
+        validate_reference(reference)?;
+        let grant = self
+            .grants
+            .get_mut(&reference.grant_id)
+            .ok_or_else(out_of_scope)?;
+        if !grant.contains(path) || opened_file_path(file)? != path {
+            return Err(out_of_scope());
+        }
+        if grant.kind == GrantKind::File {
+            let identity = super::identity::identify(file, path);
+            grant.identity_sha256 = format!("{:x}", Sha256::digest(identity.revision_tag()));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn restore_persisted_grant(
+        &mut self,
+        record: PersistedGrant,
+    ) -> Result<FileRef, AppError> {
+        if uuid::Uuid::parse_str(&record.grant_id)
+            .ok()
+            .map(|id| id.to_string())
+            .as_deref()
+            != Some(record.grant_id.as_str())
+            || record.path_utf16.len() > 32_767
+            || record.identity_sha256.len() != 64
+            || !record
+                .identity_sha256
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit())
+        {
+            return Err(AppError::new(
+                ErrorCode::InvalidInput,
+                "持久授权记录格式无效。",
+            ));
+        }
+        let path = path_from_units(&record.path_utf16)?;
+        let target = path.canonicalize().map_err(io_error)?;
+        let metadata = target.metadata().map_err(io_error)?;
+        if !matches!(
+            (record.kind, metadata.is_file(), metadata.is_dir()),
+            (GrantKind::File, true, _) | (GrantKind::Directory, _, true)
+        ) || grant_identity(&target, record.kind)? != record.identity_sha256
+        {
+            return Err(AppError::new(
+                ErrorCode::Conflict,
+                "会话授权指向的项目已移动、替换或不再可用，请重新选择。",
+            ));
+        }
+        if let Some(existing) = self.grants.get(&record.grant_id) {
+            if existing.kind == record.kind
+                && existing.target == target
+                && existing.identity_sha256 == record.identity_sha256
+            {
+                return Ok(FileRef {
+                    grant_id: record.grant_id,
+                    relative_path: String::new(),
+                });
+            }
+            return Err(AppError::new(
+                ErrorCode::Conflict,
+                "会话授权标识与当前授权冲突，请重新选择。",
+            ));
+        }
+        self.grants.insert(
+            record.grant_id.clone(),
+            Grant {
+                target,
+                kind: record.kind,
+                identity_sha256: record.identity_sha256,
+            },
+        );
+        Ok(FileRef {
+            grant_id: record.grant_id,
             relative_path: String::new(),
         })
     }
@@ -166,6 +286,48 @@ impl GrantRegistry {
             |name| name.to_string_lossy().into_owned(),
         ))
     }
+}
+
+fn grant_identity(path: &Path, kind: GrantKind) -> Result<String, AppError> {
+    let file = match kind {
+        GrantKind::File => File::open(path).map_err(io_error)?,
+        GrantKind::Directory => super::windows_file::lock_directory(path)?,
+    };
+    let identity = super::identity::identify(&file, path);
+    Ok(format!("{:x}", Sha256::digest(identity.revision_tag())))
+}
+
+#[cfg(windows)]
+fn path_units(path: &Path) -> Vec<u16> {
+    use std::os::windows::ffi::OsStrExt;
+    path.as_os_str().encode_wide().collect()
+}
+
+#[cfg(not(windows))]
+fn path_units(path: &Path) -> Vec<u16> {
+    path.to_string_lossy().encode_utf16().collect()
+}
+
+#[cfg(windows)]
+fn path_from_units(units: &[u16]) -> Result<PathBuf, AppError> {
+    use std::ffi::OsString;
+    use std::os::windows::ffi::OsStringExt;
+    let path = PathBuf::from(OsString::from_wide(units));
+    if !path.is_absolute() || units.contains(&0) {
+        return Err(AppError::new(ErrorCode::InvalidInput, "持久授权路径无效。"));
+    }
+    Ok(path)
+}
+
+#[cfg(not(windows))]
+fn path_from_units(units: &[u16]) -> Result<PathBuf, AppError> {
+    let value = String::from_utf16(units)
+        .map_err(|_| AppError::new(ErrorCode::InvalidInput, "持久授权路径包含无效字符。"))?;
+    let path = PathBuf::from(value);
+    if !path.is_absolute() {
+        return Err(AppError::new(ErrorCode::InvalidInput, "持久授权路径无效。"));
+    }
+    Ok(path)
 }
 
 impl Grant {

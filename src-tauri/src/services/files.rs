@@ -56,14 +56,23 @@ impl FileService {
         reference: FileRef,
         requested_mode: OpenRequestMode,
     ) -> Result<OpenDocument, AppError> {
+        self.open_document_with_mode_and_id(reference, requested_mode, None)
+    }
+
+    pub fn open_document_with_mode_and_id(
+        &mut self,
+        reference: FileRef,
+        requested_mode: OpenRequestMode,
+        preferred_document_id: Option<&str>,
+    ) -> Result<OpenDocument, AppError> {
         let (file, _) = self.grants.open_file(&reference)?;
         let initial_size = file.metadata().map_err(crate::models::io_error)?.len();
         match (OpenPolicy::for_size(initial_size), requested_mode) {
             (OpenPolicy::LargeReadOnly, OpenRequestMode::Auto) => {
-                return self.open_large_readonly(reference, file);
+                return self.open_large_readonly(reference, file, preferred_document_id);
             }
             (OpenPolicy::HeadPreviewOnly, OpenRequestMode::HeadPreview) => {
-                return self.open_head_preview(reference, file);
+                return self.open_head_preview(reference, file, preferred_document_id);
             }
             (OpenPolicy::HeadPreviewOnly, OpenRequestMode::Auto) => {
                 return Err(AppError::new(
@@ -79,7 +88,7 @@ impl FileService {
             }
             _ => {}
         }
-        self.open_editable_snapshot(reference, file, initial_size)
+        self.open_editable_snapshot(reference, file, initial_size, preferred_document_id)
     }
 
     fn open_editable_snapshot(
@@ -87,6 +96,7 @@ impl FileService {
         reference: FileRef,
         file: std::fs::File,
         initial_size: u64,
+        preferred_document_id: Option<&str>,
     ) -> Result<OpenDocument, AppError> {
         let limit = OpenPolicy::for_size(initial_size)
             .editable_read_limit()
@@ -97,7 +107,9 @@ impl FileService {
                 let (latest, _) = self.grants.open_file(&reference)?;
                 let latest_size = latest.metadata().map_err(crate::models::io_error)?.len();
                 return match OpenPolicy::for_size(latest_size) {
-                    OpenPolicy::LargeReadOnly => self.open_large_readonly(reference, latest),
+                    OpenPolicy::LargeReadOnly => {
+                        self.open_large_readonly(reference, latest, preferred_document_id)
+                    }
                     OpenPolicy::HeadPreviewOnly => Err(AppError::new(
                         ErrorCode::TooLarge,
                         "文件在读取期间增长到100MiB以上；请明确选择前1MiB只读预览。",
@@ -151,12 +163,15 @@ impl FileService {
         if matches!(snapshot.identity, FileIdentity::Canonical(_)) {
             warnings.push("文件系统未提供稳定文件标识，当前按规范路径识别。".into());
         }
-        let document_id = self.documents.register(DocumentLease {
-            identity: snapshot.identity,
-            reference: reference.clone(),
-            path: snapshot.path,
-            file: snapshot.file,
-        });
+        let document_id = self.documents.register_preferred(
+            DocumentLease {
+                identity: snapshot.identity,
+                reference: reference.clone(),
+                path: snapshot.path,
+                file: snapshot.file,
+            },
+            preferred_document_id,
+        )?;
         Ok(OpenDocument {
             document_id,
             reference,
@@ -255,6 +270,7 @@ impl FileService {
         &mut self,
         reference: FileRef,
         file: std::fs::File,
+        preferred_document_id: Option<&str>,
     ) -> Result<OpenDocument, AppError> {
         let snapshot = read_stream_snapshot(
             file,
@@ -269,12 +285,15 @@ impl FileService {
         }
         let decoded = decode_window(&snapshot, 0, INITIAL_CHUNK_BYTES)?;
         let format = stream_format(snapshot.encoding, snapshot.newlines);
-        let document_id = self.documents.register(DocumentLease {
-            identity: snapshot.identity,
-            reference: reference.clone(),
-            path: snapshot.path,
-            file: snapshot.file,
-        });
+        let document_id = self.documents.register_preferred(
+            DocumentLease {
+                identity: snapshot.identity,
+                reference: reference.clone(),
+                path: snapshot.path,
+                file: snapshot.file,
+            },
+            preferred_document_id,
+        )?;
         self.documents.mark_fragment(&document_id);
         let handle_id = self
             .documents
@@ -307,6 +326,7 @@ impl FileService {
         &mut self,
         reference: FileRef,
         file: std::fs::File,
+        preferred_document_id: Option<&str>,
     ) -> Result<OpenDocument, AppError> {
         let snapshot = read_stream_snapshot(file, u64::MAX, 0..HEAD_PREVIEW_BYTES + 8)?;
         if OpenPolicy::for_size(snapshot.metadata.size_bytes) != OpenPolicy::HeadPreviewOnly {
@@ -317,12 +337,15 @@ impl FileService {
         }
         let decoded = decode_window(&snapshot, 0, HEAD_PREVIEW_BYTES)?;
         let format = stream_format(snapshot.encoding, snapshot.newlines);
-        let document_id = self.documents.register(DocumentLease {
-            identity: snapshot.identity,
-            reference: reference.clone(),
-            path: snapshot.path,
-            file: snapshot.file,
-        });
+        let document_id = self.documents.register_preferred(
+            DocumentLease {
+                identity: snapshot.identity,
+                reference: reference.clone(),
+                path: snapshot.path,
+                file: snapshot.file,
+            },
+            preferred_document_id,
+        )?;
         self.documents.mark_fragment(&document_id);
         Ok(OpenDocument {
             document_id,
@@ -397,7 +420,7 @@ mod tests {
             .unwrap();
         let (file, _) = service.grants.open_file(&reference).unwrap();
         let opened = service
-            .open_editable_snapshot(reference, file, CHUNKED_THRESHOLD - 1)
+            .open_editable_snapshot(reference, file, CHUNKED_THRESHOLD - 1, None)
             .unwrap();
         assert_eq!(opened.mode, "large-readonly");
         assert!(matches!(

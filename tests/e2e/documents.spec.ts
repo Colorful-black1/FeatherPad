@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './test-fixture';
 
 test('Web mock: multi-open isolates failures, retains buffers/undo and sends no per-key IPC', async ({ page }) => {
   const errors: string[] = [];

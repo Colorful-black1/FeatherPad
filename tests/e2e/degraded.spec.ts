@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './test-fixture';
 
 test('Web mock: degraded complete text remains editable and sends the entire buffer to save', async ({ page }) => {
   await page.addInitScript(() => {

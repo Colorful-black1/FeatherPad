@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './test-fixture';
 
 test('Web mock pages bounded large-file chunks without accumulating text or exposing save actions', async ({ page }) => {
   await page.addInitScript(() => {

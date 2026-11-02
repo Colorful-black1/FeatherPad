@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page } from './test-fixture';
 
 async function openFixture(page: Page, mode: 'success' | 'failure' | 'uncertain' = 'success') {
   await page.addInitScript(({ mode }) => {

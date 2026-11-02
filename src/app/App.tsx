@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { availableMonitors, getCurrentWindow, LogicalPosition, LogicalSize } from '@tauri-apps/api/window';
 import { Shell } from '../shared/ui/Shell';
 import { CommandPalette } from '../shared/ui/CommandPalette';
 import { files } from '../bridge/files';
@@ -10,6 +11,13 @@ import { tabs } from '../features/editor/tabs';
 import { TabStrip } from '../features/editor/TabStrip';
 import { CloseDialog, type CloseTarget } from '../features/editor/CloseDialog';
 import { saves } from '../features/editor/save';
+import { recoveries } from '../features/editor/recovery';
+import { restoreRecoveryOnce } from '../features/desktop/recovery-startup';
+import { session } from '../features/desktop/session';
+import { hotExit } from '../features/desktop/hot-exit';
+import { HotExitDialog } from '../features/desktop/HotExitDialog';
+import { fitSessionBounds } from '../features/desktop/window-restore';
+import { RecoveryPanel } from '../features/desktop/RecoveryPanel';
 import { saveAll } from '../features/editor/save-all';
 import { SaveAllResults } from '../features/editor/SaveAllResults';
 import { FindBar } from '../features/search-tools/FindBar';
@@ -17,7 +25,7 @@ import type { SearchScope } from '../features/search-tools/search-query';
 import { Explorer } from '../features/workspace/Explorer';
 import { TrashDialog } from '../features/workspace/TrashDialog';
 import { workspace } from '../features/workspace/store';
-import type { DirectoryEntry, DocumentId, FileRef } from '../shared/contracts/files';
+import type { DirectoryEntry, DocumentId, FileRef, OpenDocument, SaveTransactionCandidate } from '../shared/contracts/files';
 import { ariaShortcut } from '../shared/commands/keyboard';
 import { createAppCommands, type AppCommandActions, type AppCommandState, type AppCommandId } from './register-commands';
 import { quickCandidates } from './quick-candidates';
@@ -36,6 +44,8 @@ export function App() {
   const tabState = useSyncExternalStore(tabs.subscribe, tabs.getSnapshot);
   const batch = useSyncExternalStore(saveAll.subscribe, saveAll.getSnapshot);
   const workspaceState = useSyncExternalStore(workspace.subscribe, workspace.getSnapshot);
+  const exitState = useSyncExternalStore(hotExit.subscribe, hotExit.getSnapshot);
+  const sessionState = useSyncExternalStore(session.subscribe, session.getSnapshot);
   const batchBusy = batch.phase === 'running' || batch.phase === 'cancelling';
   const current = snapshot.documents.find(document => document.id === snapshot.activeId);
   const currentReference = current ? documents.getDocument(current.id)?.source?.ref : undefined;
@@ -59,10 +69,111 @@ export function App() {
   const commandState = useSyncExternalStore(commands.subscribe, commands.getSnapshot);
   const [paletteMode, setPaletteMode] = useState<'commands' | 'files' | null>(null);
   const paletteOrigin = useRef<HTMLElement | null>(null);
+  const [saveTransactions, setSaveTransactions] = useState<SaveTransactionCandidate[]>([]);
+  const transactionCopies = useRef(new Map<string, DocumentId>());
 
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
   }, [dark]);
+
+  useEffect(() => {
+    if (!Reflect.get(window, '__TAURI_INTERNALS__')) return;
+    let active = true;
+    let stopRecovery: (() => void) | null = null;
+    let stopSession: (() => void) | null = null;
+    let unlistenClose: (() => void) | null = null;
+    let releaseStartup!: () => void;
+    const startupReady = new Promise<void>(resolve => { releaseStartup = resolve; });
+    const appWindow = getCurrentWindow();
+    void appWindow.onCloseRequested(async event => {
+      event.preventDefault();
+      await startupReady;
+      if (active) await hotExit.prepare();
+    }).then(unlisten => {
+      if (active) unlistenClose = unlisten;
+      else unlisten();
+    }).catch(() => {
+      if (active) setError('无法注册安全退出监听；请先保存所有修改再关闭窗口。');
+    });
+    void (async () => {
+      const notices: string[] = [];
+      try {
+        const loaded = await session.load();
+        let sources = new Map<DocumentId, OpenDocument>();
+        if (!loaded.ok) setError(previous => previous
+          ? `${previous}；无法读取会话状态：${loaded.error.message}`
+          : `无法读取会话状态：${loaded.error.message}`);
+        else {
+          if (loaded.value.warning) notices.push(loaded.value.warning);
+          if (loaded.value.session) {
+            const savedWindow = loaded.value.session.windows.find(window => window.windowId === 'main')
+              ?? loaded.value.session.windows[0];
+            if (savedWindow) {
+              try {
+                const [monitors, outer, inner, scale] = await Promise.all([
+                  availableMonitors(), appWindow.outerSize(), appWindow.innerSize(), appWindow.scaleFactor(),
+                ]);
+                const frame = { width: (outer.width - inner.width) / scale,
+                  height: (outer.height - inner.height) / scale };
+                const fitted = fitSessionBounds(savedWindow.bounds, monitors.map(monitor => {
+                  const position = monitor.workArea.position.toLogical(monitor.scaleFactor);
+                  const size = monitor.workArea.size.toLogical(monitor.scaleFactor);
+                  return { x: position.x, y: position.y, width: size.width, height: size.height };
+                }), frame);
+                if (fitted) {
+                  await appWindow.setSize(new LogicalSize(fitted.width, fitted.height));
+                  await appWindow.setPosition(new LogicalPosition(fitted.x, fitted.y));
+                }
+              } catch {
+                notices.push('窗口位置未能恢复，已使用系统提供的当前位置。');
+              }
+            }
+            const restored = await session.restoreSources(
+              loaded.value.session,
+              loaded.value.restoredGrantIds,
+            );
+            sources = restored.sources;
+            notices.push(...restored.warnings);
+          }
+        }
+        const recovery = await restoreRecoveryOnce(sources, loaded.ok ? loaded.value.session ?? undefined : undefined);
+        if (!recovery.ok) setError(`无法读取本地恢复副本：${recovery.error.message}`);
+        else {
+          if (active) setSaveTransactions(recovery.value.saveTransactions);
+          if (recovery.value.restored.length > 0) {
+            notices.push(`已恢复 ${recovery.value.restored.length} 个未保存文档。`);
+          }
+          if (recovery.value.corruptEntries > 0) {
+            notices.push(`检测到 ${recovery.value.corruptEntries} 个损坏恢复副本，已隔离且未删除。`);
+          }
+          notices.push(...recovery.value.warnings);
+        }
+        if (loaded.ok && loaded.value.session) {
+            const applied = session.apply(loaded.value.session);
+            notices.push(...applied.warnings);
+        }
+      } catch {
+        setError(previous => previous
+          ? `${previous}；启动恢复未完成，当前编辑仍可使用。`
+          : '启动恢复未完成，当前编辑仍可使用。');
+      } finally {
+        if (active) {
+          stopRecovery = recoveries.start();
+          stopSession = session.start();
+          if (notices.length > 0) setNotice(notices.join(' '));
+        }
+        releaseStartup();
+      }
+    })();
+    return () => {
+      active = false;
+      releaseStartup();
+      unlistenClose?.();
+      stopRecovery?.();
+      stopSession?.();
+      if (hotExit.getSnapshot().phase !== 'idle') hotExit.resume();
+    };
+  }, []);
 
   const openOne = useCallback(async (reference: FileRef, intent: 'preview' | 'pinned' = 'pinned'): Promise<string | null> => {
     const result = await tabs.open(reference, intent);
@@ -120,6 +231,23 @@ export function App() {
 
   const newFile = useCallback(async () => { setAutoFocus(true); await tabs.createUntitled(); }, [setAutoFocus]);
 
+  const openTransactionCopy = useCallback(async (receiptId: string): Promise<string | null> => {
+    const existing = transactionCopies.current.get(receiptId);
+    if (existing && documents.getDocument(existing)) {
+      documents.activate(existing);
+      documents.focus(existing);
+      return null;
+    }
+    const loaded = await files.loadSaveTransaction({ receiptId });
+    if (!loaded.ok) return loaded.error.message;
+    if (documents.isHotExitFrozen()) return '正在退出，恢复副本尚未打开；原记录仍保留。';
+    const id = documents.openTransactionDraft(loaded.value);
+    transactionCopies.current.set(receiptId, id);
+    setAutoFocus(true);
+    const protectedCopy = await recoveries.flush(id);
+    return protectedCopy.ok ? null : `副本已在编辑器中打开，但恢复快照未更新：${protectedCopy.error.message} 原记录仍保留，请先另存。`;
+  }, []);
+
   const focusAfterClose = useCallback(() => {
     setAutoFocus(true);
     requestAnimationFrame(() => {
@@ -173,6 +301,28 @@ export function App() {
       else if (intent === 'copy') setNotice(`副本已保存：${result.value.metadata.displayPath}`);
     } finally { setSavingCount(count => count - 1); }
   }, [setError, setNotice, setSavingCount]);
+
+  const saveExitDrafts = useCallback(async (): Promise<string | null> => {
+    const ids = documents.getSnapshot().documents.filter(document => document.dirty).map(document => document.id);
+    if (ids.length === 0) return null;
+    setSavingCount(count => count + 1);
+    try {
+      for (const id of ids) {
+        const result = await saves.saveAs(id, 'save-as');
+        if (!result.ok) {
+          return result.error.code === 'CANCELLED'
+            ? '另存已取消；应用保持打开，当前正文仍在内存中。'
+            : `另存失败：${result.error.message}`;
+        }
+        if (documents.getDocument(id)?.summary.dirty) {
+          return '另存完成后文档仍有未确认修改；应用保持打开。';
+        }
+      }
+      return null;
+    } finally {
+      setSavingCount(count => count - 1);
+    }
+  }, [setSavingCount]);
 
   const openFind = useCallback(() => {
     const activeId = documents.getSnapshot().activeId;
@@ -291,6 +441,10 @@ export function App() {
       {notice && <div className="notice error-notice" aria-live="polite"><span>{notice}</span><button onClick={() => setNotice(null)}>关闭提示</button></div>}
       {tabState.warning && <p className="notice" role="alert">{tabState.warning}</p>}
       {commandState.warning && <p className="notice" role="alert">{commandState.warning}</p>}
+      <RecoveryPanel candidates={saveTransactions} onOpen={openTransactionCopy}
+        missingSources={sessionState.missingSources} onForget={id => session.forgetMissing(id)}
+        onReselect={kind => { if (kind === 'workspace') void openFolder(); else void openFile(); }}
+        blocked={exitState.phase !== 'idle' || busy || savingCount > 0 || batchBusy || closingCount > 0} />
       {previewCandidates.length > 0 && <div className="notice preview-choice" aria-live="polite">
         <span>超过100MiB的文件不会自动加载完整内容。请选择是否只读预览前1MiB。</span>
         <span className="preview-choice-actions">
@@ -401,6 +555,11 @@ export function App() {
             else window.document.querySelector<HTMLButtonElement>('[aria-label="刷新目录树"]')?.focus();
           });
         }} onClose={() => setTrashEntry(null)} />}
+      {exitState.phase !== 'idle' && <HotExitDialog snapshot={exitState}
+        onRetry={async () => { await hotExit.prepare(); }}
+        onSaveAs={saveExitDrafts}
+        onDiscard={async () => { await hotExit.discardAndExit(); }}
+        onStay={() => hotExit.resume()} />}
     </Shell>
   );
 }

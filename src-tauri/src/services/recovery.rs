@@ -3,11 +3,15 @@ use super::{
     save::MAX_SNAPSHOT_BYTES,
     save_journal::{digest, write_new_verified},
     save_requests::payload_hash,
+    storage_budget::StorageBudget,
     windows_file,
 };
-use crate::models::{io_error, AppError, ErrorCode, NewlineMap, SaveRequest, TextFormat};
+use crate::models::{
+    io_error, AppError, ErrorCode, NewlineMap, RecoverySnapshotReason, SaveRequest, TextFormat,
+};
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::HashSet,
     fs::{self, OpenOptions},
     io::Read,
     path::{Path, PathBuf},
@@ -15,6 +19,7 @@ use std::{
 };
 
 pub const MAX_RECOVERY_BYTES: u64 = 256 * 1024 * 1024;
+pub const MAX_SNAPSHOTS_PER_DOCUMENT: usize = 10;
 const MAX_BUFFER_VERSION: u64 = 9_007_199_254_740_991;
 
 #[derive(Serialize, Deserialize)]
@@ -25,7 +30,7 @@ struct DiscardMarker {
     through_version: u64,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RecoveryManifest {
     pub schema_version: u32,
@@ -48,8 +53,96 @@ pub struct RecoveredDraft {
     pub text: String,
 }
 
+pub struct RecoveryScanFailure {
+    pub entry_id: String,
+    pub message: String,
+}
+
+pub struct RecoveryScan {
+    pub entries: Vec<RecoveryManifest>,
+    pub failures: Vec<RecoveryScanFailure>,
+    pub storage_bytes: u64,
+}
+
+pub struct RecoverySource {
+    pub path: PathBuf,
+    pub revision: String,
+}
+
+#[derive(Clone, Copy)]
+pub enum SnapshotReason {
+    BeforeTrash,
+    Periodic,
+    HotExit,
+}
+
+impl SnapshotReason {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::BeforeTrash => "before-trash",
+            Self::Periodic => "periodic",
+            Self::HotExit => "hot-exit",
+        }
+    }
+}
+
+// Native-only metadata. Source paths are never accepted by the snapshot IPC.
+pub struct RecoverySnapshot {
+    pub document_id: String,
+    pub buffer_version: u64,
+    pub text: String,
+    pub format: TextFormat,
+    pub newline_map: Option<NewlineMap>,
+    pub source: Option<RecoverySource>,
+    pub reason: SnapshotReason,
+}
+
 pub struct RecoveryStore {
     root: PathBuf,
+}
+
+impl super::files::FileService {
+    // Called while the command holds the same per-document permit as save/release/trash.
+    pub fn prepare_recovery_snapshot(
+        &self,
+        request: crate::models::WriteRecoverySnapshotRequest,
+    ) -> Result<RecoverySnapshot, AppError> {
+        validate_document_version(&request.document_id, request.document_version)?;
+        if self.documents.is_fragment(&request.document_id) {
+            return Err(AppError::new(
+                ErrorCode::Unsupported,
+                "限量预览不能作为完整恢复正文写入。",
+            ));
+        }
+        let source = match request.base_disk_revision {
+            Some(revision) => {
+                let lease = self.document_lease(&request.document_id).ok_or_else(|| {
+                    AppError::new(
+                        ErrorCode::NotFound,
+                        "文档绑定已不可用，当前内容需作为未绑定副本保护。",
+                    )
+                })?;
+                Some(RecoverySource {
+                    path: lease.path.clone(),
+                    revision,
+                })
+            }
+            // A draft or an uncertain-release copy grants no access to an original source.
+            None => None,
+        };
+        Ok(RecoverySnapshot {
+            document_id: request.document_id,
+            buffer_version: request.document_version,
+            text: request.text,
+            format: request.format,
+            newline_map: request.newline_map,
+            source,
+            reason: match request.reason {
+                RecoverySnapshotReason::Periodic => SnapshotReason::Periodic,
+                RecoverySnapshotReason::HotExit => SnapshotReason::HotExit,
+            },
+        })
+    }
 }
 
 impl RecoveryStore {
@@ -64,20 +157,57 @@ impl RecoveryStore {
         source_path: &Path,
     ) -> Result<RecoveredDraft, AppError> {
         payload_hash(request)?;
-        if !source_path.is_absolute() || uuid::Uuid::parse_str(&request.document_id).is_err() {
+        self.persist_snapshot(RecoverySnapshot {
+            document_id: request.document_id.clone(),
+            buffer_version: request.document_version,
+            text: request.text.clone(),
+            format: request.format.clone(),
+            newline_map: request.newline_map.clone(),
+            source: Some(RecoverySource {
+                path: source_path.to_owned(),
+                revision: request.expected_disk_revision.clone(),
+            }),
+            reason: SnapshotReason::BeforeTrash,
+        })
+    }
+
+    pub fn persist_snapshot(&self, snapshot: RecoverySnapshot) -> Result<RecoveredDraft, AppError> {
+        validate_document_version(&snapshot.document_id, snapshot.buffer_version)?;
+        if snapshot
+            .source
+            .as_ref()
+            .is_some_and(|source| !source.path.is_absolute())
+            || matches!(snapshot.reason, SnapshotReason::BeforeTrash) && snapshot.source.is_none()
+        {
             return Err(invalid());
         }
-        // Reuse the canonical snapshot validator, including per-line map/version/BOM checks.
-        encode_snapshot(request)?;
         let receipt_id = uuid::Uuid::new_v4().to_string();
+        let request = SaveRequest {
+            document_id: snapshot.document_id,
+            request_id: receipt_id.clone(),
+            document_version: snapshot.buffer_version,
+            expected_disk_revision: snapshot
+                .source
+                .as_ref()
+                .map_or_else(|| "0".repeat(64), |source| source.revision.clone()),
+            text: snapshot.text,
+            format: snapshot.format,
+            newline_map: snapshot.newline_map,
+        };
+        payload_hash(&request)?;
+        // Reuse the canonical snapshot validator, including per-line map/version/BOM checks.
+        encode_snapshot(&request)?;
+        let (source_path, source_revision) = snapshot.source.map_or((None, None), |source| {
+            (Some(source.path), Some(source.revision))
+        });
         let manifest = RecoveryManifest {
             schema_version: 1,
             receipt_id: receipt_id.clone(),
-            reason: "before-trash".to_owned(),
+            reason: snapshot.reason.as_str().to_owned(),
             document_id: request.document_id.clone(),
             buffer_version: request.document_version,
-            source_path: Some(source_path.to_owned()),
-            source_revision: Some(request.expected_disk_revision.clone()),
+            source_path,
+            source_revision,
             format: request.format.clone(),
             newline_map: request.newline_map.clone(),
             body_bytes: request.text.len() as u64,
@@ -89,9 +219,11 @@ impl RecoveryStore {
         self.ensure_root()?;
         let root = self.root.canonicalize().map_err(io_error)?;
         let _parents = windows_file::lock_parent_chain(&root.join("pending"))?;
+        let budget = StorageBudget::lock(&root, "save-transactions")?;
         let _quota = quota_guard(&root)?;
         require_recoverable(&root, &request.document_id, request.document_version)?;
         let required = request.text.len() as u64 + encoded_manifest.len() as u64;
+        budget.require_space(required)?;
         if storage_bytes(&root)?.saturating_add(required) > MAX_RECOVERY_BYTES {
             return Err(AppError::new(
                 ErrorCode::DiskFull,
@@ -107,6 +239,9 @@ impl RecoveryStore {
         if recovered.text != request.text {
             return Err(invalid());
         }
+        // The new snapshot is already verified. Cleanup is best-effort so a locked
+        // redundant copy cannot turn durable protection into a false failure.
+        let _ = self.prune_redundant_snapshots(&root, &recovered.manifest.document_id, &receipt_id);
         Ok(recovered)
     }
 
@@ -116,6 +251,83 @@ impl RecoveryStore {
         let _parents = windows_file::lock_parent_chain(&root.join("pending"))?;
         let _quota = quota_guard(&root)?;
         self.load_locked(receipt_id)
+    }
+
+    pub fn scan(&self) -> Result<RecoveryScan, AppError> {
+        match fs::symlink_metadata(&self.root) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(RecoveryScan {
+                    entries: Vec::new(),
+                    failures: Vec::new(),
+                    storage_bytes: 0,
+                })
+            }
+            Err(error) => return Err(io_error(error)),
+            Ok(metadata) if !metadata.is_dir() => return Err(invalid()),
+            Ok(_) => {}
+        }
+        reject_reparse_chain(&self.root)?;
+        let root = self.root.canonicalize().map_err(io_error)?;
+        let _parents = windows_file::lock_parent_chain(&root.join("pending"))?;
+        let _quota = quota_guard(&root)?;
+        let mut entries = Vec::new();
+        let mut failures = Vec::new();
+        for (index, entry) in fs::read_dir(&root).map_err(io_error)?.enumerate() {
+            if index >= 100_000 {
+                return Err(invalid());
+            }
+            let entry = entry.map_err(io_error)?;
+            let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
+                failures.push(RecoveryScanFailure {
+                    entry_id: "invalid-name".into(),
+                    message: "恢复条目名称无效，已隔离。".into(),
+                });
+                continue;
+            };
+            if name == ".recovery.lock" || name.starts_with("discarded-") {
+                continue;
+            }
+            let metadata = fs::symlink_metadata(entry.path()).map_err(io_error)?;
+            if !metadata.is_dir() {
+                failures.push(RecoveryScanFailure {
+                    entry_id: name,
+                    message: "恢复目录包含无法识别的文件，已隔离。".into(),
+                });
+                continue;
+            }
+            if uuid::Uuid::parse_str(&name)
+                .ok()
+                .map(|id| id.to_string())
+                .as_deref()
+                != Some(name.as_str())
+            {
+                failures.push(RecoveryScanFailure {
+                    entry_id: name,
+                    message: "恢复条目标识无效，已隔离。".into(),
+                });
+                continue;
+            }
+            match self.load_locked(&name) {
+                Ok(draft) => entries.push(draft.manifest),
+                Err(error) => failures.push(RecoveryScanFailure {
+                    entry_id: name,
+                    message: error.message,
+                }),
+            }
+        }
+        entries.sort_by(|left, right| {
+            left.document_id
+                .cmp(&right.document_id)
+                .then_with(|| right.buffer_version.cmp(&left.buffer_version))
+                .then_with(|| right.created_at.cmp(&left.created_at))
+                .then_with(|| left.receipt_id.cmp(&right.receipt_id))
+        });
+        failures.sort_by(|left, right| left.entry_id.cmp(&right.entry_id));
+        Ok(RecoveryScan {
+            entries,
+            failures,
+            storage_bytes: storage_bytes(&root)?,
+        })
     }
 
     // Caller holds the store lock, so discard cannot race a load or a completed snapshot write.
@@ -137,12 +349,17 @@ impl RecoveryStore {
             serde_json::from_slice(&manifest_bytes).map_err(|_| invalid())?;
         if manifest.schema_version != 1
             || manifest.receipt_id != receipt_id
-            || manifest.reason != "before-trash"
+            || !matches!(
+                manifest.reason.as_str(),
+                "before-trash" | "periodic" | "hot-exit"
+            )
             || manifest.body_bytes > MAX_SNAPSHOT_BYTES as u64
+            || manifest.source_path.is_some() != manifest.source_revision.is_some()
+            || manifest.reason == "before-trash" && manifest.source_path.is_none()
             || manifest
                 .source_path
                 .as_ref()
-                .is_none_or(|path| !path.is_absolute())
+                .is_some_and(|path| !path.is_absolute())
             || chrono::DateTime::parse_from_rfc3339(&manifest.created_at).is_err()
         {
             return Err(invalid());
@@ -156,7 +373,10 @@ impl RecoveryStore {
             document_id: manifest.document_id.clone(),
             request_id: receipt_id.to_owned(),
             document_version: manifest.buffer_version,
-            expected_disk_revision: manifest.source_revision.clone().ok_or_else(invalid)?,
+            expected_disk_revision: manifest
+                .source_revision
+                .clone()
+                .unwrap_or_else(|| "0".repeat(64)),
             text: text.clone(),
             format: manifest.format.clone(),
             newline_map: manifest.newline_map.clone(),
@@ -175,6 +395,7 @@ impl RecoveryStore {
         self.ensure_root()?;
         let root = self.root.canonicalize().map_err(io_error)?;
         let _parents = windows_file::lock_parent_chain(&root.join("pending"))?;
+        let budget = StorageBudget::lock(&root, "save-transactions")?;
         let _quota = quota_guard(&root)?;
         if let Some(previous) =
             discarded_version(&root, document_id)?.filter(|version| *version >= through_version)
@@ -187,6 +408,7 @@ impl RecoveryStore {
             through_version,
         };
         let bytes = serde_json::to_vec(&marker).map_err(|_| invalid())?;
+        budget.require_space(bytes.len() as u64)?;
         if storage_bytes(&root)?.saturating_add(bytes.len() as u64) > MAX_RECOVERY_BYTES {
             return Err(AppError::new(
                 ErrorCode::DiskFull,
@@ -208,6 +430,19 @@ impl RecoveryStore {
         purge_discarded_snapshots(&root, document_id, through_version)
     }
 
+    pub(crate) fn is_discarded(&self, document_id: &str, version: u64) -> Result<bool, AppError> {
+        validate_document_version(document_id, version)?;
+        match fs::symlink_metadata(&self.root) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+            Err(error) => return Err(io_error(error)),
+            Ok(metadata) if !metadata.is_dir() => return Err(invalid()),
+            Ok(_) => {}
+        }
+        reject_reparse_chain(&self.root)?;
+        let root = self.root.canonicalize().map_err(io_error)?;
+        Ok(discarded_version(&root, document_id)?.is_some_and(|discarded| version <= discarded))
+    }
+
     fn ensure_root(&self) -> Result<(), AppError> {
         if !self.root.is_absolute() {
             return Err(invalid());
@@ -216,6 +451,97 @@ impl RecoveryStore {
         fs::create_dir_all(&self.root).map_err(io_error)?;
         reject_reparse_chain(&self.root)
     }
+
+    fn prune_redundant_snapshots(
+        &self,
+        root: &Path,
+        document_id: &str,
+        current_receipt: &str,
+    ) -> Result<(), AppError> {
+        let mut candidates = Vec::new();
+        for (index, entry) in fs::read_dir(root).map_err(io_error)?.enumerate() {
+            if index >= 100_000 {
+                return Err(invalid());
+            }
+            let entry = entry.map_err(io_error)?;
+            let Some(receipt) = entry.file_name().to_str().map(str::to_owned) else {
+                continue;
+            };
+            if validate_document_version(&receipt, 0).is_err()
+                || !entry.file_type().map_err(io_error)?.is_dir()
+            {
+                continue;
+            }
+            let Ok(draft) = self.load_locked(&receipt) else {
+                continue;
+            };
+            if draft.manifest.document_id == document_id {
+                candidates.push(draft.manifest);
+            }
+        }
+        candidates.sort_by(|left, right| {
+            right
+                .buffer_version
+                .cmp(&left.buffer_version)
+                .then_with(|| right.created_at.cmp(&left.created_at))
+                .then_with(|| left.receipt_id.cmp(&right.receipt_id))
+        });
+        let mut keep = candidates
+            .iter()
+            .take(MAX_SNAPSHOTS_PER_DOCUMENT)
+            .map(|manifest| manifest.receipt_id.clone())
+            .collect::<HashSet<_>>();
+        if !keep.contains(current_receipt) {
+            if keep.len() >= MAX_SNAPSHOTS_PER_DOCUMENT {
+                if let Some(oldest) = candidates
+                    .iter()
+                    .rev()
+                    .find(|manifest| keep.contains(&manifest.receipt_id))
+                {
+                    keep.remove(&oldest.receipt_id);
+                }
+            }
+            keep.insert(current_receipt.to_owned());
+        }
+        for manifest in candidates {
+            if !keep.contains(&manifest.receipt_id) {
+                remove_verified_snapshot(root, &manifest.receipt_id)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+fn remove_verified_snapshot(root: &Path, receipt_id: &str) -> Result<(), AppError> {
+    if validate_document_version(receipt_id, 0).is_err() {
+        return Err(invalid());
+    }
+    let directory = root.join(receipt_id);
+    reject_reparse_chain(&directory)?;
+    let _parents = windows_file::lock_parent_chain(&directory.join("manifest.json"))?;
+    let mut names = Vec::new();
+    for child in fs::read_dir(&directory).map_err(io_error)? {
+        let child = child.map_err(io_error)?;
+        reject_reparse_chain(&child.path())?;
+        if !child.file_type().map_err(io_error)?.is_file() {
+            return Err(invalid());
+        }
+        names.push(child.file_name());
+    }
+    if names.len() != 2
+        || !names.iter().any(|name| name == "body.bin")
+        || !names.iter().any(|name| name == "manifest.json")
+    {
+        return Err(invalid());
+    }
+    match fs::remove_file(directory.join("body.bin")) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(io_error(error)),
+    }
+    fs::remove_file(directory.join("manifest.json")).map_err(io_error)?;
+    drop(_parents);
+    fs::remove_dir(&directory).map_err(io_error)
 }
 
 fn purge_discarded_snapshots(
@@ -363,7 +689,7 @@ fn quota_guard(root: &Path) -> Result<std::fs::File, AppError> {
     Ok(file)
 }
 
-fn reject_reparse_chain(path: &Path) -> Result<(), AppError> {
+pub(crate) fn reject_reparse_chain(path: &Path) -> Result<(), AppError> {
     for ancestor in path.ancestors() {
         match fs::symlink_metadata(ancestor) {
             Ok(metadata) => {
@@ -391,7 +717,7 @@ fn reject_reparse_chain(path: &Path) -> Result<(), AppError> {
     Ok(())
 }
 
-fn read_bounded(path: &Path, max_bytes: u64) -> Result<Vec<u8>, AppError> {
+pub(crate) fn read_bounded(path: &Path, max_bytes: u64) -> Result<Vec<u8>, AppError> {
     reject_reparse_chain(path)?;
     let mut options = OpenOptions::new();
     options.read(true);

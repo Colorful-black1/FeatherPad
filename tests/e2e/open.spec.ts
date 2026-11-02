@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './test-fixture';
 
 test('Web mock verifies native bridge requests and read-only CodeMirror rendering', async ({ page }) => {
   await page.addInitScript(() => {

@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest';
-import type { DocumentId } from '../shared/contracts/files';
-import { files, isChosenFiles, isChosenFolder, isDirectoryPage, isDiscardRecoveryResult, isFileRef, isOpenDocument, isReleaseDocumentResult, isRenameEntryResult, isSaveAck, isSaveAsAck, isTextChunk, isTrashImpact, isTrashEntryResult } from './files';
+import type { DiskRevision, DocumentId, FileRef, SessionManifest } from '../shared/contracts/files';
+import { files, isChosenFiles, isChosenFolder, isDirectoryPage, isDiscardRecoveryResult, isFileRef, isLoadedRecoveryEntry, isOpenDocument, isRecoveryEntry, isRecoveryInventory, isRecoverySnapshotAck, isReleaseDocumentResult, isRenameEntryResult, isSaveAck, isSaveAsAck, isSessionLoadResult, isSessionManifest, isTextChunk, isTrashImpact, isTrashEntryResult } from './files';
 
 const valid = {
   documentId: 'document-fixture', ref: { grantId: 'fixture-grant', relativePath: '' },
@@ -41,6 +41,187 @@ it('never accepts a discard acknowledgement for a different document or version'
     expect(await files.discardRecovery(request)).toMatchObject({ ok: false, error: { code: 'IPC_UNAVAILABLE' } });
     reply = { ...reply, throughVersion: 2, documentId: 'another-document' as DocumentId };
     expect(await files.discardRecovery(request)).toMatchObject({ ok: false, error: { code: 'IPC_UNAVAILABLE' } });
+  } finally { vi.unstubAllGlobals(); }
+});
+
+it('validates recovery receipts and binds acknowledgements to the captured document version', async () => {
+  const documentId = '3f037373-b9fd-4f03-8b25-5f316b91f764' as DocumentId;
+  const receiptId = 'f4fe3fb6-a399-4b49-a754-10732a4350c4';
+  const request = {
+    documentId, documentVersion: 7, reason: 'periodic' as const, text: 'draft',
+    format: { encoding: 'utf-8', bom: 'none', lineEnding: 'lf' } as const,
+  };
+  const ack = {
+    documentId, durableVersion: 7, receiptId, writtenAt: '2026-11-02T00:00:00.000000000Z',
+  };
+  expect(isRecoverySnapshotAck(ack)).toBe(true);
+  for (const value of [
+    null, {}, { ...ack, documentId: 'not-a-uuid' }, { ...ack, receiptId: 'receipt' },
+    { ...ack, durableVersion: -1 }, { ...ack, durableVersion: 7.5 },
+    { ...ack, durableVersion: Number.MAX_SAFE_INTEGER + 1 },
+    { ...ack, writtenAt: 'invalid' },
+  ]) expect(isRecoverySnapshotAck(value)).toBe(false);
+
+  let reply = ack;
+  vi.stubGlobal('window', { __TAURI_INTERNALS__: { invoke: async (command: string, args: unknown) => {
+    expect(command).toBe('write_recovery_snapshot');
+    expect(args).toEqual(request);
+    return { ok: true, value: reply };
+  } } });
+  try {
+    expect((await files.writeRecoverySnapshot(request)).ok).toBe(true);
+    reply = { ...ack, durableVersion: 6 };
+    expect(await files.writeRecoverySnapshot(request)).toMatchObject({ ok: false, error: { code: 'IPC_UNAVAILABLE' } });
+    reply = { ...ack, documentId: '3b5f8beb-93b5-4dc3-819d-7c53cfe5be02' as DocumentId };
+    expect(await files.writeRecoverySnapshot(request)).toMatchObject({ ok: false, error: { code: 'IPC_UNAVAILABLE' } });
+  } finally { vi.unstubAllGlobals(); }
+});
+
+it('validates isolated recovery inventories and exact loaded body metadata', async () => {
+  const entry = {
+    receiptId: 'f4fe3fb6-a399-4b49-a754-10732a4350c4',
+    reason: 'periodic',
+    documentId: '3f037373-b9fd-4f03-8b25-5f316b91f764',
+    bufferVersion: 7,
+    sourcePath: null,
+    sourceRevision: null,
+    format: { encoding: 'utf-8', bom: 'none', lineEnding: 'lf' },
+    newlineMap: { documentVersion: 7, endings: ['lf'] },
+    bodyBytes: 6,
+    bodySha256: 'a'.repeat(64),
+    createdAt: '2026-11-02T00:00:00.000000000Z',
+  };
+  const inventory = {
+    entries: [entry],
+    failures: [{ entryId: 'damaged-entry', message: '隔离的损坏副本' }],
+    startupWarnings: ['一个保存事务候选已保留。'],
+    storageBytes: 1024,
+    saveTransactions: [],
+  };
+  const loaded = { entry, text: 'draft\n' };
+  expect(isRecoveryEntry(entry)).toBe(true);
+  expect(isRecoveryInventory(inventory)).toBe(true);
+  expect(isRecoveryInventory({ ...inventory, startupWarnings: [null] })).toBe(false);
+  expect(isRecoveryInventory({ ...inventory, storageBytes: -1 })).toBe(false);
+  expect(isLoadedRecoveryEntry(loaded)).toBe(true);
+  expect(isRecoveryEntry({ ...entry, receiptId: 'receipt' })).toBe(false);
+  expect(isRecoveryEntry({ ...entry, sourceRevision: 'a'.repeat(64) })).toBe(false);
+  expect(isRecoveryEntry({ ...entry, newlineMap: { documentVersion: 6, endings: ['lf'] } })).toBe(false);
+  expect(isLoadedRecoveryEntry({ ...loaded, text: 'draft\nmore' })).toBe(false);
+  expect(isLoadedRecoveryEntry({ ...loaded, entry: { ...entry, newlineMap: { documentVersion: 7, endings: [] } } })).toBe(false);
+
+  vi.stubGlobal('window', { __TAURI_INTERNALS__: { invoke: async (command: string, args: unknown) => {
+    if (command === 'list_recovery_entries') {
+      expect(args).toEqual({});
+      return { ok: true, value: inventory };
+    }
+    expect(command).toBe('load_recovery_entry');
+    expect(args).toEqual({ receiptId: entry.receiptId });
+    return { ok: true, value: loaded };
+  } } });
+  try {
+    expect((await files.listRecoveryEntries()).ok).toBe(true);
+    expect((await files.loadRecoveryEntry({ receiptId: entry.receiptId })).ok).toBe(true);
+    expect(await files.loadRecoveryEntry({ receiptId: '8dd90f06-92b9-4ff7-8dd6-1ad0a2e36a60' }))
+      .toMatchObject({ ok: false, error: { code: 'IPC_UNAVAILABLE' } });
+  } finally { vi.unstubAllGlobals(); }
+});
+
+it('validates cross-referenced session manifests and binds save acknowledgements', async () => {
+  const documentId = '3f037373-b9fd-4f03-8b25-5f316b91f764' as DocumentId;
+  const receiptId = 'f4fe3fb6-a399-4b49-a754-10732a4350c4';
+  const session: SessionManifest = {
+    schemaVersion: 1,
+    sessionId: '4947f96e-d4ab-442c-900f-b6ccca515d46',
+    windows: [{
+      windowId: 'main',
+      bounds: { x: 20, y: 30, width: 1200, height: 800 },
+      rootIds: ['4947f96e-d4ab-442c-900f-b6ccca515d47'],
+      rootLabels: ['受控目录'],
+      activeViewId: documentId,
+      groups: [{ groupId: 'primary', viewIds: [documentId] }],
+      views: [{
+        viewId: documentId,
+        bufferVersion: 7,
+        documentId,
+        recoveryReceiptId: receiptId,
+        fileRef: { grantId: 'fixture-grant' as FileRef['grantId'], relativePath: '' },
+        diskRevision: 'a'.repeat(64) as DiskRevision,
+        openMode: 'normal',
+        title: '草稿.txt',
+        displayPath: 'E:\\fixtures\\草稿.txt',
+        isPreview: false,
+        dirty: true,
+        selection: [{ anchor: 2, head: 5 }],
+        scrollAnchor: 128.5,
+      }],
+    }],
+    recoverySnapshotRefs: [receiptId],
+    persistedAt: '2026-11-02T00:00:00.000000000Z',
+  };
+  expect(isSessionManifest(session)).toBe(true);
+  expect(isSessionLoadResult({ session, warning: null, restoredGrantIds: [] })).toBe(true);
+  expect(isSessionLoadResult({ session: null, warning: '损坏清单已隔离', restoredGrantIds: [] })).toBe(true);
+  expect(isSessionLoadResult({ session, warning: null })).toBe(false);
+  expect(isSessionManifest({ ...session, recoverySnapshotRefs: [] })).toBe(false);
+  expect(isSessionManifest({ ...session, windows: [{ ...session.windows[0],
+    views: [{ ...session.windows[0]!.views[0]!, bufferVersion: Number.MAX_SAFE_INTEGER + 1 }] }] }))
+    .toBe(false);
+  expect(isSessionManifest({ ...session, windows: [{ ...session.windows[0], groups: [] }] })).toBe(false);
+  expect(isSessionManifest({ ...session, windows: [{ ...session.windows[0],
+    views: [{ ...session.windows[0]!.views[0]!, selection: [{ anchor: 2, head: Number.MAX_SAFE_INTEGER + 1 }] }] }] }))
+    .toBe(false);
+  expect(isSessionManifest({ ...session, windows: [{ ...session.windows[0],
+    views: [{ ...session.windows[0]!.views[0]!, fileRef: { grantId: '', relativePath: '' } }] }] }))
+    .toBe(false);
+  expect(isSessionManifest({ ...session, windows: [{ ...session.windows[0],
+    views: [{ ...session.windows[0]!.views[0]!, diskRevision: null }] }] }))
+    .toBe(false);
+  expect(isSessionManifest({ ...session, windows: [{ ...session.windows[0],
+    views: [{ ...session.windows[0]!.views[0]!, fileRef: null }] }] }))
+    .toBe(false);
+
+  vi.stubGlobal('window', { __TAURI_INTERNALS__: { invoke: async (command: string, args: unknown) => {
+    if (command === 'save_session') {
+      expect(args).toEqual({ manifest: session });
+      return { ok: true, value: { saved: true, persistedAt: session.persistedAt } };
+    }
+    if (command === 'load_session') {
+      expect(args).toEqual({});
+      return { ok: true, value: { session, warning: null, restoredGrantIds: [] } };
+    }
+    expect(command).toBe('clear_session');
+    expect(args).toEqual({});
+    return { ok: true, value: { cleared: true } };
+  } } });
+  try {
+    expect((await files.saveSession(session)).ok).toBe(true);
+    expect((await files.loadSession()).ok).toBe(true);
+    expect((await files.clearSession()).ok).toBe(true);
+  } finally { vi.unstubAllGlobals(); }
+});
+
+it('reads a transaction copy only with a matching receipt and complete newline intent', async () => {
+  const receiptId = crypto.randomUUID();
+  const loaded = {
+    receiptId, displayName: 'draft.txt', text: '草稿\n😀',
+    format: { encoding: 'utf-8', bom: 'none', lineEnding: 'crlf' },
+    newlineMap: { documentVersion: 1, endings: ['crlf'] },
+  };
+  let reply: unknown = loaded;
+  vi.stubGlobal('window', { __TAURI_INTERNALS__: { invoke: async (command: string, args: unknown) => {
+    expect(command).toBe('load_save_transaction');
+    expect(args).toEqual({ receiptId });
+    return { ok: true, value: reply };
+  } } });
+  try {
+    expect(await files.loadSaveTransaction({ receiptId })).toEqual({ ok: true, value: loaded });
+    reply = { ...loaded, receiptId: crypto.randomUUID() };
+    expect(await files.loadSaveTransaction({ receiptId })).toMatchObject({ ok: false, error: { code: 'IPC_UNAVAILABLE' } });
+    reply = { ...loaded, newlineMap: { documentVersion: 0, endings: ['crlf'] } };
+    expect((await files.loadSaveTransaction({ receiptId })).ok).toBe(false);
+    reply = { ...loaded, newlineMap: { documentVersion: 1, endings: [] } };
+    expect((await files.loadSaveTransaction({ receiptId })).ok).toBe(false);
   } finally { vi.unstubAllGlobals(); }
 });
 

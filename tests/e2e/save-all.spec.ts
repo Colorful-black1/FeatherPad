@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page } from './test-fixture';
 
 async function installBatchMock(page: Page, mode: 'third-failure' | 'cancel' | 'held') {
   await page.addInitScript(({ mode }) => {

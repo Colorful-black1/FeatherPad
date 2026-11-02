@@ -1,5 +1,5 @@
 import type { Text } from '@codemirror/state';
-import type { DiskRevision, FileRef, ResultEnvelope, SaveAck, SaveAsAck, SaveAsRequest, SaveRequest, TextFormat } from '../../shared/contracts/files';
+import type { DiskRevision, FileRef, ResultEnvelope, SaveAck, SaveAsAck, SaveAsRequest, SaveRequest, TextFormat, WriteRecoverySnapshotRequest } from '../../shared/contracts/files';
 import type { ManagedDocument } from './documents';
 import { reconfigureReadOnly } from './editor-state';
 
@@ -58,6 +58,27 @@ export function captureDestination(document: ManagedDocument | undefined, intent
   }) };
 }
 
+export function captureRecovery(document: ManagedDocument | undefined,
+  reason: WriteRecoverySnapshotRequest['reason'] = 'periodic'): ResultEnvelope<WriteRecoverySnapshotRequest> {
+  if (!document) return failure('NOT_FOUND', '文档已关闭。');
+  if (document.fragment) return failure('READ_ONLY', document.summary.readOnlyReason ?? '片段不能写入完整恢复快照。');
+  if (!Number.isSafeInteger(document.summary.version) || document.summary.version >= Number.MAX_SAFE_INTEGER) {
+    return failure('INVALID_INPUT', '文档版本无法安全写入恢复快照，请另存为。');
+  }
+  const captured = snapshot(document);
+  if (!captured.ok) return captured;
+  const { request } = captured.value;
+  return { ok: true, value: Object.freeze({
+    documentId: request.documentId,
+    documentVersion: request.documentVersion,
+    reason,
+    ...(document.source ? { baseDiskRevision: document.source.metadata.diskRevision } : {}),
+    text: request.text,
+    format: request.format,
+    ...(request.newlineMap ? { newlineMap: request.newlineMap } : {}),
+  }) };
+}
+
 export function acknowledgeExisting(document: ManagedDocument | undefined, captured: CapturedSave, ack: SaveAck): ResultEnvelope<{ dirty: boolean }> {
   if (!document) return failure('NOT_FOUND', '文档已关闭。');
   const { request, savedText } = captured;
@@ -69,7 +90,8 @@ export function acknowledgeExisting(document: ManagedDocument | undefined, captu
   document.source = { ...document.source,
     metadata: { ...document.source.metadata, diskRevision: ack.diskRevision, modifiedAt: ack.savedAt, sizeBytes: ack.sizeBytes },
   };
-  document.summary = { ...document.summary, dirty: !document.state.doc.eq(savedText) };
+  document.summary = { ...document.summary, dirty: !document.state.doc.eq(savedText),
+    recoveryProtected: false, recoveryError: null };
   return { ok: true, value: { dirty: document.summary.dirty } };
 }
 
@@ -97,6 +119,6 @@ export function acknowledgeDestination(document: ManagedDocument | undefined, ca
   if (request.newlineMap) document.originalNewlines = { documentVersion: request.documentVersion, endings: [...request.newlineMap.endings] };
   document.summary = { ...document.summary, title: result.metadata.displayPath.split(/[\\/]/).pop() || result.metadata.displayPath,
     displayPath: result.metadata.displayPath, readOnlyReason: reason, canSaveAs: true, missing: false,
-    recoveryProtected: false, dirty: !document.state.doc.eq(savedText) };
+    recoveryProtected: false, recoveryError: null, recovered: false, dirty: !document.state.doc.eq(savedText) };
   return { ok: true, value: { dirty: document.summary.dirty } };
 }

@@ -30,6 +30,44 @@ it('creates independent untitled documents with no path and UTF8/CRLF defaults',
   expect(registry.getDocument(first)?.summary).toMatchObject({ displayPath: null, dirty: false, format: { encoding: 'utf-8', bom: 'none', lineEnding: 'crlf' } });
 });
 
+it('opens transaction text as an independent dirty copy without claiming a recovery receipt', () => {
+  const registry = new DocumentRegistry();
+  const original = registry.openDocument(fixture());
+  const id = registry.openTransactionDraft({
+    receiptId: crypto.randomUUID(), displayName: 'fixture.txt', text: 'draft\n中文😀',
+    format: { encoding: 'utf-8', bom: 'none', lineEnding: 'crlf' },
+    newlineMap: { documentVersion: 1, endings: ['crlf'] },
+  });
+  expect(id).not.toBe(original);
+  expect(registry.getDocument(original)?.state.doc.toString()).toBe('private\nbody');
+  expect(registry.getDocument(id)?.state.doc.toString()).toBe('draft\n中文😀');
+  expect(registry.getDocument(id)?.source).toBeNull();
+  expect(registry.getDocument(id)?.summary).toMatchObject({
+    dirty: true, recovered: true, recoveryProtected: false, displayPath: null,
+    title: 'fixture.txt（恢复副本）', version: 1,
+  });
+  expect(registry.captureSave(id)).toMatchObject({ ok: false });
+  expect(registry.captureRecovery(id)).toMatchObject({ ok: true, value: {
+    documentId: id, documentVersion: 1, text: 'draft\n中文😀',
+    newlineMap: { documentVersion: 1, endings: ['crlf'] },
+  } });
+});
+
+it('keeps an empty transaction draft dirty and preserves read-only mixed UTF16 intent', () => {
+  const registry = new DocumentRegistry();
+  const id = registry.openTransactionDraft({
+    receiptId: crypto.randomUUID(), displayName: 'empty.txt', text: '',
+    format: { encoding: 'utf-16be', bom: 'utf16be', lineEnding: 'mixed' },
+    newlineMap: { documentVersion: 1, endings: [] },
+  });
+  expect(registry.getDocument(id)?.summary).toMatchObject({ dirty: true, canSaveAs: true,
+    recoveryProtected: false, format: { encoding: 'utf-16be', bom: 'utf16be', lineEnding: 'mixed' } });
+  expect(registry.getDocument(id)?.state.facet(EditorState.readOnly)).toBe(true);
+  expect(registry.captureSaveAs(id, 'save-as')).toMatchObject({ ok: true, value: { request: {
+    text: '', newlineMap: { documentVersion: 1, endings: [] },
+  } } });
+});
+
 it('keeps a recycled document buffer and undo, protects the captured version, and saves elsewhere', () => {
   const registry = new DocumentRegistry();
   const opened = fixture();

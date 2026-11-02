@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './test-fixture';
 
 test('Web CodeMirror: status, selection, deletion and per-document undo stay local', async ({ page }) => {
   await page.goto('/');

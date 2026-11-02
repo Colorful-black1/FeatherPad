@@ -1,12 +1,13 @@
-import type { EditorState, Text, Transaction } from '@codemirror/state';
+import { EditorSelection, type EditorState, type Text, type Transaction } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
-import type { DocumentId, OpenDocument, RenamedDocument, ResultEnvelope, SaveAck, SaveAsAck, SaveRequest, TextFormat, TrashEntryResult } from '../../shared/contracts/files';
+import type { DocumentId, LoadedRecoveryEntry, OpenDocument, RenamedDocument, ResultEnvelope, SaveAck, SaveAsAck, SaveRequest, TextFormat, TrashEntryResult, WriteRecoverySnapshotRequest } from '../../shared/contracts/files';
 import { createEditorState, reconfigureBracketMatching, reconfigureCloseBrackets, reconfigureIndentation,
   reconfigureLanguage, reconfigureReadOnly, setSearchHighlights, type IndentWidth } from './editor-state';
 import { countCharacters, editorMetrics, type EditorMetrics } from './editor-metrics';
 import { detectLanguage, type LanguageId } from './editor-language';
-import { captureExisting, captureDestination, acknowledgeExisting, acknowledgeDestination, readOnlyReason,
+import { captureExisting, captureDestination, captureRecovery, acknowledgeExisting, acknowledgeDestination, readOnlyReason,
   type CapturedSave, type CapturedSaveAs } from './document-save-state';
+import type { LoadedSaveTransaction } from '../../shared/contracts/files';
 export type { CapturedSave, CapturedSaveAs } from './document-save-state';
 
 export interface DocumentSummary {
@@ -18,7 +19,10 @@ export interface DocumentSummary {
   dirty: boolean;
   missing: boolean;
   recoveryProtected: boolean;
+  recoveryError: string | null;
+  recovered: boolean;
   closing: boolean;
+  hotExitFrozen: boolean;
   readOnlyReason: string | null;
   canSaveAs: boolean;
   indentWidth: IndentWidth;
@@ -40,6 +44,7 @@ export interface ManagedDocument {
   scroll: { top: number; left: number };
   characterCount: number;
   hasRecoveryData: boolean;
+  recoveryReceiptId: string | null;
   releaseUncertain: boolean;
 }
 
@@ -61,16 +66,23 @@ function failure(code: 'NOT_FOUND' | 'CONFLICT' | 'READ_ONLY' | 'UNSUPPORTED' | 
 export class DocumentRegistry {
   private readonly documents = new Map<DocumentId, ManagedDocument>();
   private readonly listeners = new Set<() => void>();
+  private readonly sessionListeners = new Set<() => void>();
   private readonly metrics = new Map<DocumentId, EditorMetrics>();
   private readonly metricsListeners = new Map<DocumentId, Set<() => void>>();
   private readonly languageGenerations = new Map<DocumentId, number>();
   private readonly views = new Map<DocumentId, EditorView>();
   private snapshot: RegistrySnapshot = { documents: [], activeId: null };
   private untitledCount = 0;
+  private hotExitFrozen = false;
 
   readonly subscribe = (listener: () => void) => {
     this.listeners.add(listener);
     return () => { this.listeners.delete(listener); };
+  };
+
+  readonly subscribeSession = (listener: () => void) => {
+    this.sessionListeners.add(listener);
+    return () => { this.sessionListeners.delete(listener); };
   };
 
   readonly getSnapshot = () => this.snapshot;
@@ -85,9 +97,22 @@ export class DocumentRegistry {
 
   attachView(id: DocumentId, view: EditorView) {
     this.views.set(id, view);
+    const document = this.documents.get(id);
+    if (document) this.restoreViewScroll(id, view, document.scroll);
     return () => {
       if (this.views.get(id) === view) this.views.delete(id);
     };
+  }
+
+  private restoreViewScroll(id: DocumentId, view: EditorView, scroll: { top: number; left: number }) {
+    view.requestMeasure({
+      read: () => scroll,
+      write: position => {
+        if (this.views.get(id) !== view) return;
+        view.scrollDOM.scrollTop = position.top;
+        view.scrollDOM.scrollLeft = position.left;
+      },
+    });
   }
 
   readonly subscribeMetrics = (id: DocumentId, listener: () => void) => {
@@ -102,20 +127,37 @@ export class DocumentRegistry {
 
   createUntitled(): DocumentId {
     const id = crypto.randomUUID() as DocumentId;
-    const state = createEditorState('', false);
+    const state = createEditorState('', this.hotExitFrozen);
     const summary: DocumentSummary = {
       id, title: `无标题 ${++this.untitledCount}`, displayPath: null,
       format: { encoding: 'utf-8', bom: 'none', lineEnding: 'crlf' },
-      version: 0, dirty: false, missing: false, recoveryProtected: false, closing: false, readOnlyReason: null,
+      version: 0, dirty: false, missing: false, recoveryProtected: false, recoveryError: null, recovered: false,
+      closing: false, hotExitFrozen: this.hotExitFrozen, readOnlyReason: null,
       canSaveAs: true, indentWidth: 4, languageId: 'plaintext', languageSource: 'auto',
       languageRevision: 0, bracketMatching: true, closeBrackets: true,
     };
     this.documents.set(id, {
       summary, state, savedText: state.doc, savedVersion: 0, source: null,
       originalNewlines: { documentVersion: 0, endings: [] }, fragment: null, scroll: { top: 0, left: 0 },
-      characterCount: 0, hasRecoveryData: false, releaseUncertain: false,
+      characterCount: 0, hasRecoveryData: false, recoveryReceiptId: null, releaseUncertain: false,
     });
     this.publishMetrics(id, state, 0);
+    this.publish(id);
+    return id;
+  }
+
+  openTransactionDraft(loaded: LoadedSaveTransaction): DocumentId {
+    const id = this.createUntitled();
+    const document = this.documents.get(id)!;
+    const reason = readOnlyReason({ isReadOnly: false }, loaded.format);
+    document.state = createEditorState(loaded.text, this.hotExitFrozen || reason !== null);
+    document.originalNewlines = { documentVersion: 1, endings: [...loaded.newlineMap.endings] };
+    document.characterCount = countCharacters(loaded.text);
+    document.summary = { ...document.summary, title: `${loaded.displayName}（恢复副本）`,
+      format: loaded.format, version: 1, dirty: true, recovered: true, readOnlyReason: reason,
+      languageId: detectLanguage(loaded.displayName) };
+    this.scheduleLanguage(id);
+    this.publishMetrics(id, document.state, document.characterCount);
     this.publish(id);
     return id;
   }
@@ -135,7 +177,7 @@ export class DocumentRegistry {
           ? document.content.initialChunk.text
           : document.content.text;
       const languageId = document.mode === 'degraded' ? 'plaintext' : detectLanguage(document.metadata.displayPath);
-      const state = createEditorState(initialText, reason !== null);
+      const state = createEditorState(initialText, this.hotExitFrozen || reason !== null);
       const newlineMap = document.content.kind === 'text'
         ? document.content.newlineMap
         : { documentVersion: 0 as const, endings: [] as ('lf' | 'crlf' | 'cr')[] };
@@ -151,13 +193,16 @@ export class DocumentRegistry {
         summary: {
           id, title: document.metadata.displayPath.split(/[\\/]/).pop() || document.metadata.displayPath,
           displayPath: document.metadata.displayPath, format: document.format,
-          version: newlineMap.documentVersion, dirty: false, missing: false, recoveryProtected: false, closing: false, readOnlyReason: reason,
+          version: newlineMap.documentVersion, dirty: false, missing: false, recoveryProtected: false,
+          recoveryError: null, recovered: false, closing: false, hotExitFrozen: this.hotExitFrozen,
+          readOnlyReason: reason,
           canSaveAs: fragment === null, indentWidth: 4, languageId, languageSource: 'auto',
           languageRevision: 0, bracketMatching: true, closeBrackets: true,
         },
         state, savedText: state.doc, savedVersion: newlineMap.documentVersion, source,
         originalNewlines: newlineMap, fragment, scroll: { top: 0, left: 0 },
-        characterCount: countCharacters(initialText), hasRecoveryData: false, releaseUncertain: false,
+        characterCount: countCharacters(initialText), hasRecoveryData: false, recoveryReceiptId: null,
+        releaseUncertain: false,
       });
       this.scheduleLanguage(id);
       this.publishMetrics(id, state, this.documents.get(id)!.characterCount);
@@ -167,8 +212,87 @@ export class DocumentRegistry {
     return id;
   }
 
+  openRecovered(
+    loaded: LoadedRecoveryEntry,
+    sourceDocument?: OpenDocument,
+    diskChanged = false,
+  ): DocumentId {
+    const id = loaded.entry.documentId;
+    if (sourceDocument) {
+      if (sourceDocument.documentId !== id
+        || (sourceDocument.mode !== 'normal' && sourceDocument.mode !== 'degraded')) {
+        return id;
+      }
+      this.openDocument(sourceDocument);
+    }
+    const text = loaded.text;
+    const defaultEnding = loaded.entry.format.lineEnding === 'lf' ? 'lf' : 'crlf';
+    const newlineMap = loaded.entry.newlineMap ?? {
+      documentVersion: loaded.entry.bufferVersion,
+      endings: Array.from({ length: text.split('\n').length - 1 }, () => defaultEnding as 'lf' | 'crlf'),
+    };
+    const existing = this.documents.get(id);
+    const formatReadOnly = readOnlyReason(
+      { isReadOnly: sourceDocument?.metadata.isReadOnly ?? false },
+      loaded.entry.format,
+    );
+    const readOnly = diskChanged
+      ? '磁盘内容在应用关闭期间发生变化；恢复副本保持只读，请比较后另存或明确覆盖。'
+      : formatReadOnly;
+    const state = createEditorState(text, this.hotExitFrozen || readOnly !== null);
+    const displayPath = sourceDocument?.metadata.displayPath ?? loaded.entry.sourcePath;
+    const title = displayPath?.split(/[\\/]/).pop() || `恢复的无标题 ${++this.untitledCount}`;
+    const characterCount = countCharacters(text);
+    this.documents.set(id, {
+      summary: {
+        id, title, displayPath, format: loaded.entry.format,
+        version: loaded.entry.bufferVersion, dirty: true,
+        missing: sourceDocument === undefined && displayPath !== null,
+        recoveryProtected: true, recoveryError: null, recovered: true,
+        closing: false, hotExitFrozen: this.hotExitFrozen, readOnlyReason: readOnly, canSaveAs: true,
+        indentWidth: 4, languageId: detectLanguage(displayPath ?? title), languageSource: 'auto',
+        languageRevision: 0, bracketMatching: true, closeBrackets: true,
+      },
+      state,
+      savedText: existing?.savedText ?? state.doc,
+      savedVersion: existing?.savedVersion ?? 0,
+      source: existing?.source ?? null,
+      originalNewlines: { documentVersion: loaded.entry.bufferVersion, endings: [...newlineMap.endings] },
+      fragment: null, scroll: { top: 0, left: 0 },
+      characterCount, hasRecoveryData: true, recoveryReceiptId: loaded.entry.receiptId, releaseUncertain: false,
+    });
+    this.scheduleLanguage(id);
+    this.publishMetrics(id, state, characterCount);
+    this.publish(id);
+    return id;
+  }
+
   activate(id: DocumentId) {
     if (this.documents.has(id) && this.snapshot.activeId !== id) this.publish(id);
+  }
+
+  beginHotExit(): readonly DocumentId[] {
+    this.hotExitFrozen = true;
+    for (const document of this.documents.values()) {
+      document.state = reconfigureReadOnly(document.state, true);
+      document.summary = { ...document.summary, hotExitFrozen: true };
+    }
+    this.publish(this.snapshot.activeId);
+    return this.snapshot.documents.map(document => document.id);
+  }
+
+  cancelHotExit() {
+    if (!this.hotExitFrozen) return;
+    this.hotExitFrozen = false;
+    for (const document of this.documents.values()) {
+      document.state = reconfigureReadOnly(document.state, document.summary.readOnlyReason !== null);
+      document.summary = { ...document.summary, hotExitFrozen: false };
+    }
+    this.publish(this.snapshot.activeId);
+  }
+
+  isHotExitFrozen() {
+    return this.hotExitFrozen;
   }
 
   beginClose(id: DocumentId, version: number): ResultEnvelope<{ version: number }> {
@@ -189,11 +313,12 @@ export class DocumentRegistry {
     const previousVersion = document.summary.version;
     const version = discardedThrough === null ? previousVersion : Math.max(previousVersion, discardedThrough + 1);
     document.summary = { ...document.summary, closing: false, version,
-      recoveryProtected: discardedThrough === null ? document.summary.recoveryProtected : false };
+      recoveryProtected: discardedThrough === null ? document.summary.recoveryProtected : false,
+      recoveryError: discardedThrough === null ? document.summary.recoveryError : null };
     if (document.originalNewlines.documentVersion === previousVersion) {
       document.originalNewlines = { ...document.originalNewlines, documentVersion: version };
     }
-    document.state = reconfigureReadOnly(document.state, document.summary.readOnlyReason !== null);
+    document.state = reconfigureReadOnly(document.state, this.hotExitFrozen || document.summary.readOnlyReason !== null);
     this.publish(this.snapshot.activeId);
   }
 
@@ -225,7 +350,49 @@ export class DocumentRegistry {
 
   setScroll(id: DocumentId, top: number, left: number) {
     const document = this.documents.get(id);
-    if (document) document.scroll = { top, left };
+    if (document && (document.scroll.top !== top || document.scroll.left !== left)) {
+      document.scroll = { top, left };
+      this.notifySession();
+    }
+  }
+
+  restoreSessionState(id: DocumentId, selection: readonly { anchor: number; head: number }[],
+    scrollTop: number, scrollLeft = 0, bufferVersion?: number) {
+    const document = this.documents.get(id);
+    if (!document || selection.length === 0) return false;
+    const ranges = selection.slice(0, 16).map(range => EditorSelection.range(
+      Math.max(0, Math.min(document.state.doc.length, range.anchor)),
+      Math.max(0, Math.min(document.state.doc.length, range.head)),
+    ));
+    document.state = document.state.update({ selection: EditorSelection.create(ranges, 0) }).state;
+    document.scroll = { top: Math.max(0, scrollTop), left: Math.max(0, scrollLeft) };
+    const view = this.views.get(id);
+    if (view) {
+      view.setState(document.state);
+      this.restoreViewScroll(id, view, document.scroll);
+    }
+    if (!document.summary.dirty && bufferVersion !== undefined && Number.isSafeInteger(bufferVersion)
+      && bufferVersion >= document.summary.version) {
+      document.summary = { ...document.summary, version: bufferVersion };
+      document.savedVersion = bufferVersion;
+      document.originalNewlines = { ...document.originalNewlines, documentVersion: bufferVersion };
+      this.publish(this.snapshot.activeId);
+    }
+    this.publishMetrics(id, document.state, document.characterCount);
+    this.notifySession();
+    return true;
+  }
+
+  reorder(ids: readonly DocumentId[]) {
+    const ordered = new Map<DocumentId, ManagedDocument>();
+    for (const id of ids) {
+      const document = this.documents.get(id);
+      if (document) ordered.set(id, document);
+    }
+    for (const [id, document] of this.documents) if (!ordered.has(id)) ordered.set(id, document);
+    this.documents.clear();
+    for (const [id, document] of ordered) this.documents.set(id, document);
+    this.publish(this.snapshot.activeId);
   }
 
   selectRange(id: DocumentId, from: number, to: number, focus = true): boolean {
@@ -395,11 +562,15 @@ export class DocumentRegistry {
       const document = this.documents.get(id);
       if (!document) continue;
       const draft = result.drafts.find(item => item.documentId === id);
-      if (draft) document.hasRecoveryData = true;
+      if (draft) {
+        document.hasRecoveryData = true;
+        document.recoveryReceiptId = draft.receiptId;
+      }
       if (!document.fragment) document.source = null;
       document.summary = { ...document.summary, missing: true,
         dirty: document.fragment ? document.summary.dirty : true,
-        recoveryProtected: draft?.documentVersion === document.summary.version };
+        recoveryProtected: draft?.documentVersion === document.summary.version,
+        recoveryError: draft?.documentVersion === document.summary.version ? null : document.summary.recoveryError };
     }
     this.publish(this.snapshot.activeId);
   }
@@ -414,6 +585,9 @@ export class DocumentRegistry {
     for (const transaction of transactions) {
       if (transaction.startState !== state) return failure('CONFLICT', '文档版本已变化，请重试操作。');
       if (transaction.docChanged && document.summary.closing) return failure('BUSY', '文档正在关闭，这次修改尚未接受。');
+      if (transaction.docChanged && document.summary.hotExitFrozen) {
+        return failure('BUSY', '应用正在准备安全退出，这次修改尚未接受。');
+      }
       if (transaction.docChanged && document.summary.readOnlyReason) return failure('READ_ONLY', document.summary.readOnlyReason);
       if (transaction.docChanged) {
         transaction.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
@@ -427,14 +601,40 @@ export class DocumentRegistry {
     document.state = state;
     document.characterCount = characterCount;
     this.publishMetrics(id, state, characterCount);
+    this.notifySession();
     if (changes > 0) {
       document.summary = {
         ...document.summary, version: document.summary.version + changes,
-        dirty: document.summary.missing || !state.doc.eq(document.savedText), recoveryProtected: false,
+        dirty: document.summary.missing || document.summary.recovered || !state.doc.eq(document.savedText),
+        recoveryProtected: false, recoveryError: null,
       };
+      document.recoveryReceiptId = null;
       this.publish(this.snapshot.activeId);
     }
     return { ok: true, value: { version: document.summary.version } };
+  }
+
+  captureRecovery(id: DocumentId,
+    reason: WriteRecoverySnapshotRequest['reason'] = 'periodic'): ResultEnvelope<WriteRecoverySnapshotRequest> {
+    return captureRecovery(this.documents.get(id), reason);
+  }
+
+  acknowledgeRecovery(id: DocumentId, version: number, receiptId: string): boolean {
+    const document = this.documents.get(id);
+    if (!document || document.summary.version !== version || !document.summary.dirty) return false;
+    document.hasRecoveryData = true;
+    document.recoveryReceiptId = receiptId;
+    document.summary = { ...document.summary, recoveryProtected: true, recoveryError: null };
+    this.publish(this.snapshot.activeId);
+    return true;
+  }
+
+  markRecoveryFailure(id: DocumentId, version: number, message: string): boolean {
+    const document = this.documents.get(id);
+    if (!document || document.summary.version !== version || !document.summary.dirty) return false;
+    document.summary = { ...document.summary, recoveryProtected: false, recoveryError: message };
+    this.publish(this.snapshot.activeId);
+    return true;
   }
 
   private publishMetrics(id: DocumentId, state: EditorState, characterCount: number) {
@@ -472,6 +672,11 @@ export class DocumentRegistry {
   private publish(activeId: DocumentId | null) {
     this.snapshot = { documents: [...this.documents.values()].map(document => document.summary), activeId };
     this.listeners.forEach(listener => listener());
+    this.notifySession();
+  }
+
+  private notifySession() {
+    this.sessionListeners.forEach(listener => listener());
   }
 }
 

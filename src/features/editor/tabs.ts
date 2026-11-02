@@ -80,6 +80,17 @@ export class TabController {
     }
   }
 
+  restorePreview(id: DocumentId | null) {
+    if (id === null) {
+      this.publish(null, this.snapshot.warning);
+      return;
+    }
+    const document = this.registry.getDocument(id);
+    if (!document) return;
+    this.previewVersion = document.summary.version;
+    this.publish(document.summary.dirty ? null : id, this.snapshot.warning);
+  }
+
   open(reference: FileRef, intent: 'preview' | 'pinned' = 'pinned', mode?: 'head-preview'): Promise<ResultEnvelope<OpenTabResult>> {
     return this.enqueue(async () => {
       const result = await this.openFile(reference, mode);

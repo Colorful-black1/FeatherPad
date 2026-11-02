@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './test-fixture';
 
 test('Web mock lazily pages one root and keeps empty, denied, hidden and current-file states visible', async ({ page }) => {
   await page.addInitScript(() => {

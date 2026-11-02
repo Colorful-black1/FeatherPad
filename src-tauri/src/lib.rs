@@ -15,7 +15,11 @@ pub mod services {
     pub mod save_as;
     pub mod save_journal;
     pub mod save_requests;
+    pub mod session;
+    pub mod session_grants;
     pub mod snapshot;
+    pub mod startup_storage;
+    pub mod storage_budget;
     pub mod stream_snapshot;
     pub mod targets;
     pub mod text;
@@ -44,6 +48,13 @@ pub fn run() {
             commands::open_document,
             commands::release_document,
             commands::discard_recovery,
+            commands::write_recovery_snapshot,
+            commands::list_recovery_entries,
+            commands::load_recovery_entry,
+            commands::load_save_transaction,
+            commands::save_session,
+            commands::load_session,
+            commands::clear_session,
             commands::read_document_chunk,
             commands::save::save_document,
             commands::save_as::save_document_as,

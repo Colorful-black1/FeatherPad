@@ -253,8 +253,13 @@ export interface TextJobResult {
 |---|---|---|
 | `load_settings` | `{}` | `{schemaVersion,version,settings}` |
 | `save_settings` | `{expectedVersion,settings}` | `{version}` |
-| `write_recovery_snapshot` | `{documentId,documentVersion,baseDiskRevision?,text,format,newlineMap?}` | `{durableVersion,writtenAt}` |
-| `list_recovery_entries` | `{}` | `{entries:RecoveryEntry[]}` |
+| `write_recovery_snapshot` | `{documentId,documentVersion,reason:'periodic'|'hot-exit',baseDiskRevision?,text,format,newlineMap?}` | `{documentId,durableVersion,receiptId,writtenAt}` |
+| `list_recovery_entries` | `{}` | `{entries,failures,startupWarnings,storageBytes,saveTransactions}` |
+| `load_recovery_entry` | `{receiptId}` | `{entry:RecoveryEntry,text}` |
+| `load_save_transaction` | `{receiptId}` | `{receiptId,displayName,text,format,newlineMap}` |
+| `save_session` | `{manifest:SessionManifest}` | `{saved:true,persistedAt}` |
+| `load_session` | `{}` | `{session:SessionManifest|null,warning:string|null,restoredGrantIds:string[]}` |
+| `clear_session` | `{}` | `{cleared:true}` |
 | `resolve_recovery_entry` | `{entryId,action:'restore'|'discard'|'inspect'}` | `{resolved:boolean}` |
 | `open_external_link` | `{url,userGestureId}` | `{opened:boolean}` |
 | `set_file_associations` | `{extensions:string[],enabled:boolean,explicitConsentId}` | `{applied:string[],failed:string[]}` |
@@ -263,7 +268,19 @@ settings 的 schemaVersion 是格式版本，version 是每次成功更新递增
 
 快照通过原子JSON清单+独立内容文件持久化，返回 durableVersion 表示该版本实际写入；失败显示“恢复副本未更新”。恢复打开后仍是 dirty buffer，不能覆盖源文件。`restore` 操作只恢复内存；写回源文件仍走 save expectedDiskRevision。恢复条目缺失/损坏逐条隔离，不拖垮启动。
 
+T110存储扩展决策（2026-11-02，按切片实施）：复用schema1、UUID receipt不可变正文/manifest、目录链/reparse校验、OS配额锁、256MiB预算和版本化discard tombstone。reason从before-trash扩展为periodic/hot-exit；普通快照允许sourcePath/sourceRevision同时为空以表示无标题/未绑定副本，命名来源则两者同时存在，路径仅由原生lease或既有受校验恢复记录派生，不由写快照IPC接收。存储/读取不访问该sourcePath，不改源文件；正文、格式/换行/版本及校验仍完整验证。a先扩展native存储和定向文件测试，b继续IPC/定时快照，c启动扫描/认领及会话清单，d退出拦截/flush及相关真实Release。完整恢复和热退出未验前T110保持进行中。
+
+T110会话与扫描（2026-11-02，已通过相关真实Release）：会话view使用bufferVersion、成对存在或同时为空的fileRef/diskRevision及normal/head-preview模式；文件/根授权仅由原生既有grant持久化，重启核对文件identity后才恢复授权，load_session返回restoredGrantIds，缺少当前及历史有效授权记录时返回SESSION_INCOMPLETE。重新打开可携带会话DocumentId，仍遵守单文件身份规则。list_recovery_entries返回entries、failures、startupWarnings、storageBytes和saveTransactions；只读扫描保存事务并核对摘要/阶段/同一discard tombstone，坏标记不列候选，歧义临时/备份保留且不静默删除。超过30天仅提示。统一256MiB配额及显式事务读取已实现，完整隐私管理继续由T215实现。
+
 打开外链只允许 http/https/mailto，必须来自明确用户动作；未知 protocol/file/command 拒绝。不注册可任意执行命令的链接协议。文件关联由操作系统支持方式处理，不能绕过 Windows 默认应用限制，不能修改与本项目无关关联。
+
+T110统一空间预算决策（2026-11-02，已实现）：recovery和save-transactions共享本地数据域的`.snapshot-budget.lock`及256MiB上限；快照/放弃标记先取得共享预算锁，再取既有恢复锁，保存事务从写入前到提交/阶段落盘持有预算锁。保存预留manifest、原始字节、目标字节及所有阶段记录的完整大小；目录枚举有深度/项数界限并拒绝reparse，核算失败即拒绝新写入。不自动删歧义事务、唯一未保存副本或测试产物。各存储的既有独立校验和锁继续生效，锁冲突返回BUSY。
+
+T110事务读取契约（2026-11-02，已实现）：list_recovery_entries增加saveTransactions候选摘要（receiptId/displayName/bufferVersion/bodyBytes）；load_save_transaction仅接受receiptId，不接受源/临时/备份路径。读取时在统一存储锁内重新核对manifest、阶段、body/original摘要及原文档discard版本，已提交/已放弃/坏标记不可认领。正文按清单encoding/BOM严格解码、规范化换行并重新编码逐字节核对；返回原编码/逐行换行意图。仅读取应用私有body，不修改或授权目标源文件；UI以新DocumentId创建dirty未绑定副本，明确展示待写快照状态，只有真实snapshot Ack才称已保护。保留原事务证据，读取失败仍可人工核对。
+
+T110启动版本判定（2026-11-02）：SessionView记录bufferVersion。已成功重新打开的clean会话文档，旧恢复副本版本不高于该clean版本时不自动叠加；快照比会话新时仍须恢复，防止崩溃前最后成功快照被旧clean清单遮蔽。缺源文件时保留可读恢复候选，不由clean清单删除唯一正文。所有版本仍为JS安全整数；未验收的旧实验清单不兼容时隔离保留，不能静默丢正文。
+
+T110缺失源占位（2026-11-02）：缺根/缺文件保留原会话引用并展示重新选择/移除占位，后续会话保存继续保留未解决项目；重新选择仍走原生选择器，移除占位不删除文件或恢复正文。保存会话可保留已在受校验grants.json中存在但当前不可用的授权元数据，不能据此获得当前读写授权；新未知ID仍返回SESSION_INCOMPLETE。恢复时继续重新核对identity。应用自身原子保存成功后，从已验证的保存后句柄更新file grant的持久identity，外部替换不自动更新。
 
 ## 7. 接口测试要求
 

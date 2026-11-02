@@ -6,7 +6,7 @@ export const errorCodes = [
   'NOT_FOUND', 'PERMISSION_DENIED', 'OUT_OF_SCOPE', 'IS_BINARY', 'TOO_LARGE',
   'CONFLICT', 'ENCODING_REQUIRED', 'LOSSY_ENCODING', 'DISK_FULL', 'TRASH_UNAVAILABLE', 'READ_ONLY',
   'INVALID_INPUT', 'INVALID_PATTERN', 'CANCELLED', 'UNSUPPORTED', 'BUSY',
-  'PARTIAL_FAILURE', 'IPC_UNAVAILABLE', 'INTERNAL',
+  'PARTIAL_FAILURE', 'SESSION_INCOMPLETE', 'IPC_UNAVAILABLE', 'INTERNAL',
 ] as const;
 
 export interface AppError {
@@ -110,6 +110,127 @@ export interface DiscardRecoveryRequest {
   readonly throughVersion: number;
 }
 export interface DiscardRecoveryResult extends DiscardRecoveryRequest { discarded: true }
+
+export interface WriteRecoverySnapshotRequest {
+  readonly documentId: DocumentId;
+  readonly documentVersion: number;
+  readonly reason: 'periodic' | 'hot-exit';
+  readonly baseDiskRevision?: DiskRevision;
+  readonly text: string;
+  readonly format: Readonly<TextFormat>;
+  readonly newlineMap?: {
+    readonly documentVersion: number;
+    readonly endings: readonly ('lf' | 'crlf' | 'cr')[];
+  };
+}
+export interface RecoverySnapshotAck {
+  documentId: DocumentId;
+  durableVersion: number;
+  receiptId: string;
+  writtenAt: string;
+}
+
+export interface RecoveryEntry {
+  receiptId: string;
+  reason: 'before-trash' | 'periodic' | 'hot-exit';
+  documentId: DocumentId;
+  bufferVersion: number;
+  sourcePath: string | null;
+  sourceRevision: DiskRevision | null;
+  format: TextFormat;
+  newlineMap: {
+    documentVersion: number;
+    endings: ('lf' | 'crlf' | 'cr')[];
+  } | null;
+  bodyBytes: number;
+  bodySha256: string;
+  createdAt: string;
+}
+export interface RecoveryInventory {
+  entries: RecoveryEntry[];
+  failures: { entryId: string; message: string }[];
+  startupWarnings: string[];
+  storageBytes: number;
+  saveTransactions: SaveTransactionCandidate[];
+}
+export interface SaveTransactionCandidate {
+  receiptId: string;
+  displayName: string;
+  bufferVersion: number;
+  bodyBytes: number;
+}
+export interface LoadedSaveTransaction {
+  receiptId: string;
+  displayName: string;
+  text: string;
+  format: TextFormat;
+  newlineMap: { documentVersion: 1; endings: ('lf' | 'crlf' | 'cr')[] };
+}
+export interface LoadRecoveryEntryRequest {
+  readonly receiptId: string;
+}
+export interface LoadedRecoveryEntry {
+  entry: RecoveryEntry;
+  text: string;
+}
+
+export interface SessionBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+export interface SessionSelection {
+  anchor: number;
+  head: number;
+}
+export interface SessionView {
+  viewId: string;
+  bufferVersion: number;
+  documentId: DocumentId;
+  recoveryReceiptId: string | null;
+  fileRef: FileRef | null;
+  diskRevision: DiskRevision | null;
+  openMode: 'normal' | 'head-preview';
+  title: string;
+  displayPath: string | null;
+  isPreview: boolean;
+  dirty: boolean;
+  selection: SessionSelection[];
+  scrollAnchor: number;
+}
+export interface SessionGroup {
+  groupId: 'primary' | 'secondary';
+  viewIds: string[];
+}
+export interface SessionWindow {
+  windowId: string;
+  bounds: SessionBounds;
+  rootIds: string[];
+  rootLabels: string[];
+  activeViewId: string | null;
+  groups: SessionGroup[];
+  views: SessionView[];
+}
+export interface SessionManifest {
+  schemaVersion: 1;
+  sessionId: string;
+  windows: SessionWindow[];
+  recoverySnapshotRefs: string[];
+  persistedAt: string;
+}
+export interface SessionLoadResult {
+  session: SessionManifest | null;
+  warning: string | null;
+  restoredGrantIds: string[];
+}
+export interface SessionSaveResult {
+  saved: true;
+  persistedAt: string;
+}
+export interface SessionClearResult {
+  cleared: true;
+}
 
 export interface ReadChunkRequest {
   documentId: DocumentId;

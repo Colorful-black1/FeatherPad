@@ -199,6 +199,10 @@ impl PreparedSave {
             saved_at: after.metadata.modified_at,
             size_bytes: after.metadata.size_bytes,
         };
+        service
+            .grants
+            .confirm_saved_identity(&self.reference, &after.file, &after.path)
+            .map_err(|error| self.journal.failure(error, "bind-saved-identity"))?;
         service.documents.replace(
             &self.request.document_id,
             DocumentLease {

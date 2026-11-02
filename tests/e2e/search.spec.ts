@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './test-fixture';
 import { writeFile } from 'node:fs/promises';
 
 test('Web search: Unicode-safe options, navigation, capture replacement and single undo', async ({ page }) => {
