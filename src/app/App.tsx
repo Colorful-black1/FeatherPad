@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Shell } from '../shared/ui/Shell';
+import { CommandPalette } from '../shared/ui/CommandPalette';
 import { files } from '../bridge/files';
 import { EditorDocument } from '../features/editor/EditorDocument';
 import { EditorStatus } from '../features/editor/EditorStatus';
@@ -17,6 +18,9 @@ import { Explorer } from '../features/workspace/Explorer';
 import { TrashDialog } from '../features/workspace/TrashDialog';
 import { workspace } from '../features/workspace/store';
 import type { DirectoryEntry, DocumentId, FileRef } from '../shared/contracts/files';
+import { ariaShortcut } from '../shared/commands/keyboard';
+import { createAppCommands, type AppCommandActions, type AppCommandState, type AppCommandId } from './register-commands';
+import { quickCandidates } from './quick-candidates';
 
 interface FindRequest {
   token: number;
@@ -31,6 +35,7 @@ export function App() {
   const snapshot = useSyncExternalStore(documents.subscribe, documents.getSnapshot);
   const tabState = useSyncExternalStore(tabs.subscribe, tabs.getSnapshot);
   const batch = useSyncExternalStore(saveAll.subscribe, saveAll.getSnapshot);
+  const workspaceState = useSyncExternalStore(workspace.subscribe, workspace.getSnapshot);
   const batchBusy = batch.phase === 'running' || batch.phase === 'cancelling';
   const current = snapshot.documents.find(document => document.id === snapshot.activeId);
   const currentReference = current ? documents.getDocument(current.id)?.source?.ref : undefined;
@@ -50,6 +55,10 @@ export function App() {
   const [previewCandidates, setPreviewCandidates] = useState<FileRef[]>([]);
   const [trashEntry, setTrashEntry] = useState<DirectoryEntry | null>(null);
   const opening = useRef(false);
+  const [commands] = useState(createAppCommands);
+  const commandState = useSyncExternalStore(commands.subscribe, commands.getSnapshot);
+  const [paletteMode, setPaletteMode] = useState<'commands' | 'files' | null>(null);
+  const paletteOrigin = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
@@ -109,7 +118,7 @@ export function App() {
     } finally { setBusy(false); }
   }, [setBusy, setError]);
 
-  const newFile = useCallback(() => { setAutoFocus(true); void tabs.createUntitled(); }, [setAutoFocus]);
+  const newFile = useCallback(async () => { setAutoFocus(true); await tabs.createUntitled(); }, [setAutoFocus]);
 
   const focusAfterClose = useCallback(() => {
     setAutoFocus(true);
@@ -179,31 +188,7 @@ export function App() {
     setFindOpen(true);
   }, []);
 
-  useEffect(() => {
-    const handleKey = (event: globalThis.KeyboardEvent) => {
-      if (window.document.querySelector('dialog[open]')) return;
-      if (!event.ctrlKey || event.altKey || event.isComposing) return;
-      if (event.key.toLowerCase() === 'f') {
-        event.preventDefault();
-        openFind();
-        return;
-      }
-      if (event.shiftKey && event.key.toLowerCase() === 's') { event.preventDefault(); void saveDestination(); return; }
-      if (event.shiftKey) return;
-      if (event.key.toLowerCase() === 'n') { event.preventDefault(); newFile(); }
-      if (event.key.toLowerCase() === 'o') { event.preventDefault(); void openFile(); }
-      if (event.key.toLowerCase() === 's') { event.preventDefault(); void saveCurrent(); }
-      if (event.key.toLowerCase() === 'w') {
-        event.preventDefault();
-        const id = documents.getSnapshot().activeId;
-        if (id) void requestClose(id);
-      }
-    };
-    window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
-  }, [newFile, openFile, openFind, saveCurrent, saveDestination, requestClose]);
-
-  async function openFolder() {
+  const openFolder = useCallback(async () => {
     if (opening.current) return;
     opening.current = true;
     setBusy(true);
@@ -216,7 +201,70 @@ export function App() {
         setSidebarOpen(true);
       }
     } finally { opening.current = false; setBusy(false); }
+  }, [setBusy]);
+
+  const getCommandState = useCallback((targetId?: DocumentId): AppCommandState => {
+    const snapshot = documents.getSnapshot();
+    const id = targetId ?? snapshot.activeId;
+    const active = id ? documents.getDocument(id)?.summary : undefined;
+    const batch = saveAll.getSnapshot();
+    return { hasDocument: !!active, readOnlyReason: active?.readOnlyReason ?? null, canSaveAs: active?.canSaveAs ?? false,
+      hasDirty: snapshot.documents.some(document => document.dirty), isPreview: !!active && tabs.getSnapshot().previewId === active.id,
+      opening: busy, saving: savingCount > 0, closing: closingCount > 0 || !!active?.closing,
+      batchBusy: batch.phase === 'running' || batch.phase === 'cancelling' };
+  }, [busy, savingCount, closingCount]);
+  const commandAvailability: AppCommandState = {
+    hasDocument: !!current, readOnlyReason: current?.readOnlyReason ?? null, canSaveAs: current?.canSaveAs ?? false,
+    hasDirty: snapshot.documents.some(document => document.dirty), isPreview: !!current && tabState.previewId === current.id,
+    opening: busy, saving: savingCount > 0, closing: closingCount > 0 || !!current?.closing, batchBusy,
+  };
+  const openPalette = useCallback((mode: 'commands' | 'files') => {
+    paletteOrigin.current = window.document.activeElement instanceof HTMLElement ? window.document.activeElement : null;
+    setAutoFocus(false);
+    setPaletteMode(mode);
+  }, []);
+  const restorePaletteFocus = useCallback(() => {
+    if (paletteOrigin.current?.isConnected) paletteOrigin.current.focus();
+    else { const id = documents.getSnapshot().activeId; if (id) documents.focus(id); }
+  }, []);
+  const commandActions = useMemo<AppCommandActions>(() => ({
+    'file.new': newFile, 'file.open': openFile, 'workspace.open': openFolder, 'file.save': saveCurrent,
+    'file.saveAs': () => saveDestination(), 'file.saveCopy': () => saveDestination('copy'),
+    'file.saveAll': async () => { await saveAll.run(); },
+    'file.close': async () => { const id = documents.getSnapshot().activeId; if (id) await requestClose(id); },
+    'editor.find': openFind, 'tabs.pin': () => { const id = documents.getSnapshot().activeId; if (id) tabs.pin(id); },
+    'view.sidebar': () => setSidebarOpen(open => !open), 'view.theme': () => setDark(value => !value),
+    'commands.open': () => openPalette('commands'), 'files.quickOpen': () => openPalette('files'),
+  }), [newFile, openFile, openFolder, saveCurrent, saveDestination, requestClose, openFind, openPalette]);
+
+  const executeCommand = useCallback(async (id: string, targetId?: DocumentId) => {
+    const actions = targetId ? { ...commandActions, 'file.close': () => requestClose(targetId), 'tabs.pin': () => tabs.pin(targetId) } : commandActions;
+    const result = await commands.execute(id, getCommandState(targetId), actions);
+    if (!result.ok) setError(result.reason);
+  }, [commands, getCommandState, commandActions, requestClose]);
+
+  const quickFiles = useMemo(() => paletteMode === 'files' ? quickCandidates(snapshot.documents.map(document => ({
+    id: document.id, title: document.title, displayPath: document.displayPath, ref: documents.getDocument(document.id)?.source?.ref ?? null,
+  })), workspaceState) : null, [paletteMode, snapshot.documents, workspaceState]);
+
+  function commandProps(id: AppCommandId) {
+    const reason = commands.disabledReason(id, commandAvailability);
+    return { disabled: reason !== null,
+      'aria-keyshortcuts': ariaShortcut(commands.binding(id)), title: reason ?? commands.binding(id) ?? undefined };
   }
+
+  useEffect(() => {
+    const handleKey = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented || event.keyCode === 229) return;
+      const id = commands.commandForEvent(event);
+      if (!id) return;
+      event.preventDefault();
+      if (event.repeat || window.document.querySelector('dialog[open]')) return;
+      void executeCommand(id);
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [commands, executeCommand]);
 
   function selectTab(id: DocumentId) { setAutoFocus(false); documents.activate(id); }
 
@@ -224,8 +272,16 @@ export function App() {
     <Shell
       sidebarOpen={sidebarOpen}
       dark={dark}
-      onToggleSidebar={() => setSidebarOpen(open => !open)}
-      onToggleTheme={() => setDark(value => !value)}
+      headerActions={<>
+        <button type="button" className="plain-button" {...commandProps('files.quickOpen')}
+          onClick={() => void executeCommand('files.quickOpen')}>快速打开 <kbd>{commands.binding('files.quickOpen') ?? ''}</kbd></button>
+        <button type="button" className="plain-button" {...commandProps('commands.open')}
+          onClick={() => void executeCommand('commands.open')}>命令面板 <kbd>{commands.binding('commands.open') ?? ''}</kbd></button>
+      </>}
+      onToggleSidebar={() => void executeCommand('view.sidebar')}
+      onToggleTheme={() => void executeCommand('view.theme')}
+      sidebarShortcut={ariaShortcut(commands.binding('view.sidebar'))}
+      themeShortcut={ariaShortcut(commands.binding('view.theme'))}
       sidebar={<Explorer currentReference={currentReference} onOpen={(reference, intent) => void openTreeFile(reference, intent ?? 'preview')}
         onTrash={setTrashEntry} mutationBlocked={busy || savingCount > 0 || batchBusy || closingCount > 0}
         onRenamed={renamed => documents.applyRenamedPaths(renamed)} />}
@@ -234,6 +290,7 @@ export function App() {
       {error && <div className="notice error-notice" role="alert"><span>{error}</span><button onClick={() => setError(null)}>关闭提示</button></div>}
       {notice && <div className="notice error-notice" aria-live="polite"><span>{notice}</span><button onClick={() => setNotice(null)}>关闭提示</button></div>}
       {tabState.warning && <p className="notice" role="alert">{tabState.warning}</p>}
+      {commandState.warning && <p className="notice" role="alert">{commandState.warning}</p>}
       {previewCandidates.length > 0 && <div className="notice preview-choice" aria-live="polite">
         <span>超过100MiB的文件不会自动加载完整内容。请选择是否只读预览前1MiB。</span>
         <span className="preview-choice-actions">
@@ -245,16 +302,15 @@ export function App() {
       </div>}
       {current && snapshot.activeId ? <>
         <div className="document-toolbar" aria-label="文件操作">
-          <button className="plain-button" onClick={newFile} aria-keyshortcuts="Control+n">新建文本</button>
-          <button className="plain-button" onClick={() => void openFile()} disabled={busy} aria-keyshortcuts="Control+o">打开文件</button>
-          <button className="plain-button" onClick={() => void openFolder()} disabled={busy}>打开文件夹</button>
-          <button className="plain-button" onClick={() => void saveCurrent()} disabled={!!current.readOnlyReason || savingCount > 0 || batchBusy} aria-keyshortcuts="Control+s">保存</button>
-          <button className="plain-button" onClick={openFind} aria-keyshortcuts="Control+f">查找</button>
-          <button id="save-all-button" className="plain-button" onClick={() => void saveAll.run()} disabled={savingCount > 0 || batchBusy || !snapshot.documents.some(document => document.dirty)}>全部保存</button>
-          <button className="plain-button" onClick={() => void saveDestination()} disabled={!current.canSaveAs || savingCount > 0 || batchBusy} aria-keyshortcuts="Control+Shift+s">另存为</button>
-          <button className="plain-button" onClick={() => void saveDestination('copy')} disabled={!current.canSaveAs || savingCount > 0 || batchBusy}>保存副本</button>
-          <button type="button" className="plain-button tab-pin-control" onClick={() => tabs.pin(current.id)}
-            disabled={tabState.previewId !== current.id || current.closing}>{tabState.previewId === current.id ? '固定标签' : '已固定'}</button>
+          <button className="plain-button" {...commandProps('file.new')} onClick={() => void executeCommand('file.new')}>新建文本</button>
+          <button className="plain-button" {...commandProps('file.open')} onClick={() => void executeCommand('file.open')}>打开文件</button>
+          <button className="plain-button" {...commandProps('workspace.open')} onClick={() => void executeCommand('workspace.open')}>打开文件夹</button>
+          <button className="plain-button" {...commandProps('file.save')} onClick={() => void executeCommand('file.save')}>保存</button>
+          <button className="plain-button" {...commandProps('editor.find')} onClick={() => void executeCommand('editor.find')}>查找</button>
+          <button id="save-all-button" className="plain-button" {...commandProps('file.saveAll')} onClick={() => void executeCommand('file.saveAll')}>全部保存</button>
+          <button className="plain-button" {...commandProps('file.saveAs')} onClick={() => void executeCommand('file.saveAs')}>另存为</button>
+          <button className="plain-button" {...commandProps('file.saveCopy')} onClick={() => void executeCommand('file.saveCopy')}>保存副本</button>
+          <button type="button" className="plain-button tab-pin-control" {...commandProps('tabs.pin')} onClick={() => void executeCommand('tabs.pin')}>{tabState.previewId === current.id ? '固定标签' : '已固定'}</button>
           <label className="toolbar-field">缩进
             <select aria-label="缩进宽度" value={current.indentWidth} onChange={event => {
               const width = Number(event.currentTarget.value);
@@ -280,7 +336,7 @@ export function App() {
         <SaveAllResults />
         <TabStrip documents={snapshot.documents} activeId={snapshot.activeId} previewId={tabState.previewId}
           busy={busy || savingCount > 0 || batchBusy || closingCount > 0} onSelect={selectTab}
-          onPin={id => tabs.pin(id)} onClose={id => void requestClose(id)} />
+          onPin={id => { if (tabs.getSnapshot().previewId === id) void executeCommand('tabs.pin', id); }} onClose={id => void executeCommand('file.close', id)} />
         <EditorDocument key={snapshot.activeId} registry={documents} id={snapshot.activeId} autoFocus={autoFocus} />
       </> : <div className="welcome">
         <div className="welcome-content">
@@ -288,12 +344,30 @@ export function App() {
           <h1>快开文件，专心编辑。</h1>
           <p className="welcome-description">给文字一处安静的地方。</p>
           <div className="welcome-actions">
-            <button className="plain-button" onClick={newFile} aria-keyshortcuts="Control+n">新建文本</button>
-            <button className="primary-button" onClick={() => void openFile()} disabled={busy}>打开文件</button>
-            <button className="plain-button" onClick={() => void openFolder()} disabled={busy}>打开文件夹</button>
+            <button className="plain-button" {...commandProps('file.new')} onClick={() => void executeCommand('file.new')}>新建文本</button>
+            <button className="primary-button" {...commandProps('file.open')} onClick={() => void executeCommand('file.open')}>打开文件</button>
+            <button className="plain-button" {...commandProps('workspace.open')} onClick={() => void executeCommand('workspace.open')}>打开文件夹</button>
           </div>
         </div>
       </div>}
+      {paletteMode && <CommandPalette mode={paletteMode} items={paletteMode === 'files' ? quickFiles?.items ?? [] : commands.list(commandAvailability)}
+        scope={paletteMode === 'files' ? quickFiles?.scope ?? '' : ''}
+        onClose={() => { setPaletteMode(null); requestAnimationFrame(restorePaletteFocus); }}
+        onPick={id => {
+          const target = paletteMode === 'files' ? quickFiles?.targets.get(id) : undefined;
+          setPaletteMode(null);
+          requestAnimationFrame(() => {
+            restorePaletteFocus();
+            if (paletteMode === 'commands') void executeCommand(id);
+            else if (target?.kind === 'file') void openTreeFile(target.ref, 'pinned');
+            else if (target?.kind === 'document' && documents.getDocument(target.id)) {
+              setAutoFocus(true);
+              documents.activate(target.id);
+              requestAnimationFrame(() => documents.focus(target.id));
+            } else setError('文件候选已变化，请重新打开快速打开面板。');
+          });
+        }}
+        onBind={(id, value) => commands.setBinding(id, value)} onResetBindings={() => commands.resetBindings()} />}
       {closeTarget && <CloseDialog key={closeTarget.id} target={closeTarget} registry={documents} tabs={tabs}
         onClosed={() => { setCloseTarget(null); focusAfterClose(); }}
         onCancel={() => {

@@ -4,8 +4,8 @@
 
 - 产品名称：**轻羽 FeatherPad**。
 - 当前交付：完整产品方案、86项功能矩阵、模块规格、UI规范与离线交互原型、技术/本机环境文档、M0–M5实现计划、57个开发任务、agent执行入口。
-- 产品代码：**M0/G0、M1/T101–T108通过**。真实Release保存/另存/副本/批次/覆盖/硬链接/进程终止、真实小容量满盘安全失败、<20MiB正常/降级编辑、20MiB分块只读、>100MiB显式预览、单根懒加载目录树、CodeMirror编辑/语言/系统中文IME、文件内搜索替换和只读保护，以及标签预览/固定和保存/放弃/取消关闭均已验证；恢复和其余M1项仍未完成，G1未通过，更不是完整v1。
-- 当前：**T107标签与关闭保护已通过，下一项T109命令入口与快捷键**。完整会话恢复与热退出由T110继续；固定偏好重载证据不代表启动恢复。G1及以后仍未完成，完整范围保持M0–M5全部86项必需功能。
+- 产品代码：**M0/G0、M1/T101–T109通过**。真实Release保存/另存/副本/批次/覆盖/硬链接/进程终止、真实小容量满盘安全失败、<20MiB正常/降级编辑、20MiB分块只读、>100MiB显式预览、单根懒加载目录树、CodeMirror编辑/语言/系统中文IME、文件内搜索替换、标签关闭保护，以及命令面板/快捷键重映射/受授权候选快速打开均已验证；恢复和其余M1项仍未完成，G1未通过，更不是完整v1。
+- 当前：**T109命令入口与快捷键已通过，下一项T110恢复与热退出**。固定/快捷键偏好重载证据不代表启动会话恢复。G1及以后仍未完成，完整范围保持M0–M5全部86项必需功能。
 - 本次交付检查：详见 [DELIVERY-CHECK](../docs/DELIVERY-CHECK.md)，不代表产品关卡G0–G5通过。
 
 ## 已核查环境
@@ -31,6 +31,23 @@
 | 2026-11-01 / T001.a,b | F-DESK-013 | manifests/双锁、TS/Vite/ESLint、Tauri骨架与图标 | 冻结offline安装、typecheck/lint/build:web、Rust fmt/clippy/test均0；audit exit 1仅开发工具moderate | 编译级原生；当时Rust行为测试0个 | `docs/acceptance/M0.md`、`.artifacts/T001/` | T001通过；minimatch受控lint模式，2026-12-01复核 |
 | 2026-11-01 / T002 | app-shell | React Shell/App/token/CSS、Web及原生测试 | typecheck/lint exit 0；Web 2 passed；真实WebView2 debug 1 passed | Web与原生范围分开，未测OS对话框 | .artifacts/T002/及docs/acceptance/M0.md | T002通过；下一T003 |
 | 2026-11-01 / T003.a–d（进行中） | F-DESK-013 | Rust models/grants/files/commands、AppManifest ACL、TS contracts/bridge、CodeMirror只读UI、测试与脚本 | typecheck/lint/TS单测3、Rust原生5、Web4、Release smoke1均exit 0；check.ps1 -Desktop exit 0；交互选择器三次超时，后次显式exit 1 | 原生Rust磁盘+junction，真实Release IPC/WebView2，Web mock独立 | docs/acceptance/M0.md；.artifacts/T003；.artifacts/T002/native-release.json | T003未完成OS选取验收，G0不勾选 |
+
+## T109 命令入口与快捷键完成（2026-11-02）
+
+- F-EDIT-017：14个稳定命令ID统一按钮、快捷键、面板、标签固定/关闭及壳层开关。展示只传摘要数据，执行前重新读取当前文档摘要；同命令在途拒绝重复。命令列表显示名称/快捷键/禁用原因，支持中文/关键词过滤、方向循环、Enter执行、空结果防陈旧执行、Escape/Tab模态与焦点恢复。CM状态和undo保留，不增加每键IPC或React正文状态。
+- CtrlP快速打开由app注入已打开文档和已加载/受授权目录文件，同ref去重、同名显示路径、排除链接/未显示隐藏项/其他grant，最多保留5,000候选/显示200匹配；范围与上限可见，不假称完整磁盘导航。完整F-EDIT-016仍T210。应用单组合键可重映射/解除/恢复默认，冲突不改旧绑定；拒绝Windows/AltGr/原生文本编辑及当前CM默认占用。偏好只存schema1命令ID/组合键，≤256项/64KiB，坏配置或写失败可见；原生设置整合T112，完整映射导入导出/全局唤起T214。
+- 主要生产文件：src/shared/commands/{keyboard,registry}.ts、src/shared/ui/{CommandPalette,Shell}.tsx、src/app/{register-commands,quick-candidates}.ts、App.tsx及app.css；spec先记录接口/范围决策。没有新增IPC/Rust/依赖；测试新增commands Web/原生与两个核心模型测试文件。
+- 定向模型11 passed/exit0（.artifacts/T109-b-model-tests.log）；相关Web15 passed/13.3秒/exit0（T109-commands-related-web.log，commands5/tabs7/save-all3），此前documents/save-all Web6通过证据保留。受影响eslint/typecheck exit0（T109-final-lint、T109-final-types、T109-shell-final-lint）；仅新增壳层快捷键提示后由build内tsc再次验证。200%快捷键编辑截图已视觉检查；Web mock不作为原生IO证据。
+- 自审发现CtrlShiftK被现有CM deleteLine占用，已纳入保留键拒绝，并以Web/原生真实输入覆盖；其余检查覆盖数据/动作边界、坏偏好/容量/写失败、原生文本编辑/IME/模态、目标ID、限量候选与授权。未放松lint或断言。早期helper携带ref动作造成的lint失败保留；数据与onClick分离后解决。
+- pnpm build exit0（T109-release-build.log），构建终止后才启动原生。exe为10,993,152 bytes，SHA256 F058B832150B1123DFB4A4538BE3C494419759D47644DBC219E335C218BDCB61；JS657.35kB/gzip211.97kB警告保留，未改门槛。真实Release commands 1 passed/5.2秒/exit0（T109-native-commands-first.log），证据.artifacts/native/2026-11-02T03-47-00-635Z-86e89276-53f2-4f9b-b0a1-6555dac63f36/commands/native-release.json。
+- 原生范围：命令经真实OS选择器打开中文emoji目录，CtrlP打开真实文件/复用dirty同ID，面板保存字节核对、只读禁用并保持源hash、从CM触发重映射快捷键/拒绝冲突/CM占用、模态不新建、主题操作后正文/undo/焦点、加载前无陈旧候选/加载后同名路径选择、renderer重载偏好和恢复默认。保存SHA256=1b72059e634d31339b0672f5c5b9c4c09aed6daf8023576008c81faa8045fb50，只读源SHA256=c334650b6f73619dcc28664352c06d7aae229319c93900ee493e6636e23a8716，原生禁用截图已视觉检查。不声明完整启动恢复或OS缩放。
+- test:desktop:all已加入commands；--list exit0/发现regression+tabs+commands三项（T109-native-all-list.log），没有执行阶段整体。按用户策略仅一次Release/相关原生；未重跑Rust、综合桌面、大文件、100k、满盘、强杀或性能。历史产物及既有未跟踪CLEANUP清单未清理。下一T110，G1仍未通过。
+- 收尾文档校验exit0（T109-docs-final.log，86功能/57任务，0失败）、git diff --check exit0。五轴自审完成，未发现未解决阻断项；按完整T109功能提交，保持Goal完整范围。
+
+## T109.a 统一命令分发简记（2026-11-02，当时面板待接）
+
+- shared/commands/{keyboard,registry}与app/register-commands建立稳定命令ID、摘要启用态、执行入口与有限快捷键偏好；App现有高频按钮/快捷键均复用。展示摘要与执行动作分开，命令在途拒绝重复，执行前读取当前文档状态；模态/IME/已处理事件隔离。无新增IPC或依赖。
+- 核心定向9 passed（.artifacts/T109-registry-tests.log），typecheck exit0（T109-a-types-state-actions.log），受影响eslint最终exit0（T109-a-lint-final.log）；先前lint失败因展示helper携带含ref执行回调，已将数据与onClick分离，未禁用规则。相关documents/save-all Web6 passed（T109-a-web-related.log），只证明mock流程。未构建/执行Release；面板、重映射UI和完整T109仍待验，按完整功能再提交。
 
 ## T107 标签与关闭保护完成（2026-11-02）
 
