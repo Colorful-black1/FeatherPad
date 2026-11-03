@@ -4,6 +4,7 @@ import { bracketMatching, defaultHighlightStyle, indentUnit, syntaxHighlighting 
 import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete';
 import { Decoration, type DecorationSet, EditorView, highlightActiveLine, highlightActiveLineGutter, keymap, lineNumbers } from '@codemirror/view';
 import { editorKeyboardFocus } from './keyboard-focus';
+import { documentFormatExtensions, type DocumentFormatState } from './line-endings';
 
 const editability = new Compartment();
 const indentation = new Compartment();
@@ -45,6 +46,7 @@ const searchHighlightField = StateField.define<DecorationSet>({
   provide: field => EditorView.decorations.from(field),
 });
 export interface EditorStateOptions {
+  documentFormat?: DocumentFormatState;
   indentWidth?: IndentWidth;
   language?: Extension;
   bracketMatching?: boolean;
@@ -110,6 +112,7 @@ export function createEditorState(text: string, readOnly: boolean, options: Edit
     doc: text,
     extensions: [
       editorKeyboardFocus,
+      documentFormatExtensions(options.documentFormat),
       history(), closing.of(options.closeBrackets === false ? [] : [closeBrackets(), keymap.of(closeBracketsKeymap)]),
       keymap.of([
         indentWithTab,

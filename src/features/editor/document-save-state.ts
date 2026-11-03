@@ -2,11 +2,13 @@ import type { Text } from '@codemirror/state';
 import type { DiskRevision, FileRef, ResultEnvelope, SaveAck, SaveAsAck, SaveAsRequest, SaveRequest, TextFormat, WriteRecoverySnapshotRequest } from '../../shared/contracts/files';
 import type { ManagedDocument } from './documents';
 import { reconfigureReadOnly } from './editor-state';
+import { documentFormat, sameDocumentFormat, type DocumentFormatState } from './line-endings';
 
-export interface CapturedSave { readonly request: SaveRequest; readonly savedText: Text }
+export interface CapturedSave { readonly request: SaveRequest; readonly savedText: Text; readonly savedFormat: DocumentFormatState }
 export interface CapturedSaveAs {
   readonly request: SaveAsRequest;
   readonly savedText: Text;
+  readonly savedFormat: DocumentFormatState;
   readonly baseSource: { readonly ref: FileRef; readonly revision: DiskRevision } | null;
 }
 
@@ -19,7 +21,7 @@ export function readOnlyReason(metadata: { isReadOnly: boolean }, format: TextFo
     : format.encoding !== 'utf-8' ? '此编码暂以只读方式打开' : null;
 }
 
-function snapshot(document: ManagedDocument): ResultEnvelope<{ request: Omit<SaveAsRequest, 'intent'>; savedText: Text }> {
+function snapshot(document: ManagedDocument): ResultEnvelope<{ request: Omit<SaveAsRequest, 'intent'>; savedText: Text; savedFormat: DocumentFormatState }> {
   const { id, version, format } = document.summary;
   if (format.lineEnding === 'mixed' && document.originalNewlines.documentVersion !== version) {
     return failure('CONFLICT', '逐行换行映射与当前版本不一致，请保留原文并重试。');
@@ -29,6 +31,7 @@ function snapshot(document: ManagedDocument): ResultEnvelope<{ request: Omit<Sav
     : Array.from({ length: document.state.doc.lines - 1 }, () => ending);
   return { ok: true, value: {
     savedText: document.state.doc,
+    savedFormat: document.state.field(documentFormat),
     request: Object.freeze({ documentId: id, requestId: crypto.randomUUID(), documentVersion: version,
       text: document.state.doc.toString(), format: Object.freeze({ ...format }),
       newlineMap: Object.freeze({ documentVersion: version, endings: Object.freeze(endings) }),
@@ -42,7 +45,7 @@ export function captureExisting(document: ManagedDocument | undefined): ResultEn
   if (!document.source) return failure('UNSUPPORTED', '此文档尚无文件路径，请使用另存为。');
   const captured = snapshot(document);
   if (!captured.ok) return captured;
-  return { ok: true, value: Object.freeze({ savedText: captured.value.savedText,
+  return { ok: true, value: Object.freeze({ savedText: captured.value.savedText, savedFormat: captured.value.savedFormat,
     request: Object.freeze({ ...captured.value.request, expectedDiskRevision: document.source.metadata.diskRevision }),
   }) };
 }
@@ -52,7 +55,7 @@ export function captureDestination(document: ManagedDocument | undefined, intent
   if (document.fragment) return failure('READ_ONLY', document.summary.readOnlyReason ?? '大文件片段不能另存。');
   const captured = snapshot(document);
   if (!captured.ok) return captured;
-  return { ok: true, value: Object.freeze({ savedText: captured.value.savedText,
+  return { ok: true, value: Object.freeze({ savedText: captured.value.savedText, savedFormat: captured.value.savedFormat,
     request: Object.freeze({ ...captured.value.request, intent }),
     baseSource: document.source ? Object.freeze({ ref: Object.freeze({ ...document.source.ref }), revision: document.source.metadata.diskRevision }) : null,
   }) };
@@ -87,10 +90,13 @@ export function acknowledgeExisting(document: ManagedDocument | undefined, captu
     || ack.documentVersion > document.summary.version) return failure('CONFLICT', '保存回执与当前文档版本不匹配。');
   document.savedText = savedText;
   document.savedVersion = ack.documentVersion;
+  document.savedFormat = captured.savedFormat;
   document.source = { ...document.source,
+    format: { ...request.format },
     metadata: { ...document.source.metadata, diskRevision: ack.diskRevision, modifiedAt: ack.savedAt, sizeBytes: ack.sizeBytes },
   };
-  document.summary = { ...document.summary, dirty: !document.state.doc.eq(savedText),
+  document.summary = { ...document.summary, dirty: !document.state.doc.eq(savedText)
+    || !sameDocumentFormat(document.state.field(documentFormat), document.savedFormat),
     recoveryProtected: false, recoveryError: null };
   return { ok: true, value: { dirty: document.summary.dirty } };
 }
@@ -113,12 +119,13 @@ export function acknowledgeDestination(document: ManagedDocument | undefined, ca
   document.state = reconfigureReadOnly(document.state, reason !== null);
   document.savedText = savedText;
   document.savedVersion = result.ack.documentVersion;
+  document.savedFormat = captured.savedFormat;
   document.releaseUncertain = false;
   document.source = { documentId: request.documentId, ref: result.ref, metadata: result.metadata,
     format: { ...request.format }, warnings: current?.warnings ?? [], mode: current?.mode ?? 'normal' };
-  if (request.newlineMap) document.originalNewlines = { documentVersion: request.documentVersion, endings: [...request.newlineMap.endings] };
   document.summary = { ...document.summary, title: result.metadata.displayPath.split(/[\\/]/).pop() || result.metadata.displayPath,
     displayPath: result.metadata.displayPath, readOnlyReason: reason, canSaveAs: true, missing: false,
-    recoveryProtected: false, recoveryError: null, recovered: false, dirty: !document.state.doc.eq(savedText) };
+    recoveryProtected: false, recoveryError: null, recovered: false, dirty: !document.state.doc.eq(savedText)
+      || !sameDocumentFormat(document.state.field(documentFormat), document.savedFormat) };
   return { ok: true, value: { dirty: document.summary.dirty } };
 }

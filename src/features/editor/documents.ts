@@ -1,4 +1,6 @@
 import { EditorSelection, type EditorState, type Text, type Transaction } from '@codemirror/state';
+import { isolateHistory } from '@codemirror/commands';
+import { documentFormat, formatState, sameDocumentFormat, setDocumentFormat, type DocumentFormatState } from './line-endings';
 import type { EditorView } from '@codemirror/view';
 import type { DocumentId, LoadedRecoveryEntry, OpenDocument, RenamedDocument, ResultEnvelope, SaveAck, SaveAsAck, SaveRequest, TextFormat, TrashEntryResult, WriteRecoverySnapshotRequest } from '../../shared/contracts/files';
 import { createEditorState, reconfigureBracketMatching, reconfigureCloseBrackets, reconfigureIndentation,
@@ -40,8 +42,9 @@ export interface ManagedDocument {
   state: EditorState;
   savedText: Text;
   savedVersion: number;
+  savedFormat: DocumentFormatState;
   source: Omit<OpenDocument, 'content'> | null;
-  originalNewlines: Extract<OpenDocument['content'], { kind: 'text' }>['newlineMap'];
+  originalNewlines: NonNullable<SaveRequest['newlineMap']>;
   fragment: Exclude<OpenDocument['content'], { kind: 'text' }> | null;
   scroll: { top: number; left: number };
   characterCount: number;
@@ -152,7 +155,7 @@ export class DocumentRegistry {
       languageRevision: 0, bracketMatching: true, closeBrackets: true,
     };
     this.documents.set(id, {
-      summary, state, savedText: state.doc, savedVersion: 0, source: null,
+      summary, state, savedText: state.doc, savedVersion: 0, savedFormat: state.field(documentFormat), source: null,
       originalNewlines: { documentVersion: 0, endings: [] }, fragment: null, scroll: { top: 0, left: 0 },
       characterCount: 0, hasRecoveryData: false, recoveryReceiptId: null, releaseUncertain: false,
     });
@@ -165,7 +168,8 @@ export class DocumentRegistry {
     const id = this.createUntitled();
     const document = this.documents.get(id)!;
     const reason = readOnlyReason({ isReadOnly: false }, loaded.format);
-    document.state = createEditorState(loaded.text, this.hotExitFrozen || reason !== null);
+    document.state = createEditorState(loaded.text, this.hotExitFrozen || reason !== null,
+      { documentFormat: formatState(loaded.format, loaded.newlineMap.endings) });
     document.originalNewlines = { documentVersion: 1, endings: [...loaded.newlineMap.endings] };
     document.characterCount = countCharacters(loaded.text);
     document.summary = { ...document.summary, title: `${loaded.displayName}（恢复副本）`,
@@ -192,7 +196,8 @@ export class DocumentRegistry {
           ? document.content.initialChunk.text
           : document.content.text;
       const languageId = isPlainTextMode(document.mode) ? 'plaintext' : detectLanguage(document.metadata.displayPath);
-      const initialState = createEditorState(initialText, this.hotExitFrozen || reason !== null);
+      const initialState = createEditorState(initialText, this.hotExitFrozen || reason !== null,
+        document.content.kind === 'text' ? { documentFormat: formatState(document.format, document.content.newlineMap.endings) } : {});
       const state = document.mode === 'text-preview'
         ? reconfigureEditorPreferences(initialState, previewPreferences(initialState, document.mode, this.editorPreferences))
         : initialState;
@@ -218,7 +223,7 @@ export class DocumentRegistry {
           canSaveAs: fragment === null, indentWidth: 4, indentOverridden: false, languageId, languageSource: 'auto',
           languageRevision: 0, bracketMatching: true, closeBrackets: true,
         },
-        state, savedText: state.doc, savedVersion: newlineMap.documentVersion, source,
+        state, savedText: state.doc, savedVersion: newlineMap.documentVersion, savedFormat: state.field(documentFormat), source,
         originalNewlines: newlineMap, fragment, scroll: { top: 0, left: 0 },
         characterCount: countCharacters(initialText), hasRecoveryData: false, recoveryReceiptId: null,
         releaseUncertain: false,
@@ -258,7 +263,8 @@ export class DocumentRegistry {
     const readOnly = diskChanged
       ? '磁盘内容在应用关闭期间发生变化；恢复副本保持只读，请比较后另存或明确覆盖。'
       : formatReadOnly;
-    const state = createEditorState(text, this.hotExitFrozen || readOnly !== null);
+    const state = createEditorState(text, this.hotExitFrozen || readOnly !== null,
+      { documentFormat: formatState(loaded.entry.format, newlineMap.endings) });
     const displayPath = sourceDocument?.metadata.displayPath ?? loaded.entry.sourcePath;
     const title = displayPath?.split(/[\\/]/).pop() || `恢复的无标题 ${++this.untitledCount}`;
     const characterCount = countCharacters(text);
@@ -275,6 +281,7 @@ export class DocumentRegistry {
       state,
       savedText: existing?.savedText ?? state.doc,
       savedVersion: existing?.savedVersion ?? 0,
+      savedFormat: existing?.savedFormat ?? state.field(documentFormat),
       source: existing?.source ?? null,
       originalNewlines: { documentVersion: loaded.entry.bufferVersion, endings: [...newlineMap.endings] },
       fragment: null, scroll: { top: 0, left: 0 },
@@ -455,6 +462,25 @@ export class DocumentRegistry {
     return latest ? { ok: true, value: { version: latest.summary.version } } : failure('NOT_FOUND', '文档已关闭。');
   }
 
+  changeFormat(id: DocumentId, expectedVersion: number, format: TextFormat): ResultEnvelope<{ version: number }> {
+    const document = this.documents.get(id);
+    if (!document) return failure('NOT_FOUND', '文档已关闭。');
+    if (document.summary.version !== expectedVersion) return failure('CONFLICT', '文档已变化，请重新确认转换。');
+    if (document.fragment || document.summary.readOnlyReason) return failure('READ_ONLY', document.summary.readOnlyReason ?? '只读预览不能转换。');
+    const current = document.state.field(documentFormat);
+    const endings = format.lineEnding === 'mixed' ? current.endings
+      : current.endings.map(() => format.lineEnding as 'lf' | 'crlf');
+    const next = formatState(format, endings);
+    if (sameDocumentFormat(current, next)) return { ok: true, value: { version: expectedVersion } };
+    const transaction = document.state.update({ effects: setDocumentFormat.of(next), annotations: isolateHistory.of('full') });
+    const view = this.views.get(id);
+    if (view) {
+      view.dispatch(transaction);
+      return { ok: true, value: { version: document.summary.version } };
+    }
+    return this.commit(id, [transaction]);
+  }
+
   setIndentWidth(id: DocumentId, indentWidth: IndentWidth) {
     const document = this.documents.get(id);
     if (!document || (document.summary.indentWidth === indentWidth && document.summary.indentOverridden)) return;
@@ -551,7 +577,8 @@ export class DocumentRegistry {
       : readOnlyReason(opened.metadata, opened.format);
     const previousSelection = document.state.selection.ranges;
     const version = expectedVersion + 1;
-    document.state = createEditorState(text, reason !== null, document.summary);
+    document.state = createEditorState(text, reason !== null, { ...document.summary,
+      ...(opened.content.kind === 'text' ? { documentFormat: formatState(opened.format, opened.content.newlineMap.endings) } : {}) });
     if (opened.mode === 'text-preview') {
       document.state = reconfigureEditorPreferences(document.state, previewPreferences(document.state, opened.mode, this.editorPreferences));
     }
@@ -559,6 +586,7 @@ export class DocumentRegistry {
       EditorSelection.range(Math.min(range.anchor, text.length), Math.min(range.head, text.length)))) }).state;
     document.savedText = document.state.doc;
     document.savedVersion = version;
+    document.savedFormat = document.state.field(documentFormat);
     document.source = { documentId: opened.documentId,
       ...(opened.canonicalIdentity === undefined ? {} : { canonicalIdentity: opened.canonicalIdentity }),
       ref: opened.ref, metadata: opened.metadata, mode: opened.mode, format: opened.format,
@@ -685,11 +713,12 @@ export class DocumentRegistry {
     // Validate the entire batch before committing any part of it.
     for (const transaction of transactions) {
       if (transaction.startState !== state) return failure('CONFLICT', '文档版本已变化，请重试操作。');
-      if (transaction.docChanged && document.summary.closing) return failure('BUSY', '文档正在关闭，这次修改尚未接受。');
-      if (transaction.docChanged && document.summary.hotExitFrozen) {
+      const modified = transaction.docChanged || !sameDocumentFormat(state.field(documentFormat), transaction.state.field(documentFormat));
+      if (modified && document.summary.closing) return failure('BUSY', '文档正在关闭，这次修改尚未接受。');
+      if (modified && document.summary.hotExitFrozen) {
         return failure('BUSY', '应用正在准备安全退出，这次修改尚未接受。');
       }
-      if (transaction.docChanged && document.summary.readOnlyReason) return failure('READ_ONLY', document.summary.readOnlyReason);
+      if (modified && document.summary.readOnlyReason) return failure('READ_ONLY', document.summary.readOnlyReason);
       if (transaction.docChanged) {
         transaction.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
           characterCount += countCharacters(inserted.toString())
@@ -697,18 +726,22 @@ export class DocumentRegistry {
         });
       }
       state = transaction.state;
-      if (transaction.docChanged) changes++;
+      if (modified) changes++;
     }
     document.state = state;
     document.characterCount = characterCount;
     this.publishMetrics(id, state, characterCount);
     this.notifySession();
     if (changes > 0) {
+      const currentFormat = state.field(documentFormat);
       document.summary = {
         ...document.summary, version: document.summary.version + changes,
-        dirty: document.summary.missing || document.summary.recovered || !state.doc.eq(document.savedText),
+        format: { ...currentFormat.format },
+        dirty: document.summary.missing || document.summary.recovered || !state.doc.eq(document.savedText)
+          || !sameDocumentFormat(currentFormat, document.savedFormat),
         recoveryProtected: false, recoveryError: null,
       };
+      document.originalNewlines = { documentVersion: document.summary.version, endings: currentFormat.endings };
       document.recoveryReceiptId = null;
       this.publish(this.snapshot.activeId);
     }

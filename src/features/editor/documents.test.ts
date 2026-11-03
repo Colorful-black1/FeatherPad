@@ -30,6 +30,23 @@ it('creates independent untitled documents with no path and UTF8/CRLF defaults',
   expect(registry.getDocument(first)?.summary).toMatchObject({ displayPath: null, dirty: false, format: { encoding: 'utf-8', bom: 'none', lineEnding: 'crlf' } });
 });
 
+it('treats format conversion as a versioned dirty undo step and retains it after an older save Ack', () => {
+  const registry = new DocumentRegistry();
+  const id = registry.openDocument(fixture());
+  const captured = registry.captureSave(id);
+  if (!captured.ok) throw new Error('Expected a writable fixture');
+  const before = registry.getDocument(id)!.summary.version;
+  expect(registry.changeFormat(id, before, { encoding: 'utf-16le', bom: 'utf16le', lineEnding: 'crlf' })).toMatchObject({ ok: true });
+  expect(registry.getDocument(id)!.summary).toMatchObject({ version: before + 1, dirty: true });
+  expect(registry.acknowledgeSave(captured.value, { documentVersion: before, diskRevision: 'revision-2' as DiskRevision,
+    savedAt: '2026-11-03T00:00:00Z', sizeBytes: 12 })).toMatchObject({ ok: true, value: { dirty: true } });
+  let state = registry.getDocument(id)!.state;
+  expect(undo({ state, dispatch: transaction => { registry.commit(id, [transaction]); state = transaction.state; } })).toBe(true);
+  expect(registry.getDocument(id)!.summary).toMatchObject({ dirty: false, format: fixture().format });
+  expect(registry.getDocument(id)!.state.doc.toString()).toBe('private\nbody');
+  expect(registry.changeFormat(id, before, fixture().format)).toMatchObject({ ok: false, error: { code: 'CONFLICT' } });
+});
+
 it('keeps complete text previews read-only for transactions, saving and reload', () => {
   const base = fixture();
   const preview: OpenDocument = { ...base, mode: 'text-preview', content: {
