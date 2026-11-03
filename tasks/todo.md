@@ -138,7 +138,7 @@ pnpm test:desktop:all
 
 | 状态/任务 | 依赖 | 功能追踪 | 交付内容与验收点 | 主要规划文件（非穷举） |
 |---|---|---|---|---|
-| [ ] T201 编码与逐行换行 | T115 | F-FILE-006..007 | 所列编码 round-trip、原混合换行保留、转换 undo 与有损确认 | src-tauri/src/services/encoding.rs、src/features/editor/line-endings.ts、src/features/editor/EncodingMenu.tsx |
+| [~] T201 编码与逐行换行 | T115 | F-FILE-006..007 | 所列编码 round-trip、原混合换行保留、转换 undo 与有损确认 | src-tauri/src/services/encoding.rs、src/features/editor/line-endings.ts、src/features/editor/EncodingMenu.tsx |
 | [ ] T202 可选自动保存 | T201 | F-FILE-012 | 默认 off、1500ms 空闲保存；冲突暂停、无标题仅快照 | src/features/editor/autosave.ts、src/features/desktop/SettingsDialog.tsx |
 | [ ] T203 冲突对比 | T111,T201 | F-FILE-016 | 返回磁盘快照与 revision，对比后变动再次阻止旧授权覆盖 | src/features/editor/ConflictDiff.tsx、src-tauri/src/services/files.rs |
 | [ ] T204 多根/收藏/工作区文件 | T115 | F-WORK-002,F-WORK-008..009 | 根重排/移除不删 buffer，收藏独立，迁移相对路径/坏配置保护 | src/features/workspace/roots.ts、src/features/workspace/Favorites.tsx、src/features/workspace/workspace-file.ts |

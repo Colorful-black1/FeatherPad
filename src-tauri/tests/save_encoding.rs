@@ -2,6 +2,7 @@ use featherpad_lib::{
     models::{ErrorCode, Newline, NewlineMap, SaveRequest, TextFormat},
     services::{
         encode::encode_snapshot,
+        encoding::{decode_text, encode_text},
         text::{decode_basic, normalize_newlines},
     },
 };
@@ -110,11 +111,75 @@ fn rejects_stale_incomplete_or_mislabelled_newline_maps_and_incompatible_bom() {
         );
     }
     assert_eq!(
-        encode_snapshot(&snapshot("中文", "gbk", "none", "lf"))
+        encode_snapshot(&snapshot("中文", "unregistered-encoding", "none", "lf"))
             .unwrap_err()
             .code,
         ErrorCode::Unsupported
     );
+}
+
+#[test]
+fn legacy_code_pages_round_trip_known_bytes_and_preserve_mixed_endings() {
+    for (label, text, bytes) in [
+        ("gbk", "中文", vec![0xd6, 0xd0, 0xce, 0xc4]),
+        ("gb18030", "中文", vec![0xd6, 0xd0, 0xce, 0xc4]),
+        ("shift_jis", "日本", vec![0x93, 0xfa, 0x96, 0x7b]),
+        ("big5", "中文", vec![0xa4, 0xa4, 0xa4, 0xe5]),
+        (
+            "windows-1252",
+            "café €",
+            vec![0x63, 0x61, 0x66, 0xe9, 0x20, 0x80],
+        ),
+    ] {
+        assert_eq!(encode_text(text, label, "none").unwrap(), bytes);
+        assert_eq!(decode_text(&bytes, Some(label)).unwrap().text, text);
+        let source = format!("{text}\r\nsecond\nthird\rfinal");
+        let golden = encode_text(&source, label, "none").unwrap();
+        let decoded = decode_text(&golden, Some(label)).unwrap();
+        let (text, endings) = normalize_newlines(&decoded.text);
+        let mut request = snapshot(&text, label, "none", "mixed");
+        request.newline_map = Some(NewlineMap {
+            document_version: 7,
+            endings,
+        });
+        assert_eq!(encode_snapshot(&request).unwrap(), golden);
+    }
+    let gb18030 = encode_text("中文😀𠀀", "gb18030", "none").unwrap();
+    assert_eq!(
+        decode_text(&gb18030, Some("gb18030")).unwrap().text,
+        "中文😀𠀀"
+    );
+}
+
+#[test]
+fn strict_encoding_rejects_defaults_best_fit_malformed_and_mismatched_bom() {
+    for label in ["gbk", "shift_jis", "big5", "windows-1252"] {
+        assert_eq!(
+            encode_text("😀", label, "none").unwrap_err().code,
+            ErrorCode::LossyEncoding
+        );
+        assert_eq!(
+            encode_text("", label, "utf8").unwrap_err().code,
+            ErrorCode::InvalidInput
+        );
+    }
+    assert_eq!(
+        encode_text("∞", "windows-1252", "none").unwrap_err().code,
+        ErrorCode::LossyEncoding
+    );
+    for (bytes, label) in [
+        (vec![0x81], "gbk"),
+        (vec![0xd8], "utf-16le"),
+        (vec![0xff, 0xfe, 0, 0], "utf-16be"),
+    ] {
+        assert!(decode_text(&bytes, Some(label)).is_err());
+    }
+    for label in ["utf-16le", "utf-16be"] {
+        let bytes = encode_text("无BOM😀", label, "none").unwrap();
+        let decoded = decode_text(&bytes, Some(label)).unwrap();
+        assert_eq!(decoded.text, "无BOM😀");
+        assert_eq!(decoded.bom, "none");
+    }
 }
 
 #[test]

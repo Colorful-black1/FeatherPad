@@ -5,6 +5,7 @@ pub mod services {
     pub mod directories;
     pub mod documents;
     pub mod encode;
+    pub mod encoding;
     pub mod external;
     pub mod file_ops;
     pub mod files;
