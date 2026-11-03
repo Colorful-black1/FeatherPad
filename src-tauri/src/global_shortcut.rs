@@ -117,6 +117,11 @@ impl GlobalShortcutState {
         enabled: bool,
         shortcut: &str,
     ) -> Result<bool, AppError> {
+        let parsed = if enabled {
+            Some(parse_shortcut(shortcut)?)
+        } else {
+            None
+        };
         let mut running = self
             .0
             .lock()
@@ -131,8 +136,7 @@ impl GlobalShortcutState {
         {
             return Ok(true);
         }
-        stop(&mut running);
-        let parsed = parse_shortcut(shortcut)?;
+        let parsed = parsed.expect("enabled shortcuts are parsed before locking");
         let stop_flag = Arc::new(AtomicBool::new(false));
         let worker_stop = stop_flag.clone();
         let worker_shortcut = shortcut.to_owned();
@@ -177,6 +181,9 @@ impl GlobalShortcutState {
         });
         match ready_rx.recv() {
             Ok(Ok(())) => {
+                // Keep the previous registration live until the replacement is confirmed.
+                // A format or OS-conflict failure therefore leaves the active shortcut intact.
+                stop(&mut running);
                 *running = Some(RunningShortcut {
                     shortcut: worker_shortcut,
                     stop: stop_flag,

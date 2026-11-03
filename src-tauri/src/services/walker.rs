@@ -5,6 +5,7 @@ use ignore::WalkBuilder;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashSet},
+    fs::File,
     path::Path,
     sync::{Arc, Mutex},
     time::Instant,
@@ -238,13 +239,20 @@ impl FileService {
                     increment(&mut skipped, "越出授权根");
                     continue;
                 }
-                if !seen.insert(normalized_key(&canonical)) {
-                    increment(&mut skipped, "重复文件身份");
-                    continue;
-                }
                 let metadata = canonical.metadata().map_err(io_error)?;
                 if !metadata.is_file() {
                     increment(&mut skipped, "非普通文件");
+                    continue;
+                }
+                let file = match File::open(&canonical) {
+                    Ok(file) => file,
+                    Err(_) => {
+                        increment(&mut skipped, "无法读取");
+                        continue;
+                    }
+                };
+                if !seen.insert(super::identity::identify(&file, &canonical)) {
+                    increment(&mut skipped, "重复文件身份");
                     continue;
                 }
                 let relative_path = relative
@@ -414,6 +422,49 @@ mod tests {
                 .map(|entry| &entry.display_name)
                 .collect::<Vec<_>>(),
             vec!["keep.txt"]
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn hard_link_aliases_are_returned_once_by_file_identity() {
+        let root = std::env::temp_dir().join(format!(
+            "featherpad-walk-identity-{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let source = root.join("source.txt");
+        fs::write(&source, b"same identity").unwrap();
+        fs::hard_link(&source, root.join("alias.txt")).unwrap();
+        let mut service = FileService::default();
+        let grant = service
+            .grants
+            .register_selection(&root, super::super::grants::GrantKind::Directory)
+            .unwrap();
+        let result = service
+            .walk_workspace(
+                WalkWorkspaceRequest {
+                    request_id: uuid::Uuid::new_v4().to_string(),
+                    roots: vec![grant],
+                    include: vec!["*.txt".into()],
+                    exclude: vec![],
+                    respect_gitignore: false,
+                    follow_directory_links: false,
+                    include_hidden: false,
+                    max_files: None,
+                },
+                Arc::new(WalkCoordinator::default()),
+            )
+            .unwrap();
+        assert_eq!(result.entries.len(), 1);
+        assert_eq!(
+            result
+                .skipped
+                .iter()
+                .find(|item| item.reason == "重复文件身份")
+                .map(|item| item.count),
+            Some(1)
         );
         fs::remove_dir_all(root).unwrap();
     }

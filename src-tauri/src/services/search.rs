@@ -226,10 +226,6 @@ impl FileService {
                 }
             };
             scanned_files = scanned_files.saturating_add(1);
-            if bytes.iter().take(8 * 1024).any(|byte| *byte == 0) {
-                increment(&mut skipped, "二进制");
-                continue;
-            }
             let decoded = match decode_basic(&bytes) {
                 Ok(decoded) => decoded,
                 Err(error) if error.code == ErrorCode::EncodingRequired => {
@@ -241,6 +237,15 @@ impl FileService {
                     continue;
                 }
             };
+            if decoded
+                .text
+                .chars()
+                .take(8 * 1024)
+                .any(|character| character == '\0')
+            {
+                increment(&mut skipped, "二进制");
+                continue;
+            }
             let mut matches = Vec::new();
             let mut file_truncated = false;
             for found in regex.find_iter(&decoded.text) {
@@ -420,7 +425,7 @@ fn busy() -> AppError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::grants::GrantKind;
+    use crate::services::{encoding::encode_text, grants::GrantKind};
     use std::fs;
 
     #[test]
@@ -433,6 +438,11 @@ mod tests {
         fs::create_dir_all(root.join("src")).unwrap();
         fs::write(root.join("src/a.txt"), "第一行\nAlpha alpha\n").unwrap();
         fs::write(root.join("src/b.log"), "Alpha\n").unwrap();
+        fs::write(
+            root.join("src/c.txt"),
+            encode_text("Leading\nAlpha\n", "utf-16le", "utf16le").unwrap(),
+        )
+        .unwrap();
         let mut service = FileService::default();
         let grant = service
             .grants
@@ -463,11 +473,20 @@ mod tests {
             )
             .unwrap();
         coordinator.finish(&request_id);
-        assert_eq!(result.total_matches, 2);
-        assert_eq!(result.files.len(), 1);
-        assert_eq!(result.files[0].matches[0].line, 2);
-        assert_eq!(result.files[0].matches[0].column, 1);
-        assert_eq!(result.files[0].revision.len(), 64);
+        assert_eq!(result.total_matches, 3);
+        assert_eq!(result.files.len(), 2);
+        let first = result
+            .files
+            .iter()
+            .find(|file| file.display_name == "a.txt")
+            .unwrap();
+        assert_eq!(first.matches[0].line, 2);
+        assert_eq!(first.matches[0].column, 1);
+        assert_eq!(first.revision.len(), 64);
+        assert!(result
+            .files
+            .iter()
+            .any(|file| file.display_name == "c.txt" && file.encoding == "utf-16le"));
         fs::remove_dir_all(root).unwrap();
     }
 }

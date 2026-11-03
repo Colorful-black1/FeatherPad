@@ -188,11 +188,16 @@ test('real Release cross-file replacement previews without writes, commits, roll
     await mkdir(folder);
     const ready = path.join(folder, 'ready.txt');
     const dirty = path.join(folder, 'dirty.txt');
+    const utf16 = path.join(folder, 'utf16.txt');
     const conflict = path.join(folder, 'conflict.txt');
     const original = 'replace-token ready\n';
     const dirtyOriginal = 'replace-token dirty\n';
+    const utf16Bom = Buffer.from([0xff, 0xfe]);
+    const utf16Original = Buffer.concat([utf16Bom, Buffer.from('replace-token wide\r\n中文', 'utf16le')]);
+    const utf16Replaced = Buffer.concat([utf16Bom, Buffer.from('replace-result wide\r\n中文', 'utf16le')]);
     await writeFile(ready, original, 'utf8');
     await writeFile(dirty, dirtyOriginal, 'utf8');
+    await writeFile(utf16, utf16Original);
     await writeFile(conflict, 'conflict-token original\n', 'utf8');
 
     await app.page.locator('button[aria-keyshortcuts="Control+Shift+E"]').click();
@@ -213,27 +218,31 @@ test('real Release cross-file replacement previews without writes, commits, roll
     await search.getByRole('button', { name: '预览跨文件替换', exact: true }).click();
     const dialog = app.page.locator('.replace-dialog');
     await expect(dialog).toBeVisible();
-    await expect(dialog.locator('section[data-replace-state="ready"]')).toHaveCount(1);
+    await expect(dialog.locator('section[data-replace-state="ready"]')).toHaveCount(2);
     await expect(dialog.locator('section[data-replace-state="dirtySkipped"]')).toHaveCount(1);
     await expect(dialog).toContainText('未保存缓冲');
     expect(await readFile(ready, 'utf8')).toBe(original);
     expect(await readFile(dirty, 'utf8')).toBe(dirtyOriginal);
+    expect(await readFile(utf16)).toEqual(utf16Original);
     const continueToConfirmation = dialog.getByRole('button', { name: '继续到最终确认', exact: true });
     await expect(continueToConfirmation).toBeEnabled();
     await continueToConfirmation.click({ timeout: 10_000 });
     await expect(dialog).toContainText('取消不会修改任何源文件');
     expect(await readFile(ready, 'utf8')).toBe(original);
     expect(await readFile(dirty, 'utf8')).toBe(dirtyOriginal);
+    expect(await readFile(utf16)).toEqual(utf16Original);
     await app.page.screenshot({ path: path.join(app.evidence, 'replacement-final-confirmation.png') });
     await dialog.getByRole('button', { name: '确认替换并写入磁盘', exact: true }).click();
     await expect(dialog.getByRole('heading', { name: '替换完成', exact: true })).toBeVisible();
     expect(await readFile(ready, 'utf8')).toBe('replace-result ready\n');
     expect(await readFile(dirty, 'utf8')).toBe(dirtyOriginal);
+    expect(await readFile(utf16)).toEqual(utf16Replaced);
     await expect(editor(app.page)).toContainText('unsaved buffer');
 
     await dialog.getByRole('button', { name: '回滚本次替换', exact: true }).click();
     await expect(dialog.getByRole('heading', { name: '回滚完成', exact: true })).toBeVisible();
     expect(await readFile(ready, 'utf8')).toBe(original);
+    expect(await readFile(utf16)).toEqual(utf16Original);
     await dialog.getByRole('button', { name: '完成', exact: true }).click();
 
     const rootGrant = await storedDirectoryGrant(app.state, folder);
@@ -289,10 +298,12 @@ test('real Release cross-file replacement previews without writes, commits, roll
       previewAndFinalConfirmationWriteNothing: true,
       dirtyBufferExcludedAndPreserved: true,
       committedBytesVerified: true,
+      utf16BomEncodingAndNewlinesPreserved: true,
       rollbackRestoredOriginalBytes: true,
       postCommitEditRejectedRollbackAndPreservedNewBytes: true,
       readySha256: sha256(await readFile(ready)),
       dirtySha256: sha256(await readFile(dirty)),
+      utf16Sha256: sha256(await readFile(utf16)),
       conflictSha256: sha256(await readFile(conflict)),
     }, null, 2));
   } finally {
@@ -322,25 +333,48 @@ test('real Release global activation defaults off, reports OS conflicts, restore
       return native.invoke('set_global_shortcut', { enabled: true, shortcut: 'Ctrl+Shift+F12' });
     });
     expect(conflict).toMatchObject({ ok: false, error: { code: 'CONFLICT' } });
-    await releaseConflict();
-    releaseConflict = undefined;
 
     const enabled = await app.page.evaluate(async () => {
       const native = Reflect.get(window, '__TAURI_INTERNALS__') as {
         invoke: (command: string, args: Record<string, unknown>) => Promise<unknown>;
       };
-      return native.invoke('set_global_shortcut', { enabled: true, shortcut: 'Ctrl+Shift+F11' });
+      return native.invoke('set_global_shortcut', { enabled: true, shortcut: 'Ctrl+Shift+F10' });
     });
     expect(enabled).toEqual({ ok: true, value: { enabled: true } });
 
+    const failedReplacement = await app.page.evaluate(async () => {
+      const native = Reflect.get(window, '__TAURI_INTERNALS__') as {
+        invoke: (command: string, args: Record<string, unknown>) => Promise<unknown>;
+      };
+      return native.invoke('set_global_shortcut', { enabled: true, shortcut: 'Ctrl+Shift+F12' });
+    });
+    expect(failedReplacement).toMatchObject({ ok: false, error: { code: 'CONFLICT' } });
+
     const owned = ['-ProcessId', String(app.child.pid), '-ExpectedExecutable', app.executable];
+    await runHelper(['-Action', 'Minimize', ...owned]);
+    await expect.poll(async () => JSON.parse(await runHelper(['-Action', 'Query', ...owned])).minimized)
+      .toBe(true);
+    await runHelper(['-Action', 'Press', '-Shortcut', 'Ctrl+Shift+F10']);
+    await expect.poll(async () => JSON.parse(await runHelper(['-Action', 'Query', ...owned])), { timeout: 10_000 })
+      .toMatchObject({ minimized: false, foreground: true });
+    await app.page.screenshot({ path: path.join(app.evidence, 'global-shortcut-restored-focus.png') });
+    await releaseConflict();
+    releaseConflict = undefined;
+
+    const switched = await app.page.evaluate(async () => {
+      const native = Reflect.get(window, '__TAURI_INTERNALS__') as {
+        invoke: (command: string, args: Record<string, unknown>) => Promise<unknown>;
+      };
+      return native.invoke('set_global_shortcut', { enabled: true, shortcut: 'Ctrl+Shift+F11' });
+    });
+    expect(switched).toEqual({ ok: true, value: { enabled: true } });
+
     await runHelper(['-Action', 'Minimize', ...owned]);
     await expect.poll(async () => JSON.parse(await runHelper(['-Action', 'Query', ...owned])).minimized)
       .toBe(true);
     await runHelper(['-Action', 'Press', '-Shortcut', 'Ctrl+Shift+F11']);
     await expect.poll(async () => JSON.parse(await runHelper(['-Action', 'Query', ...owned])), { timeout: 10_000 })
       .toMatchObject({ minimized: false, foreground: true });
-    await app.page.screenshot({ path: path.join(app.evidence, 'global-shortcut-restored-focus.png') });
 
     const disabled = await app.page.evaluate(async () => {
       const native = Reflect.get(window, '__TAURI_INTERNALS__') as {
@@ -361,6 +395,7 @@ test('real Release global activation defaults off, reports OS conflicts, restore
       defaultDisabled: true,
       externalRegistrationConflictVisible: true,
       enableSucceededAfterConflictCleared: true,
+      failedReplacementPreservedExistingRegistration: true,
       minimizedWindowRestoredAndFocusedByHotkey: true,
       disablingReleasedRegistrationAllowingExternalReservation: true,
     }, null, 2));

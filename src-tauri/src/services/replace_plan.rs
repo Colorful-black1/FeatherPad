@@ -1,4 +1,5 @@
 use super::{
+    encoding::encode_text,
     files::FileService,
     save_journal::write_new_verified,
     search::{compile_query, match_match},
@@ -199,10 +200,6 @@ impl FileService {
                     continue;
                 }
             };
-            if before_bytes.iter().take(8 * 1024).any(|byte| *byte == 0) {
-                skipped.push(format!("{}：二进制文件", entry.display_path));
-                continue;
-            }
             let before = match decode_basic(&before_bytes) {
                 Ok(decoded) => decoded,
                 Err(_) => {
@@ -210,16 +207,53 @@ impl FileService {
                     continue;
                 }
             };
-            let found = regex.find_iter(&before.text).collect::<Vec<_>>();
-            if found.is_empty() {
+            if before
+                .text
+                .chars()
+                .take(8 * 1024)
+                .any(|character| character == '\0')
+            {
+                skipped.push(format!("{}：二进制文件", entry.display_path));
                 continue;
             }
-            let matches = found.len().min(1_000);
-            total_matches = total_matches.saturating_add(matches);
+            let mut first_match = None;
+            let mut file_matches = 0usize;
+            for found in regex.find_iter(&before.text) {
+                first_match.get_or_insert((found.start(), found.end()));
+                file_matches = file_matches.saturating_add(1);
+                // One extra match is enough to reject the file safely without
+                // collecting an unbounded match list for a 20MiB input.
+                if file_matches > 1_000 {
+                    break;
+                }
+            }
+            let Some((first_start, first_end)) = first_match else {
+                continue;
+            };
+            if file_matches > 1_000 {
+                truncated = true;
+                skipped.push(format!(
+                    "{}：匹配超过单文件1000上限，本次计划不处理该文件",
+                    entry.display_path
+                ));
+                continue;
+            }
+            if total_matches.saturating_add(file_matches) > MAX_PLAN_MATCHES {
+                truncated = true;
+                skipped.push(format!(
+                    "{}：加入后超过计划10000匹配上限，本次计划不处理该文件",
+                    entry.display_path
+                ));
+                continue;
+            }
+            total_matches = total_matches.saturating_add(file_matches);
             let after_text = regex
                 .replace_all(&before.text, template.as_str())
                 .into_owned();
-            let after_bytes = after_text.as_bytes();
+            // Replacement must preserve the source byte encoding and BOM. The
+            // decoded text is UTF-8 internally, but writing its bytes directly
+            // would silently convert UTF-16 files during a search/replace.
+            let after_bytes = encode_text(&after_text, before.encoding, before.bom)?;
             total_bytes = total_bytes
                 .saturating_add(before_bytes.len() as u64)
                 .saturating_add(after_bytes.len() as u64);
@@ -231,7 +265,7 @@ impl FileService {
             }
             let id = uuid::Uuid::new_v4().to_string();
             let before_hash = digest(&before_bytes);
-            let after_hash = digest(after_bytes);
+            let after_hash = digest(&after_bytes);
             let dirty = dirty_paths.contains(&entry.display_path.replace('/', "\\").to_lowercase());
             let read_only = resolved.metadata.permissions().readonly();
             let (state, reason) = if dirty {
@@ -253,9 +287,8 @@ impl FileService {
                 write_new_verified(&plan_dir.join(relative), &before_bytes)?;
             }
             if let Some(relative) = &after_ref {
-                write_new_verified(&plan_dir.join(relative), after_bytes)?;
+                write_new_verified(&plan_dir.join(relative), &after_bytes)?;
             }
-            let first = found[0];
             files.push(ReplacePlanFile {
                 id,
                 reference: entry.reference,
@@ -268,13 +301,13 @@ impl FileService {
                 before_hash,
                 after_hash,
                 encoding: before.encoding.to_owned(),
-                matches: matches.try_into().unwrap_or(u32::MAX),
+                matches: file_matches.try_into().unwrap_or(u32::MAX),
                 preview_before: before.text.chars().take(2_000).collect(),
                 preview_after: after_text.chars().take(2_000).collect(),
                 before_snapshot_ref: before_ref,
                 after_snapshot_ref: after_ref,
             });
-            let _ = match_match(&before.text, first.start(), first.end());
+            let _ = match_match(&before.text, first_start, first_end);
         }
         if walked.truncated {
             skipped.push("目录条目达到上限，计划不完整。".into());
@@ -851,6 +884,64 @@ mod tests {
         );
         let manifest = load_manifest(&store.join(&plan.plan_id)).unwrap();
         assert_eq!(manifest.files[0].state, ReplaceFileState::RollbackConflict);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn commit_preserves_utf16_encoding_bom_and_original_newlines() {
+        let (root, store, mut service, grant) = fixture();
+        let path = root.join("workspace/a.txt");
+        fs::write(
+            &path,
+            encode_text("old value\r\n中文", "utf-16le", "utf16le").unwrap(),
+        )
+        .unwrap();
+        let plan = service
+            .create_replace_plan(
+                request(grant.clone()),
+                &store,
+                Arc::new(WalkCoordinator::default()),
+            )
+            .unwrap();
+        assert_eq!(plan.files[0].encoding, "utf-16le");
+        let outcome = service
+            .commit_replace_plan(
+                CommitReplacePlanRequest {
+                    plan_id: plan.plan_id,
+                    confirmation_token: plan.confirmation_token,
+                    selected: vec![FileRef {
+                        grant_id: grant.grant_id,
+                        relative_path: "a.txt".into(),
+                    }],
+                },
+                &store,
+            )
+            .unwrap();
+        assert_eq!(outcome.status, "completed");
+        let saved = fs::read(path).unwrap();
+        assert!(saved.starts_with(&[0xff, 0xfe]));
+        assert_eq!(decode_basic(&saved).unwrap().text, "new value\r\n中文");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn file_over_match_limit_is_reported_as_incomplete_instead_of_partially_replaced() {
+        let (root, store, service, grant) = fixture();
+        let path = root.join("workspace/a.txt");
+        fs::write(&path, vec!["old"; 1_001].join(" ")).unwrap();
+        let plan = service
+            .create_replace_plan(request(grant), &store, Arc::new(WalkCoordinator::default()))
+            .unwrap();
+        assert!(plan.files.is_empty());
+        assert!(plan.truncated);
+        assert!(plan
+            .skipped
+            .iter()
+            .any(|reason| reason.contains("1000上限")));
+        assert_eq!(
+            fs::read_to_string(path).unwrap(),
+            vec!["old"; 1_001].join(" ")
+        );
         fs::remove_dir_all(root).unwrap();
     }
 }

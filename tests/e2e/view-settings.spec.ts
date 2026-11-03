@@ -42,13 +42,18 @@ const persistedSize = (page: Page) => page.evaluate(key => {
   const value = JSON.parse(localStorage.getItem(key) ?? 'null') as { settings: { fontSize: number } } | null;
   return value?.settings.fontSize ?? null;
 }, storageKey);
+async function createDocumentAfterStartup(page: Page) {
+  await expect(page.getByRole('button', { name: '新建文本', exact: true })).toBeVisible();
+  await page.keyboard.press('Control+n');
+  await expect(page.getByRole('textbox', { name: '文档内容', exact: true })).toBeVisible();
+}
 
 test('Web mock: keyboard and real Ctrl+wheel persist editor font size without zooming the page or changing undo', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   await installSettings(page);
   await page.goto('/');
-  await page.keyboard.press('Control+n');
+  await createDocumentAfterStartup(page);
   const editor = page.getByRole('textbox', { name: '文档内容', exact: true });
   await editor.focus();
   await page.keyboard.insertText('缩放正文😀');
@@ -77,7 +82,7 @@ test('Web mock: keyboard and real Ctrl+wheel persist editor font size without zo
   await expect(editor).toHaveText('');
   await expect(page.getByRole('tab', { name: /无标题 1/ })).not.toContainText('●');
   await page.reload();
-  await page.keyboard.press('Control+n');
+  await createDocumentAfterStartup(page);
   await expect.poll(() => fontSize(page)).toBe('16px');
   await page.keyboard.press('Control+0');
   await expect.poll(() => fontSize(page)).toBe('14px');
@@ -89,7 +94,7 @@ test('Web mock: keyboard and real Ctrl+wheel persist editor font size without zo
 test('Web mock: a failed font preference write remains visible for the session and can be saved by the next change', async ({ page }) => {
   await installSettings(page);
   await page.goto('/');
-  await page.keyboard.press('Control+n');
+  await createDocumentAfterStartup(page);
   await page.evaluate(() => Reflect.set(window, 'fontFailWrites', true));
   await page.keyboard.press('Control+=');
   await expect.poll(() => fontSize(page)).toBe('15px');
@@ -105,7 +110,7 @@ test('Web mock: a failed font preference write remains visible for the session a
 test('Web mock: zoom respects maximum size, remapping, modal boundaries and editor-only wheel scope', async ({ page }) => {
   await installSettings(page, 40);
   await page.goto('/');
-  await page.keyboard.press('Control+n');
+  await createDocumentAfterStartup(page);
   await expect.poll(() => fontSize(page)).toBe('40px');
   await page.keyboard.press('Control+=');
   await expect.poll(() => fontSize(page)).toBe('40px');

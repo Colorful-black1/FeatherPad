@@ -25,6 +25,7 @@ export const test = base.extend({
               switch (command) {
                 case 'plugin:event|listen': return ++callbackId;
                 case 'plugin:event|unlisten': return null;
+                case 'set_global_shortcut': return { ok: true, value: { enabled: false } };
                 case 'load_session': return { ok: true, value: { session: null, warning: null, restoredGrantIds: [] } };
                 case 'list_recovery_entries': return { ok: true, value: {
                   entries: [], failures: [], startupWarnings: [], storageBytes: 0, saveTransactions: [],
