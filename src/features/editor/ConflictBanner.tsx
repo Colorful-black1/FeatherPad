@@ -43,7 +43,8 @@ export function ConflictBanner({ id, registry, coordinator, saving }: {
         setError('磁盘文件已进入只读大文件模式，请重新载入后按页查看。'); return;
       }
       setComparison({ version: document.summary.version, memory: document.state.doc.toString(),
-        disk: result.value.content.text, revision: result.value.metadata.diskRevision });
+        disk: result.value.content.text, revision: result.value.metadata.diskRevision,
+        memoryFormat: document.summary.format, diskFormat: result.value.format });
     } finally { submitting.current = false; setBusy(false); }
   }
 
@@ -78,7 +79,7 @@ export function ConflictBanner({ id, registry, coordinator, saving }: {
     </div>}
     {error && !comparison && <p className="notice" role="alert">{error}</p>}
     {comparison && <DiskComparison data={comparison} busy={busy} error={error}
-      stale={current?.version !== comparison.version} onCancel={finishDialog}
+      stale={current?.version !== comparison.version || (!!status?.revision && status.revision !== comparison.revision)} onCancel={finishDialog}
       onReload={() => void run(async () => {
         const result = await coordinator.reload(id, comparison.revision, comparison.version);
         if (result.ok) finishDialog(); return result;

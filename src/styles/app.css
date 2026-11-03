@@ -236,6 +236,9 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round
 .disk-comparison-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-3); }
 .disk-comparison-pane { min-width: 0; border: 1px solid var(--border); }
 .disk-comparison-pane h3 { margin: 0; padding: var(--space-2); font-size: 12px; border-bottom: 1px solid var(--border); }
+.disk-comparison-pane > small { display: block; padding: var(--space-2); }
+.disk-comparison-pane .diff-changed-line { background: var(--accent-soft); border-inline-start: 3px solid var(--accent); }
+.diff-navigation { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-block: var(--space-2); }
 .disk-comparison-pane > div { height: min(42vh, 360px); min-height: 100px; }
 @media (max-width: 700px) { .disk-comparison-grid { grid-template-columns: minmax(0, 1fr); } }
 .trash-dialog { width: min(560px, calc(100% - 32px)); max-height: calc(100% - 32px); padding: 0; border: 1px solid var(--border-strong); border-radius: var(--radius-md); background: var(--bg-surface); color: var(--text-primary); box-shadow: var(--shadow); }

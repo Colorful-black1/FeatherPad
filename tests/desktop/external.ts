@@ -80,9 +80,19 @@ export async function verifyNativeExternal(page: Page, dataDir: string, evidence
   await expect(comparison.getByLabel('磁盘快照', { exact: true })).toHaveText('外部第一版');
   await expect(comparison.getByLabel('磁盘快照', { exact: true })).toHaveAttribute('contenteditable', 'false');
   await page.screenshot({ path: path.join(evidence, 'native-release-external-comparison.png') });
+  const compared = await page.evaluate(async id => {
+    const native = Reflect.get(window, '__TAURI_INTERNALS__') as { invoke: (command: string, args: Record<string, unknown>) => Promise<unknown> };
+    return await native.invoke('get_disk_snapshot', { documentId: id }) as { ok: true; value: { metadata: { diskRevision: string } } };
+  }, tabId!.replace(/^tab-/, ''));
+  expect(compared.ok).toBe(true);
   await writeFile(source, '比较之后再次修改', 'utf8');
-  await comparison.getByRole('button', { name: '保护草稿并重新载入', exact: true }).click();
-  await expect(comparison.getByRole('alert')).toContainText('再次变化');
+  await expect(comparison.getByRole('button', { name: '保护草稿并重新载入', exact: true })).toBeDisabled();
+  await expect(comparison.getByRole('status').filter({ hasText: '版本已有新变化' })).toBeVisible();
+  const staleReload = await page.evaluate(async ({ id, revision }) => {
+    const native = Reflect.get(window, '__TAURI_INTERNALS__') as { invoke: (command: string, args: Record<string, unknown>) => Promise<unknown> };
+    return await native.invoke('reload_document', { documentId: id, expectedDiskRevision: revision });
+  }, { id: tabId!.replace(/^tab-/, ''), revision: compared.value.metadata.diskRevision });
+  expect(staleReload).toMatchObject({ ok: false, error: { code: 'CONFLICT' } });
   expect(await readFile(source, 'utf8')).toBe('比较之后再次修改');
   await expect(editor()).toHaveText(draft);
   await comparison.getByRole('button', { name: '保留当前内容' }).click();

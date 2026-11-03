@@ -9,7 +9,7 @@ test.beforeEach(async ({ page }) => {
     const metadata = () => ({ displayPath: 'E:\\fixture\\external.txt', sizeBytes: text.length,
       modifiedAt: '2026-11-02T00:00:00Z', isReadOnly: false, diskRevision: revision });
     const opened = () => ({ documentId, ref, metadata: metadata(), format, mode: 'normal', warnings: [],
-      content: { kind: 'text', text, newlineMap: { documentVersion: 0, endings: [] } } });
+      content: { kind: 'text', text, newlineMap: { documentVersion: 0, endings: Array.from(text.matchAll(/\n/g), () => 'lf') } } });
     Reflect.set(window, 'externalFixture', {
       change: (value: string, next: string) => { text = value; revision = next.repeat(64); missing = false; },
       remove: () => { missing = true; },
@@ -75,8 +75,8 @@ test('stale comparison cannot reload; a new confirmation protects and loads the 
   await banner.getByRole('button', { name: '比较磁盘', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '比较当前缓冲与磁盘', exact: true });
   await change('disk two', 'c');
-  await dialog.getByRole('button', { name: '保护草稿并重新载入', exact: true }).click();
-  await expect(dialog.getByRole('alert')).toContainText('再次变化');
+  await expect(dialog.getByRole('button', { name: '保护草稿并重新载入', exact: true })).toBeDisabled();
+  await expect(dialog.getByRole('status').filter({ hasText: '版本已有新变化' })).toBeVisible();
   await expect(editor).toHaveText('original draft');
   await dialog.getByRole('button', { name: '保留当前内容' }).click();
   await banner.getByRole('button', { name: '重新核对', exact: true }).click();
@@ -100,4 +100,27 @@ test('external deletion retains clean text and Save As returns a clean buffer', 
   await banner.getByRole('button', { name: '另存当前内容…', exact: true }).click();
   await expect(page.getByRole('status')).toContainText('未修改');
   await expect(banner).not.toBeVisible();
+});
+
+test('conflict diff highlights and navigates separate changes in read-only snapshots without modifying the buffer', async ({ page }) => {
+  const editor = page.locator('.document-view .cm-content');
+  await editor.focus(); await page.keyboard.press('Control+a');
+  await page.keyboard.insertText('a\nlocal1\nb\nlocal2\nc');
+  await page.evaluate(() => {
+    (Reflect.get(window, 'externalFixture') as { change: (text: string, rev: string) => void }).change('a\ndisk1\nb\ndisk2\nc', 'b');
+    window.dispatchEvent(new Event('focus'));
+  });
+  await page.getByRole('button', { name: '比较磁盘', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '比较当前缓冲与磁盘', exact: true });
+  await expect(dialog.getByRole('status').filter({ hasText: '差异 1 / 2' })).toBeVisible();
+  await expect(dialog.locator('.diff-changed-line')).toHaveCount(4);
+  await dialog.getByRole('button', { name: '下一处差异', exact: true }).click();
+  await expect(dialog.getByRole('status').filter({ hasText: '差异 2 / 2' })).toBeVisible();
+  await dialog.getByRole('button', { name: '上一处差异', exact: true }).click();
+  const memory = dialog.getByLabel('当前缓冲快照', { exact: true });
+  await expect(memory).toHaveAttribute('contenteditable', 'false');
+  await memory.focus(); await page.keyboard.insertText('SHOULD NOT WRITE');
+  await expect(memory).toHaveText('alocal1blocal2c');
+  await dialog.getByRole('button', { name: '保留当前内容', exact: true }).click();
+  await expect(editor).toHaveText('alocal1blocal2c');
 });
