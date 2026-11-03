@@ -148,11 +148,10 @@ export class SessionCoordinator {
         continue;
       }
       if (sources.has(view.documentId)) continue;
-      const opened = await this.openTransport(
-        view.fileRef,
-        view.openMode === 'normal' ? undefined : view.openMode,
-        view.documentId,
-      );
+      const mode = view.openMode === 'normal' ? undefined : view.openMode;
+      const opened = view.encodingOverride
+        ? await this.openTransport(view.fileRef, mode, view.documentId, view.encodingOverride)
+        : await this.openTransport(view.fileRef, mode, view.documentId);
       if (!opened.ok) {
         warnings.push(`“${view.title}”无法自动打开：${opened.error.message}`);
         continue;
@@ -273,6 +272,8 @@ export class SessionCoordinator {
           : null,
         fileRef: record?.source?.ref ?? null,
         diskRevision: record?.source?.metadata.diskRevision ?? null,
+        ...(record?.source && record.source.mode !== 'text-preview' && record.source.format.encoding !== 'utf-8'
+          ? { encodingOverride: record.source.format.encoding } : {}),
         openMode: record?.source?.mode === 'text-preview' ? 'text-preview'
           : record?.fragment && (record.source?.metadata.sizeBytes ?? 0) > 100 * 1024 * 1024
           ? 'head-preview'

@@ -117,6 +117,22 @@ describe('SessionCoordinator', () => {
     vi.restoreAllMocks();
   });
 
+  it('restores the source disk encoding independently of an unsaved target conversion', async () => {
+    const id = crypto.randomUUID() as DocumentId;
+    const base = clean(id, 'legacy.txt');
+    const source: OpenDocument = { ...base, format: { ...base.format, encoding: 'gbk' } };
+    const h = fixture(); h.registry.openDocument(source);
+    expect(h.registry.changeFormat(id, 0, { ...base.format, encoding: 'utf-8' })).toMatchObject({ ok: true });
+    h.registry.acknowledgeRecovery(id, 1, crypto.randomUUID());
+    await h.coordinator.flush();
+    const manifest = h.save.mock.calls[0]![0];
+    expect(manifest.windows[0]!.views[0]).toMatchObject({ encodingOverride: 'gbk', dirty: true, bufferVersion: 1 });
+    const next = fixture({ open: async () => ({ ok: true, value: source }) });
+    const restored = await next.coordinator.restoreSources(manifest, [source.ref.grantId]);
+    expect(next.open).toHaveBeenCalledWith(source.ref, undefined, id, 'gbk');
+    expect(restored.sources.get(id)?.format.encoding).toBe('gbk');
+  });
+
   it('restores verified receipt tabs, order, active view, cursor and scroll', () => {
     const h = fixture();
     const first = crypto.randomUUID() as DocumentId;

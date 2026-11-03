@@ -204,6 +204,7 @@ export interface SessionView {
   fileRef: FileRef | null;
   diskRevision: DiskRevision | null;
   openMode: OpenMode;
+  encodingOverride?: string;
   title: string;
   displayPath: string | null;
   isPreview: boolean;

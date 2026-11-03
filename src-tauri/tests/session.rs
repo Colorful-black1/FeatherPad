@@ -53,6 +53,7 @@ fn manifest() -> SessionManifest {
                 }),
                 disk_revision: Some("a".repeat(64)),
                 open_mode: "normal".into(),
+                encoding_override: None,
                 title: "草稿.txt".into(),
                 display_path: Some("E:\\fixtures\\草稿.txt".into()),
                 is_preview: false,
@@ -169,4 +170,34 @@ fn corrupt_session_is_quarantined_without_claiming_a_restored_session() {
             .file_name()
             .to_string_lossy()
             .starts_with("manifest.corrupt-")));
+}
+
+#[test]
+fn session_encoding_choice_is_optional_bounded_and_preserved_without_new_authority() {
+    let (_, store) = fixture();
+    for encoding in featherpad_lib::services::encoding::LABELS {
+        let mut session = manifest();
+        session.windows[0].views[0].encoding_override = Some(encoding.into());
+        store.save(&session).unwrap();
+        let loaded = store.load().unwrap().session.unwrap();
+        assert_eq!(
+            loaded.windows[0].views[0].encoding_override.as_deref(),
+            Some(encoding)
+        );
+        assert_eq!(
+            loaded.windows[0].views[0].file_ref,
+            session.windows[0].views[0].file_ref
+        );
+    }
+    let mut invalid = manifest();
+    invalid.windows[0].views[0].encoding_override = Some("system-default".into());
+    assert_eq!(
+        store.save(&invalid).unwrap_err().code,
+        ErrorCode::InvalidInput
+    );
+    let raw = serde_json::to_value(manifest()).unwrap();
+    assert!(raw["windows"][0]["views"][0]
+        .get("encodingOverride")
+        .is_none());
+    assert!(serde_json::from_value::<SessionManifest>(raw).is_ok());
 }

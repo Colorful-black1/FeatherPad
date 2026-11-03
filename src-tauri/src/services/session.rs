@@ -199,6 +199,10 @@ pub(crate) fn validate_manifest(manifest: SessionManifest) -> Result<SessionMani
                     revision.len() != 64 || !revision.bytes().all(|byte| byte.is_ascii_hexdigit())
                 })
                 || view.file_ref.is_some() != view.disk_revision.is_some()
+                || view
+                    .encoding_override
+                    .as_deref()
+                    .is_some_and(|encoding| !super::encoding::LABELS.contains(&encoding))
                 || !matches!(
                     view.open_mode.as_str(),
                     "normal" | "head-preview" | "text-preview"

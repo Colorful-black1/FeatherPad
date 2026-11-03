@@ -2,6 +2,7 @@ import type { ChosenFiles, ChosenFolder, CreateEntryRequest, DirectoryEntry, Dir
 import { callCommand, isAppError, isRecord } from './invoke';
 import type { LoadedSaveTransaction, SaveTransactionCandidate } from '../shared/contracts/files';
 import type { OpenMode } from '../shared/contracts/files';
+import { encodingIds, type EncodingId } from '../shared/contracts/encoding';
 
 const nonemptyString = (value: unknown): value is string => typeof value === 'string' && value.length > 0;
 const safeCount = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
@@ -276,6 +277,7 @@ export function isSessionManifest(value: unknown): value is SessionManifest {
         || (view.diskRevision !== null && (typeof view.diskRevision !== 'string' || !revision(view.diskRevision)))
         || ((view.fileRef === null) !== (view.diskRevision === null))
         || (view.openMode !== 'normal' && view.openMode !== 'head-preview' && view.openMode !== 'text-preview')
+        || (view.encodingOverride !== undefined && !encodingIds.includes(view.encodingOverride as EncodingId))
         || !nonemptyString(view.title) || view.title.length > 32_767
         || (view.displayPath !== null && (!nonemptyString(view.displayPath) || view.displayPath.length > 32_767))
         || typeof view.isPreview !== 'boolean' || typeof view.dirty !== 'boolean'

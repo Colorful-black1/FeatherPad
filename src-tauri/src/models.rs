@@ -432,6 +432,8 @@ pub struct SessionView {
     pub file_ref: Option<FileRef>,
     pub disk_revision: Option<String>,
     pub open_mode: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub encoding_override: Option<String>,
     pub title: String,
     pub display_path: Option<String>,
     pub is_preview: bool,

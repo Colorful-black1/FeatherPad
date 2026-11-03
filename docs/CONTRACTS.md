@@ -134,6 +134,8 @@ export interface SaveAck {
 | `check_encoding` | `{text,encoding,documentVersion}` | `{encoding,documentVersion,lossCount,samples:{offset,length}[],replacementText:string|null}` | 无磁盘写入；64MiB上限；位置为UTF16偏移，最多32例；有损时仅生成问号替代候选，须版本绑定确认后形成可撤销变更 |
 
 T201恢复边界（2026-11-03）：恢复正文始终是UTF8逻辑文本，目标编码是意图；GBK等目标暂不能表示的新输入仍必须可恢复。恢复/回收前快照严格校验编码/BOM组合、版本和逐行映射，但不要求正文已能按目标编码落盘；真正保存仍完整严格编码，不使用替代字符。未知编码、错误映射、摘要/配额/授权断言保持不变。
+
+T201会话补充：schema1的`SessionView`增加可选`encodingOverride`（限8个受支持canonical label），旧清单缺省仍按BOM/严格UTF8读取。记录来源磁盘的编码而非尚未保存的转换意图；恢复正文的目标格式继续来自校验过的恢复manifest。编码字段不授予文件权限，仍使用既有FileRef/identity/revision恢复流程。
 | `release_document` | `{documentId}` | `{released:boolean}` | 仅释放资源，不删除文件/恢复快照 |
 | `discard_recovery` | `{documentId,throughVersion}` | `{documentId,throughVersion,discarded:true}` | 显式放弃授权；先持久化标记、再清理对应版本快照，失败不关闭；同文档保存/回收互斥 |
 
