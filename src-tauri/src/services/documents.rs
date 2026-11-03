@@ -28,6 +28,7 @@ pub struct DocumentRegistry {
     fragment_documents: HashSet<String>,
     text_previews: HashSet<String>,
     chunk_handles: HashMap<String, String>,
+    encodings: HashMap<String, String>,
 }
 
 impl DocumentRegistry {
@@ -47,6 +48,9 @@ impl DocumentRegistry {
         }
         self.release(id);
         self.replace(id, lease);
+        if let Some(encoding) = source.encodings.remove(id) {
+            self.encodings.insert(id.to_owned(), encoding);
+        }
         if source.fragment_documents.contains(id) {
             self.fragment_documents.insert(id.to_owned());
         }
@@ -146,6 +150,16 @@ impl DocumentRegistry {
         self.documents.get(id)
     }
 
+    pub(super) fn encoding(&self, id: &str) -> Option<&str> {
+        self.encodings.get(id).map(String::as_str)
+    }
+
+    pub(super) fn set_encoding(&mut self, id: &str, encoding: &str) {
+        if self.documents.contains_key(id) {
+            self.encodings.insert(id.to_owned(), encoding.to_owned());
+        }
+    }
+
     pub(super) fn release(&mut self, id: &str) -> bool {
         let document = self.documents.remove(id);
         if let Some(document) = &document {
@@ -153,6 +167,7 @@ impl DocumentRegistry {
         }
         let was_fragment = self.fragment_documents.remove(id);
         self.text_previews.remove(id);
+        self.encodings.remove(id);
         let handles_before = self.chunk_handles.len();
         self.chunk_handles.retain(|_, owner| owner != id);
         document.is_some() || was_fragment || handles_before != self.chunk_handles.len()

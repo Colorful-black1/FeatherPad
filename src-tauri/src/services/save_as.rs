@@ -65,6 +65,7 @@ impl ExistingDestination {
                 file: self.before.file,
             },
         );
+        let encoding = request.format.encoding.clone();
         let ack = writer.save_existing(
             request.into_save_request(self.before.metadata.disk_revision),
             root,
@@ -92,6 +93,7 @@ impl ExistingDestination {
                     file: after.file,
                 },
             );
+            service.documents.set_encoding(&self.source_id, &encoding);
         }
         Ok(SaveAsAck {
             document_id: self.source_id,

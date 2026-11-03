@@ -212,6 +212,9 @@ impl PreparedSave {
                 file: after.file,
             },
         );
+        service
+            .documents
+            .set_encoding(&self.request.document_id, &self.request.format.encoding);
         self.journal.stage(SaveStage::Committed)?;
         if windows_file::delete_owned_backup(
             &self.journal.manifest.backup,

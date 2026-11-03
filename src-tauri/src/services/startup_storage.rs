@@ -250,7 +250,11 @@ pub fn load_save_transaction(
         manifest.format.encoding.as_str(),
         manifest.format.bom.as_str(),
     ) {
-        ("utf-8" | "utf-16le" | "utf-16be", "none") => &[],
+        (
+            "utf-8" | "utf-16le" | "utf-16be" | "gb18030" | "gbk" | "shift_jis" | "big5"
+            | "windows-1252",
+            "none",
+        ) => &[],
         ("utf-8", "utf8") => &[0xef, 0xbb, 0xbf],
         ("utf-16le", "utf16le") => &[0xff, 0xfe],
         ("utf-16be", "utf16be") => &[0xfe, 0xff],
@@ -261,6 +265,8 @@ pub fn load_save_transaction(
         std::str::from_utf8(bytes)
             .map_err(|_| invalid())?
             .to_owned()
+    } else if !matches!(manifest.format.encoding.as_str(), "utf-16le" | "utf-16be") {
+        super::encoding::decode_text(bytes, Some(&manifest.format.encoding))?.text
     } else {
         let (pairs, remaining) = bytes.as_chunks::<2>();
         if !remaining.is_empty() {

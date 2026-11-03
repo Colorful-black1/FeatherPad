@@ -8,7 +8,7 @@ use super::{
         decode_window, read_stream_snapshot, NewlineStats, StreamEncoding, HEAD_PREVIEW_BYTES,
         INITIAL_CHUNK_BYTES, MAX_CHUNK_BYTES, MAX_WINDOW_BYTES,
     },
-    text::{decode_basic, normalize_newlines},
+    text::normalize_newlines,
 };
 use crate::models::{
     AppError, ErrorCode, FileRef, Newline, NewlineMap, OpenDocument, OpenDocumentContent,
@@ -67,9 +67,25 @@ impl FileService {
         requested_mode: OpenRequestMode,
         preferred_document_id: Option<&str>,
     ) -> Result<OpenDocument, AppError> {
+        self.open_document_with_encoding(reference, requested_mode, preferred_document_id, None)
+    }
+
+    pub fn open_document_with_encoding(
+        &mut self,
+        reference: FileRef,
+        requested_mode: OpenRequestMode,
+        preferred_document_id: Option<&str>,
+        encoding: Option<&str>,
+    ) -> Result<OpenDocument, AppError> {
+        if encoding.is_some_and(|label| !super::encoding::LABELS.contains(&label)) {
+            return Err(AppError::new(ErrorCode::Unsupported, "不支持所选编码。"));
+        }
         let (file, path) = self.grants.open_file(&reference)?;
         if preferred_document_id.is_none() {
-            if let Some(id) = self.documents.owner_at(&path) {
+            if let Some(id) = self.documents.owner_at(&path).or_else(|| {
+                self.documents
+                    .owner_of(&super::identity::identify(&file, &path))
+            }) {
                 // A path reopened between an external replacement and its notification
                 // focuses its existing buffer; only explicit reload may adopt a new lease.
                 if !self.documents.is_fragment(id) {
@@ -122,7 +138,13 @@ impl FileService {
             }
             _ => {}
         }
-        self.open_editable_snapshot(reference, file, initial_size, preferred_document_id)
+        self.open_editable_snapshot(
+            reference,
+            file,
+            initial_size,
+            preferred_document_id,
+            encoding,
+        )
     }
 
     fn open_editable_snapshot(
@@ -131,6 +153,7 @@ impl FileService {
         file: std::fs::File,
         initial_size: u64,
         preferred_document_id: Option<&str>,
+        encoding: Option<&str>,
     ) -> Result<OpenDocument, AppError> {
         let limit = OpenPolicy::for_size(initial_size)
             .editable_read_limit()
@@ -156,7 +179,7 @@ impl FileService {
             }
             Err(error) => return Err(error),
         };
-        let decoded = decode_basic(&snapshot.bytes)?;
+        let decoded = super::encoding::decode_text(&snapshot.bytes, encoding)?;
         let source = decoded.text.as_str();
         let long_line = has_long_line(source);
         let degraded =
@@ -207,6 +230,7 @@ impl FileService {
             },
             preferred_document_id,
         )?;
+        self.documents.set_encoding(&document_id, decoded.encoding);
         Ok(OpenDocument {
             document_id,
             canonical_identity,
@@ -464,7 +488,7 @@ mod tests {
             .unwrap();
         let (file, _) = service.grants.open_file(&reference).unwrap();
         let opened = service
-            .open_editable_snapshot(reference, file, CHUNKED_THRESHOLD - 1, None)
+            .open_editable_snapshot(reference, file, CHUNKED_THRESHOLD - 1, None, None)
             .unwrap();
         assert_eq!(opened.mode, "large-readonly");
         assert!(matches!(

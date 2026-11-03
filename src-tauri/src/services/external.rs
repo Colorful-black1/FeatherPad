@@ -25,7 +25,20 @@ impl FileService {
         id: &str,
         expected_revision: &str,
     ) -> Result<OpenDocument, AppError> {
-        let (document, registry) = self.disk_document(id)?;
+        self.reopen_with_encoding(
+            id,
+            expected_revision,
+            self.documents.encoding(id).map(str::to_owned).as_deref(),
+        )
+    }
+
+    pub fn reopen_with_encoding(
+        &mut self,
+        id: &str,
+        expected_revision: &str,
+        encoding: Option<&str>,
+    ) -> Result<OpenDocument, AppError> {
+        let (document, registry) = self.disk_document_with_encoding(id, encoding)?;
         if document.metadata.disk_revision != expected_revision {
             return Err(AppError::new(
                 ErrorCode::Conflict,
@@ -45,6 +58,14 @@ impl FileService {
     }
 
     fn disk_document(&self, id: &str) -> Result<(OpenDocument, DocumentRegistry), AppError> {
+        self.disk_document_with_encoding(id, self.documents.encoding(id))
+    }
+
+    fn disk_document_with_encoding(
+        &self,
+        id: &str,
+        encoding: Option<&str>,
+    ) -> Result<(OpenDocument, DocumentRegistry), AppError> {
         let lease = self
             .documents
             .get(id)
@@ -71,8 +92,12 @@ impl FileService {
         } else {
             OpenRequestMode::Auto
         };
-        let document =
-            reader.open_document_with_mode_and_id(lease.reference.clone(), mode, Some(id))?;
+        let document = reader.open_document_with_encoding(
+            lease.reference.clone(),
+            mode,
+            Some(id),
+            encoding,
+        )?;
         let next_lease = reader
             .documents
             .get(id)

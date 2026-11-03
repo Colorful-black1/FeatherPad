@@ -19,6 +19,7 @@
 - 复查环境探针exit 0，复用现有工具；新增`encoding.rs`以固定Windows代码页严格转换GB18030/GBK/Shift_JIS/Big5/Windows-1252，接入已有快照编码，BOM不匹配、非法字节、默认替代和best-fit均拒绝；仅开启已锁windows-sys功能，无新依赖/安装。
 - `cargo test --manifest-path src-tauri/Cargo.toml --locked --offline --test save_encoding` exit 0，6项通过：独立已知字节、混合换行逐字节往返、GB18030补充平面字符、无BOM UTF16、不可表示/非法字节/不匹配BOM均覆盖。`cargo fmt` exit 0；T201尚在实现，下一步接入编码打开/重开、可撤销格式与逐行映射，真实冒烟与G2统一验收待后续。
 - T201.b：CodeMirror新增逐行格式StateField与undo反向效果，保留未改换行、新增行用主导类型（平手取首个），格式转换增加版本/dirty并能撤销；保存Ack记录捕获格式，新格式不被旧Ack清clean。仅在换行变化时复制映射，普通逐键输入复用映射。相关3文件41项与`tsc --noEmit`均exit 0；界面、编码重开和混合/UTF16可写入口尚待接通，T201保持进行中。
+- T201.c原生：文件服务支持显式编码打开/按revision安全重开；比较、重载、身份别名、保存/另存后的当前编码均保留，未完成传统编码保存事务可读成恢复副本。定向Rust encoding_reopen/open_document共14项通过，后续编码保存/另存/事务读取3文件16项通过（均exit 0）；实际源字节与有损拒绝已核对。测试首次编译因DTO无PartialEq改用完整序列化内容比较后通过。当前尚未接新的IPC/UI，不记T201完成。
 
 ### 2026-11-03 T115完成：M1/G1统一验收通过并停止
 
