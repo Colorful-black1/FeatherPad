@@ -2,7 +2,7 @@
 
 **快开文件，专心编辑。** 一个免费、离线、面向常用文档、配置和代码文本的轻量桌面编辑器。
 
-本目录是轻羽桌面编辑器的独立工程。**M0/G0、M1/G1、M2/G2已通过（2026-11-03）；用户已确认开始M3，当前T311/G3统一验收。** M1交付真实Tauri Release、原生打开/保存/另存/副本/全部保存、外部冲突、回收站、恢复/热退出、文件内搜索替换、最近记录、设置与主题、只读文本试开、键盘导航和无障碍能力。M2补齐完整编码与逐行换行、自动保存、磁盘冲突diff、多根/收藏/工作区文件、安全遍历与监听、拖放移动、标签/双分栏、多光标/列选择/折叠/导航、全文搜索、跨文件替换、全局唤起与隐私清理，并有Web Playwright、真实桌面Playwright和实际Windows文件系统证据。完整v1仍需要M3–M5；最新范围、边界和证据见 [M1验收](docs/acceptance/M1.md)、[M2验收](docs/acceptance/M2.md) 与 [PROGRESS](tasks/PROGRESS.md)。
+本目录是轻羽桌面编辑器的独立工程。**M0/G0、M1/G1、M2/G2、M3/G3已通过（2026-11-03）；M4/T401等待用户确认。** M1交付真实Tauri Release、原生打开/保存/另存/副本/全部保存、外部冲突、回收站、恢复/热退出、文件内搜索替换、最近记录、设置与主题、只读文本试开、键盘导航和无障碍能力。M2补齐完整编码与逐行换行、自动保存、磁盘冲突diff、多根/收藏/工作区文件、安全遍历与监听、拖放移动、标签/双分栏、多光标/列选择/折叠/导航、全文搜索、跨文件替换、全局唤起与隐私清理。M3补齐Markdown三模式、安全资源与链接、受限HTML、离线HTML/真实多页PDF导出、格式化与文本工具、只读diff、图片和HTML安全预览，并有Web Playwright、真实桌面Playwright和实际Windows文件系统证据。完整v1仍需M4–M5；最新范围、边界和证据见 [M3验收](docs/acceptance/M3.md) 与 [PROGRESS](tasks/PROGRESS.md)。
 
 ## 立即开始
 
@@ -41,7 +41,7 @@ powershell.exe -NoProfile -File .\scripts\Probe-Environment.ps1
 | 预览隔离、文件可靠性、本地隐私 | [SECURITY-AND-RELIABILITY](docs/SECURITY-AND-RELIABILITY.md) |
 | 分阶段实施、任务与进度 | [plan](tasks/plan.md)、[todo](tasks/todo.md)、[PROGRESS](tasks/PROGRESS.md) |
 | 质量、性能与故障验收 | [QUALITY-GATES](docs/QUALITY-GATES.md) |
-| M0/M1/M2阶段验收 | [M0](docs/acceptance/M0.md)、[M1](docs/acceptance/M1.md)、[M2](docs/acceptance/M2.md) |
+| M0/M1/M2/M3阶段验收 | [M0](docs/acceptance/M0.md)、[M1](docs/acceptance/M1.md)、[M2](docs/acceptance/M2.md)、[M3](docs/acceptance/M3.md) |
 | Agent首次开发、loop、恢复提示 | [AGENT-START](docs/AGENT-START.md)、[AGENTS](AGENTS.md) |
 | 本次交付实际检查结果 | [DELIVERY-CHECK](docs/DELIVERY-CHECK.md) |
 
@@ -59,7 +59,7 @@ powershell.exe -NoProfile -File .\scripts\Probe-Environment.ps1
 ## 环境约束与当前事实
 
 本机复用 Node22.13.0、pnpm10.32.1、Rust1.99.1、VS2022 C++工具、Windows SDK和WebView2；没有升级全局工具链。项目依赖已在E盘安装，原生编译和运行的实际证据按阶段记录。
-项目依赖已精确安装并双锁，原生Rust/Tauri、Release WebView2离线重载和IPC越界拒绝已实际验证，见 [M0验收](docs/acceptance/M0.md)。保存/新目标另存/副本/全部保存及标签关闭保护见 [M1验收](docs/acceptance/M1.md)；编码、工作区、编辑效率、搜索替换与可靠性补齐见 [M2验收](docs/acceptance/M2.md)。开发使用上述会话入口后运行`pnpm dev`；日常每个T只做最小自检，M收尾按 [M统一验收清单](tasks/todo.md) 执行一次全量回归。G2最终真实桌面回归为17 passed；完整v1仍需M3–M5。
+项目依赖已精确安装并双锁，原生Rust/Tauri、Release WebView2离线重载和IPC越界拒绝已实际验证，见 [M0验收](docs/acceptance/M0.md)。保存/新目标另存/副本/全部保存及标签关闭保护见 [M1验收](docs/acceptance/M1.md)；编码、工作区、编辑效率、搜索替换与可靠性补齐见 [M2验收](docs/acceptance/M2.md)；Markdown、格式化、diff、安全预览和导出见 [M3验收](docs/acceptance/M3.md)。开发使用上述会话入口后运行`pnpm dev`；日常每个T只做最小自检，M收尾按 [M统一验收清单](tasks/todo.md) 执行一次全量回归。G3最终真实桌面回归为19 passed；完整v1仍需M4–M5。
 
 优先复用 `E:\Codeing` 和默认目录的已有环境；确实缺失时，**所有新增开发工具/SDK/浏览器/安装包/缓存只能放在 `E:\Codeing` 下**，默认 `E:\Codeing\featherpad-dev`。全局Node不切换，系统PATH不修改。
 

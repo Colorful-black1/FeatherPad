@@ -17,7 +17,7 @@ import { verifyNativeMvp } from './mvp';
 import { verifyNativeWorkspaceTransfer } from './workspace-transfer';
 
 const runFile = promisify(execFile);
-type ChooserAction = 'open' | 'open-folder' | 'open-degraded' | 'open-large-chunk' | 'open-head-preview' | 'open-fault' | 'save' | 'cancel' | 'inspect-external' | 'confirm-external' | 'reject-external';
+type ChooserAction = 'open' | 'open-folder' | 'open-degraded' | 'open-large-chunk' | 'open-head-preview' | 'open-fault' | 'save' | 'cancel' | 'overwrite' | 'confirm-system' | 'confirm-overwrite' | 'reject-overwrite' | 'inspect-external' | 'confirm-external' | 'reject-external';
 
 export interface NativeScenarioContext {
   page: Page;

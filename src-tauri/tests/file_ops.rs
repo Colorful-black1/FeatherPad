@@ -540,6 +540,41 @@ fn moves_directories_and_rebinds_open_descendants_without_losing_document_ids() 
 }
 
 #[test]
+fn freshly_modified_directory_tickets_can_move_without_a_timestamp_settling_delay() {
+    let source_root = owned_root("fresh-move-source");
+    let target_root = owned_root("fresh-move-target");
+    fs::create_dir_all(&source_root).unwrap();
+    fs::create_dir_all(&target_root).unwrap();
+    let mut service = FileService::default();
+    let source = root_reference(&mut service, &source_root);
+    let target = root_reference(&mut service, &target_root);
+    for index in 0..8 {
+        let name = format!("Directory-{index}");
+        fs::create_dir(source_root.join(&name)).unwrap();
+        fs::write(
+            source_root.join(&name).join("child.txt"),
+            b"controlled child",
+        )
+        .unwrap();
+        let entry = list_entry(&mut service, &source, &name);
+        let moved = service
+            .transfer_entry(transfer_request(
+                &entry.reference,
+                &target,
+                TransferMode::Move,
+                entry.revision,
+                uuid::Uuid::new_v4().to_string(),
+            ))
+            .unwrap();
+        assert!(moved.source_removed);
+        assert_eq!(
+            fs::read(target_root.join(&name).join("child.txt")).unwrap(),
+            b"controlled child"
+        );
+    }
+}
+
+#[test]
 fn transfer_rejects_stale_sources_self_nesting_and_entries_inside_roots() {
     let source_root = owned_root("transfer-guard");
     fs::create_dir_all(source_root.join("Folder/Inside")).unwrap();

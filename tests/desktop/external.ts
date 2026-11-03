@@ -24,6 +24,13 @@ export async function verifyNativeExternal(page: Page, dataDir: string, evidence
     try { return await readFile(target, 'utf8'); }
     catch (error) { if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return null; throw error; }
   }
+  async function readWithoutTransientLock(target: string) {
+    try { return await readFile(target, 'utf8'); }
+    catch (error) {
+      if (error instanceof Error && 'code' in error && (error.code === 'EBUSY' || error.code === 'EPERM')) return null;
+      throw error;
+    }
+  }
 
   // Observe actual subscriptions without replacing any native result or filesystem IO.
   await page.evaluate(() => {
@@ -140,7 +147,7 @@ export async function verifyNativeExternal(page: Page, dataDir: string, evidence
   await banner().getByRole('button', { name: '重新核对', exact: true }).click();
   await banner().getByRole('button', { name: '覆盖磁盘…', exact: true }).click();
   await nativeAction('confirm-external', source);
-  await expect.poll(() => readFile(source, 'utf8')).toBe(finalDraft);
+  await expect.poll(() => readWithoutTransientLock(source)).toBe(finalDraft);
   await expect(page.getByRole('status')).toContainText('未修改');
   await remember('explicitOverwrite', source);
 

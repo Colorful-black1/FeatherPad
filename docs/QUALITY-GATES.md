@@ -1,6 +1,6 @@
 # 质量关卡与验收策略
 
-以下为验收策略和目标；实际已通过范围以 [PROGRESS](../tasks/PROGRESS.md) 及阶段验收记录为准。当前M0/G0、M1/G1、M2/G2已通过（2026-11-03），G2的29项feature ID与专项证据见 [M2验收](acceptance/M2.md)。G3–G5尚未通过；下一项T301/M3等待用户确认。未附证据的后续指标仍不得视为已验证。计划见 [plan](../tasks/plan.md)。
+以下为验收策略和目标；实际已通过范围以 [PROGRESS](../tasks/PROGRESS.md) 及阶段验收记录为准。当前M0/G0、M1/G1、M2/G2、M3/G3已通过（2026-11-03），G3的16项feature ID与专项证据见 [M3验收](acceptance/M3.md)。G4–G5尚未通过；下一项T401/M4等待用户确认。未附证据的后续指标仍不得视为已验证。计划见 [plan](../tasks/plan.md)。
 
 ## 1. 验收证据格式
 

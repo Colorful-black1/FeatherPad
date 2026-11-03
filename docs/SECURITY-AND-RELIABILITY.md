@@ -22,6 +22,7 @@
 - 不允许 script、iframe、object、embed、表单提交、on* 属性、javascript/vbscript URL、可执行SVG。SVG只做隔离的图像解码/安全展示，不内联其DOM。
 - 远程图片在v1预览/导出中始终阻止网络请求，显示“远程图片已阻止”；用户可显式在系统浏览器查看原URL，应用不抓取/缓存。不要让追踪图片绕过“无遥测”。本地图片可在已授权工作区中解析；越界资源需明确新授权。
 - HTML 文件第一版提供源码编辑与安全静态预览（F-EDIT-020 / T310）；静态预览禁止执行脚本、禁止表单、禁任意网络、禁访问应用 IPC。它不是网页运行环境。
+- Windows固定Wry版本须兑现main-frame-only初始化作用域，并限制其独立`window.ipc`包装只注入主框架；真实Markdown/HTML子frame同时断言无Tauri与Wry桥。固定可信阅读运行时只通过source/channel/version校验过的窄消息处理任务/滚动/复制，用户HTML不获得脚本权限。补丁和许可证见`src-tauri/vendor/wry/PATCH.md`。
 - 生产 CSP 明确配置 default/script/style/img/connect 等来源，只放行实际必需的 Tauri IPC 与受限资源协议；不因预览失效删除 CSP。开发服务器仅 loopback 并隔离生产配置。
 - HTML 导出为清洗后的独立离线文件：文档、受控样式和允许的本地图片内嵌，单资源≤20MiB、总嵌入≤50MiB；缺失/越权/超限列出后选择“带占位继续/取消”，不静默改为附属资源目录。PDF由同一隔离文档真实生成，禁止渲染期间主动联网。
 

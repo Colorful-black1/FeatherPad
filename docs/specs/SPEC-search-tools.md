@@ -127,10 +127,10 @@ T309实现：精确主选区优先，否则全文，其他选区不参与且多�
 
 建议结构 `src/features/search-tools/{query,replace,format,transform}/`、`src-tauri/src/services/search_tools/`、`tests/unit/search-tools/`、`tests/integration/search-tools/`、`tests/e2e/search-tools/`。TypeScript camelCase/PascalCase，Rust snake_case；计划不可变，副作用在commit边界，状态journal显式可恢复。单元测试query语义/转换/formatter保真，集成真实临时磁盘与故障注入/并发，e2e验证预览/确认/取消/部分完成/回滚交互；真实Windows锁定/磁盘满/进程终止另有演练。
 
-`pnpm test:e2e`仅覆盖Web/mock bridge；Windows真实磁盘替换/回滚使用待建立的 `pnpm test:desktop -- search-tools` 与Rust集成/故障测试。命令约定（未搭建、未执行）：`pnpm test:unit -- search-tools`、`pnpm test:integration -- search-tools`、`pnpm test:e2e -- search-tools`、`pnpm test`、`pnpm lint`、`pnpm typecheck`、`pnpm build`、`cargo test --manifest-path src-tauri/Cargo.toml search_tools`、`cargo fmt --manifest-path src-tauri/Cargo.toml --check`、`cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings`。
+`pnpm test:e2e`仅覆盖Web/mock bridge；实际CodeMirror和真实Worker的格式预览/应用/undo/异常终止由`tests/e2e/format.spec.ts`、`transforms.spec.ts`覆盖。Windows磁盘搜索/替换/回滚已有`pnpm exec playwright test --config desktop.config.ts --project reliability --project g2-special`和Rust实际文件测试，见[M2报告](../acceptance/M2.md)；M3格式化/转换的证据和边界见[M3报告](../acceptance/M3.md)。统一命令按todo的M验收清单执行，格式化不会自动保存。
 
 ## Boundaries 与未决风险
 
 Always：范围/版本可见、预览与写盘分离、备份先落盘、取消/部分完成可诊断。Ask first（后续实施变更）：扩展正则语法/外部formatter插件、改变备份清理或SQL支持方言、放开dirty跨文件提交。Never：无预览二次确认批量写盘、无条件回滚覆盖后续内容、宣称任意进程全局原子、执行文档/项目代码。
 
-待验证：前后端正则语义一致与worker终止、编码流式边界、formatters保真/包体、批次恢复journal在崩溃瞬间的状态判定。验证不足需阻止危险写入并报告，不减少完整v1功能清单。
+现有正则、编码、formatter保真和Worker终止证据分别见M2/M3报告；完整批次重启/崩溃瞬间矩阵和最终包体/性能仍需M5验证。验证不足需阻止危险写入并报告，不减少完整v1功能清单。

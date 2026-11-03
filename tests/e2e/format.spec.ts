@@ -1,5 +1,36 @@
 import { expect, test } from './test-fixture';
 
+test('a terminated real formatting worker reports failure, preserves source and can retry with one undo', async ({ page }) => {
+  await page.addInitScript(() => {
+    if (window.top !== window) return;
+    const RealWorker = window.Worker; let first = true;
+    window.Worker = class extends RealWorker {
+      constructor(url: string | URL, options?: WorkerOptions) {
+        super(url, options);
+        if (first && String(url).includes('format.worker')) {
+          first = false;
+          // Deliberate fault: kill the actual worker and deliver the platform error notification.
+          setTimeout(() => { this.terminate(); this.dispatchEvent(new ErrorEvent('error', { message: 'Controlled worker termination' })); }, 0);
+        }
+      }
+    };
+  });
+  await page.goto('/'); await page.getByRole('button', { name: '新建文本', exact: true }).click();
+  await page.getByRole('combobox', { name: '语言模式', exact: true }).selectOption('json');
+  const source = '{"中文":1,"value":2}', editor = page.locator('.cm-content');
+  await editor.focus(); await page.keyboard.insertText(source); await page.getByRole('button', { name: '格式化…', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '格式化文档', exact: true });
+  await dialog.getByRole('button', { name: '生成格式预览', exact: true }).click();
+  await expect(dialog.getByRole('alert')).toContainText('格式化器无法启动');
+  await expect(dialog.getByRole('button', { name: '应用为一次撤销', exact: true })).toBeDisabled();
+  await expect(page.locator('.cm-line')).toHaveText([source]);
+  await dialog.getByRole('button', { name: '生成格式预览', exact: true }).click();
+  await expect(dialog.getByRole('region', { name: '格式化预览', exact: true })).toBeVisible();
+  await dialog.getByRole('button', { name: '应用为一次撤销', exact: true }).click();
+  await expect(page.locator('.cm-line')).not.toHaveText([source]); await editor.focus(); await page.keyboard.press('Control+z');
+  await expect(page.locator('.cm-line')).toHaveText([source]);
+});
+
 test('format worker previews JSONC before applying one undo step and Java remains unsupported', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: '新建文本', exact: true }).click();
@@ -72,6 +103,7 @@ test('SQL requires its visible dialect and YAML formatting preserves anchors, co
   await expect(dialog.locator('pre')).toContainText('`name`');
   await expect(dialog.locator('pre')).toContainText(':id');
   await dialog.getByRole('button', { name: '应用为一次撤销', exact: true }).click();
+  await expect(dialog).toBeHidden();
   await editor.focus(); await page.keyboard.press('Control+z');
   await expect(page.locator('.cm-line')).toHaveText(['select `name` from `users` where id=:id;']);
   await language.selectOption('yaml'); await editor.focus(); await page.keyboard.press('Control+a');
@@ -84,6 +116,7 @@ test('SQL requires its visible dialect and YAML formatting preserves anchors, co
   await expect(dialog.locator('pre')).toContainText('|-');
   await expect(dialog.locator('pre')).toContainText('# 注释');
   await dialog.getByRole('button', { name: '应用为一次撤销', exact: true }).click();
+  await expect(dialog).toBeHidden();
   await editor.focus(); await page.keyboard.press('Control+z');
   expect((await page.locator('.cm-line').allTextContents()).join('\n')).toBe(yaml);
 });

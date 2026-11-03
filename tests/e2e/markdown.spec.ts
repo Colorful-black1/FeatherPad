@@ -158,6 +158,7 @@ test('Web mock: Markdown local resources require a base, sanitize SVG, retain fa
   expect(await page.evaluate(() => Reflect.get(window, 'previewReads'))).toEqual([]);
   await page.getByRole('button', { name: '授权或选择资源目录…', exact: true }).click();
   const frame = page.frameLocator('iframe[title*="Markdown阅读"]');
+  await expect(frame.locator('img')).toHaveCount(2);
   await expect(frame.getByRole('img', { name: '像素', exact: true })).toBeVisible();
   await expect(frame.getByRole('img', { name: '安全SVG', exact: true })).toBeVisible();
   const svg = await frame.getByRole('img', { name: '安全SVG', exact: true }).getAttribute('src');

@@ -231,12 +231,17 @@ fn read_entries(root: &FileRef, directory: &Path) -> Result<Vec<DirectoryEntry>,
             } else {
                 "file"
             };
-            output.push(directory_entry(
-                root,
-                name,
-                kind,
-                attributes & FILE_ATTRIBUTE_HIDDEN != 0,
-                attributes & FILE_ATTRIBUTE_READONLY != 0,
+            // NTFS enumeration can retain an old directory last-write timestamp
+            // after child changes. Destructive operations validate fresh metadata,
+            // so issue directory tickets from the same source. Flat file listings
+            // keep the bounded FindFirstFileEx fast path.
+            let revision = if kind == "directory" {
+                revision_from_metadata(
+                    &name,
+                    kind,
+                    &std::fs::symlink_metadata(directory.join(&name)).map_err(io_error)?,
+                )?
+            } else {
                 revision_from_windows_fields(
                     &data,
                     kind,
@@ -244,7 +249,15 @@ fn read_entries(root: &FileRef, directory: &Path) -> Result<Vec<DirectoryEntry>,
                         kind,
                         ((data.nFileSizeHigh as u64) << 32) | data.nFileSizeLow as u64,
                     ),
-                ),
+                )
+            };
+            output.push(directory_entry(
+                root,
+                name,
+                kind,
+                attributes & FILE_ATTRIBUTE_HIDDEN != 0,
+                attributes & FILE_ATTRIBUTE_READONLY != 0,
+                revision,
             ));
         }
         if unsafe { FindNextFileW(handle.0, &raw mut data) } == 0 {

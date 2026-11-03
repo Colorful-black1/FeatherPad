@@ -166,6 +166,27 @@ test('real Release reads a shared Markdown buffer offline in an isolated preview
     expect(pdfBytes.toString('latin1')).toMatch(/\/Type\s*\/Page\b/);
     expect(pdfBytes.subarray(-1024).toString()).toContain('%%EOF');
     expect(sha(await readFile(source))).toBe(originalHash);
+    // Real OS cancellation and the application's separate overwrite confirmation.
+    await page.getByRole('button', { name: '导出…', exact: true }).click();
+    await exporter.getByRole('combobox', { name: '导出格式', exact: true }).selectOption('pdf');
+    await exporter.getByRole('spinbutton', { name: 'PDF上边距', exact: true }).fill('20');
+    await exporter.getByRole('spinbutton', { name: 'PDF左边距', exact: true }).fill('10');
+    await exporter.getByRole('button', { name: '带占位继续导出…', exact: true }).click();
+    await chooser.select('cancel');
+    await expect(exporter.getByRole('alert')).toContainText('已取消PDF位置选择');
+    const a4Target = path.join(dataDir, 'A4纵向与覆盖.pdf');
+    await writeFile(a4Target, 'controlled-original-pdf');
+    const beforeOverwrite = sha(await readFile(a4Target));
+    await exporter.getByRole('button', { name: '带占位继续导出…', exact: true }).click();
+    await chooser.select('overwrite', a4Target); await chooser.select('confirm-system', a4Target);
+    await chooser.select('reject-overwrite', a4Target);
+    await expect(exporter.getByRole('alert')).toContainText('已取消覆盖');
+    expect(sha(await readFile(a4Target))).toBe(beforeOverwrite);
+    await exporter.getByRole('button', { name: '带占位继续导出…', exact: true }).click();
+    await chooser.select('overwrite', a4Target); await chooser.select('confirm-system', a4Target);
+    await chooser.select('confirm-overwrite', a4Target); await expect(exporter).toBeHidden({ timeout: 65_000 });
+    const a4Bytes = await readFile(a4Target); expect(a4Bytes.subarray(0, 5).toString()).toBe('%PDF-');
+    expect(sha(await readFile(source))).toBe(originalHash);
     await page.locator('.cm-content').focus();
     await page.keyboard.press('Control+z');
     await page.locator('.cm-content').focus();
@@ -182,7 +203,9 @@ test('real Release reads a shared Markdown buffer offline in an isolated preview
       realChooser: true, sharedBufferAndUndo: true, browserOffline: true, sourceBytesUnchanged: true,
       localImages: true, svgSanitized: true, directoryAuthorization: true, restrictedHtml: true, localLinkOpened: true,
       htmlTarget, htmlSha256: sha(await readFile(htmlTarget)), htmlOfflineReopened: true, dirtySnapshotExported: true,
-      pdfTarget, pdfSha256: sha(pdfBytes), realPrintToPdfStream: true, pdfPaper: 'letter', pdfLandscape: true }, null, 2));
+      pdfTarget, pdfSha256: sha(pdfBytes), realPrintToPdfStream: true, pdfPaper: 'letter', pdfLandscape: true,
+      a4Target, a4Sha256: sha(a4Bytes), a4Portrait: true, a4MarginsMm: { top: 20, right: 15, bottom: 15, left: 10 },
+      nativePickerCancellation: true, overwriteDeniedBytesUnchanged: true, overwriteExplicitlyConfirmed: true }, null, 2));
   } finally {
     await writeFile(path.join(evidence, 'diagnostics.json'), JSON.stringify(diagnostics, null, 2));
     if (child.exitCode === null) child.kill();

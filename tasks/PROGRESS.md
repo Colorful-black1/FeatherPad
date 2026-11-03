@@ -4,8 +4,8 @@
 
 - 产品名称：**轻羽 FeatherPad**。
 - 当前交付：完整产品方案、86项功能矩阵、模块规格、UI规范与离线交互原型、技术/本机环境文档、M0–M5实现计划、57个开发任务、agent执行入口。
-- 产品代码：**M0/G0、M1/G1、M2/G2均已通过（2026-11-03）**。M1提供真实文件打开/编辑/保存/恢复闭环；M2补齐编码与换行、多根/收藏/工作区文件、安全遍历与监听、拖放移动、分栏/多光标/折叠/导航、全文搜索、跨文件替换、全局唤起与隐私清理。完整v1仍需M3–M5。
-- 当前：**用户已于2026-11-03确认继续，M3/T301–T309实现完成，当前T311/G3统一验收**。M2统一验收节点已提交为`a7e8070`。每完成一个M阶段都停止并等待确认，不自动进入下一阶段。
+- 产品代码：**M0/G0、M1/G1、M2/G2、M3/G3均已通过（2026-11-03）**。M1提供真实文件打开/编辑/保存/恢复闭环；M2补齐编码与换行、多根/收藏/工作区文件、安全遍历与监听、拖放移动、分栏/多光标/折叠/导航、全文搜索、跨文件替换、全局唤起与隐私清理；M3补齐Markdown、格式化、文本工具、diff、图片/HTML安全预览和离线HTML/PDF导出。完整v1仍需M4–M5。
+- 当前：**M3/G3已通过并停止，M4/T401等待用户确认**。T301–T311已完成；下一步不得自动进入M4。每完成一个M阶段都停止并等待确认。
 - 本次交付检查：详见 [DELIVERY-CHECK](../docs/DELIVERY-CHECK.md)，不代表产品关卡G0–G5通过。
 
 ## 已核查环境
@@ -13,6 +13,16 @@
 复用本机Node22.13.0、pnpm10.32.1、Rust1.99.1、VS2022 Build Tools C++、Windows SDK10.0.26100.0、WebView2。未安装新开发工具。严格遵守新增安装与缓存仅在E:\Codeing，入口见 [ENVIRONMENT](../docs/ENVIRONMENT.md)。
 
 ## 实施证据（未来逐任务追加）
+
+### 2026-11-03 T311完成：M3/G3统一验收通过并停止
+
+- M3的16个feature ID已统一验收：F-MD-001..011、F-SEARCH-010..012、F-EDIT-019..020。逐项范围、真实/mock边界、导出和专项数据见[M3验收](../docs/acceptance/M3.md)。
+- 最终静态/单元/Web/Rust检查均exit 0：typecheck、ESLint、Rust fmt/clippy通过；TS 51 files/312 tests；Rust 188 passed/0 failed/2 ignored；Web Playwright 102 passed/53.5秒。最终命令日志`.artifacts/T311/logs/{typecheck-final-r2,lint-final-r2,test-unit,web-all-r3,test-integration-final,cargo-test-complete}.log`。
+- 最终真实Release桌面Playwright `pnpm test:desktop:all`为19 passed/4.1分钟/exit 0，日志`.artifacts/T311/logs/desktop-all-final-r3.log`，原生结果根`.artifacts/native/2026-11-03T14-55-34-057Z-d77d5059-45d8-473c-a65d-0e610e762e8c/`。覆盖M1/M2回归和Markdown、HTML/PDF、图片/HTML隔离、diff等M3路径。
+- 100,000文件目录200项首屏172.424ms/300ms且cursor正常签发；PDF实际生成Letter横向7页、A4纵向5页，中文/图片/末尾文字/分页经pypdf与Poppler核对；16MiB真满盘写入失败保留原文件和事务。证据`.artifacts/T311/{directory-scale.json,pdf/semantic-check.json,logs/pdf-full-volume-r3.log}`。
+- 最终Release `src-tauri/target/release/featherpad.exe`为17,103,872 bytes，SHA256 `E723DD0B97E70123B78F77086D4ED73231EEE0740737CA34DDF4DB5413E650C2`，Windows 11 build26100、WebView2 156.0.4314.58；构建日志`.artifacts/T311/logs/release-build-final.log`，主JS 1,125.75kB/gzip356.27kB警告保留。可试用包`.artifacts/T311/FeatherPad-M3-portable-E723DD0B.zip`为6,239,458 bytes，SHA256 `8245608A307A9D3210942D2AFCF34D533C69B498EF42FB493E79C5956501C792`。
+- 最终完整桌面首轮`external`场景在覆盖后立即读取时遇到Windows短时EBUSY；只把EBUSY/EPERM纳入既有轮询重试，最终字节、未修改状态及失败日志全部保留，修复后完整19/19通过。Wry主frame隔离、目录revision和PDF平台量化决策见M3报告；未删除测试、失败产物或降低安全/性能门槛。
+- M3/G3完成；不进入T401/M4，等待用户确认。
 
 ### 2026-11-03 T310实现完成：图片、静态HTML与双文件diff（G3待验）
 

@@ -202,8 +202,17 @@ test('real Release persists recent files, repairs missing grants, and honors pri
       ]);
       expect(Object.keys(entry.ref).sort()).toEqual(['grantId', 'relativePath']);
     }
-    await expect.poll(async () => readFile(grantsFile, 'utf8')).toContain(fileEntry!.ref.grantId);
-    await expect.poll(async () => readFile(grantsFile, 'utf8')).toContain(workspaceEntry!.ref.grantId);
+    const committedGrants = async () => {
+      try { return await readFile(grantsFile, 'utf8'); }
+      catch (error: unknown) {
+        // First persistence and atomic replacement may briefly have no pathname.
+        // Other IO errors must still fail, and both durable grant assertions remain.
+        if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') return '';
+        throw error;
+      }
+    };
+    await expect.poll(committedGrants).toContain(fileEntry!.ref.grantId);
+    await expect.poll(committedGrants).toContain(workspaceEntry!.ref.grantId);
     await app.page.screenshot({ path: path.join(evidence, 'recent-recorded.png') });
     await stop(app);
 

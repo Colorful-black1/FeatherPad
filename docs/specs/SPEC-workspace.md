@@ -99,6 +99,8 @@ T113实现状态（2026-11-02，已通过相关真实Release）：最近列表�
 
 ## Boundaries 与未决风险
 
+G3回归补正：Windows目录项revision从实时symlink_metadata读取，避免NTFS枚举缓存的目录写入时间与操作前校验不同而假冲突；普通文件仍批量枚举。无等待子项变更后移动的真实文件测试及100k首屏300ms复核记录在[M3报告](../acceptance/M3.md)，未降低revision校验或性能门槛。
+
 Always：磁盘操作走file-core，树操作后核实结果，根授权和实际canonical目标一致，循环/限额可见。Ask first（实施变更）：目录权限扩大、工作区格式迁移、默认ignore策略或跨卷覆盖行为改变。Never：永久删除降级、移除根等于删目录、监听事件直接覆盖dirty正文、无限跟随链接。
 
 待验证：Windows网络盘监听/短路径别名、跨卷取消恢复、gitignore性能、特殊reparse point与长路径行为。未验证场景必须给状态与重试，不能伪装为空目录。

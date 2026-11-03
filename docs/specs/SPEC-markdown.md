@@ -93,10 +93,10 @@ T306实施决策：复用已锁定Wry/WebView2 COM依赖，创建没有Tauri初�
 
 单元验证GFM AST/slug/sourceMap/sanitizer/URL规范化；集成验证真实隔离内容+CSP+asset scope和PDF后端；e2e验证三模式/任务撤销/同步滚动/选择路径导出。安全测试断言无网络、无IPC、无任意文件读取，不只比HTML字符串。导出用固定文档进行语义文本提取+页数/页面人工检查，避免字体差异造成脆弱像素测试。
 
-`pnpm test:e2e`仅覆盖Web/mock bridge；真实离线HTML/PDF写出和WebView2安全通过待建立的 `pnpm test:desktop -- markdown` 与Rust适配器测试，不以mock/打印框代替。命令约定（未搭建、未执行）：`pnpm test:unit -- markdown`、`pnpm test:integration -- markdown`、`pnpm test:e2e -- markdown`、`pnpm test`、`pnpm lint`、`pnpm typecheck`、`pnpm build`；Rust适配器 `cargo test --manifest-path src-tauri/Cargo.toml markdown_export`，通用 `cargo fmt --manifest-path src-tauri/Cargo.toml --check`、`cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings`。
+`pnpm test:e2e`仅覆盖Web/mock bridge。T301–T306已接入`pnpm exec playwright test --config desktop.config.ts --project markdown`，验证实际离线Tauri、原生选择器、任务undo、受限HTML/图片、本地链接及真正HTML/PDF写出；`content`项目补图片/HTML隔离和系统外链。Rust `preview_resources`/`preview_links`与export_target行为测试校验实际授权/文件系统；`scripts/Test-ExportFullVolume.ps1`显式运行Release满盘服务专项，之后必须重新`pnpm build`再进行桌面验收。命令与真实/mock范围统一见[M3报告](../acceptance/M3.md)，不以打印框或截图代替文件结果。
 
 ## Boundaries 与未决风险
 
 Always：清理和隔离双重防护、资源scope检查、版本化映射、离线真实导出。Ask first（后续实施变更）：允许远程资源、扩大HTML allowlist、改变PDF后端/资源授权或加入执行型图表。Never：直接渲染未清理HTML、给内容IPC权限、自动网络图片、将打印对话框当PDF完成。
 
-待验证：Tauri2与WebView2 PDF API接入、最低runtime版本、中文字体/分页质量、sanitizer对SVG/CSS/编码绕过、源映射稳定性。PDF后端是M3前置技术验证，不是可延期的可选能力。
+Tauri2/WebView2 PrintToPdfStream已实际接入；中文多页PDF和清洗/资源/源映射证据见[M3报告](../acceptance/M3.md)。最低runtime及Windows10真实目标、完整跨设备/断电故障与最终性能仍需M4/M5验证，不能由当前Windows11结果推导。

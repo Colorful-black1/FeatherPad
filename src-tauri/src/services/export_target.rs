@@ -183,6 +183,67 @@ fn busy() -> AppError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn failed_export_keeps_existing_bytes_and_never_creates_a_complete_destination() {
+        let root =
+            std::env::temp_dir().join(format!("featherpad-export-fault-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&root).unwrap();
+        let path = root.join("original.pdf");
+        fs::write(&path, b"original-pdf-bytes").unwrap();
+        let mut service = FileService::default();
+        // A real non-directory journal prevents durable staging; no target may change.
+        let journal = root.join("blocked-journal");
+        fs::write(&journal, b"not-a-directory").unwrap();
+        assert!(ExportTarget::capture(&mut service, &path)
+            .unwrap()
+            .commit(&mut service, b"%PDF-new", &journal)
+            .is_err());
+        assert_eq!(fs::read(&path).unwrap(), b"original-pdf-bytes");
+        let missing = root.join("new.pdf");
+        assert!(ExportTarget::capture(&mut service, &missing)
+            .unwrap()
+            .commit(&mut service, b"%PDF-new", &journal)
+            .is_err());
+        assert!(!missing.exists());
+        assert!(ExportTarget::capture(&mut service, &path)
+            .unwrap()
+            .commit(&mut service, b"", &root.join("journal"))
+            .is_err());
+        assert_eq!(fs::read(&path).unwrap(), b"original-pdf-bytes");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn locked_export_target_keeps_bytes_and_preserves_failed_transaction_evidence() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let root =
+            std::env::temp_dir().join(format!("featherpad-export-lock-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&root).unwrap();
+        let path = root.join("locked.pdf");
+        fs::write(&path, b"original-locked-bytes").unwrap();
+        let mut service = FileService::default();
+        let target = ExportTarget::capture(&mut service, &path).unwrap();
+        // Permit reading/writing while denying deletion/atomic replacement, as a PDF viewer can.
+        let lock = fs::OpenOptions::new()
+            .read(true)
+            .share_mode(3)
+            .open(&path)
+            .unwrap();
+        let journal = root.join("journal");
+        assert!(target
+            .commit(&mut service, b"%PDF-replacement", &journal)
+            .is_err());
+        assert_eq!(fs::read(&path).unwrap(), b"original-locked-bytes");
+        assert!(fs::read_dir(&journal).unwrap().next().is_some());
+        assert!(fs::read_dir(&root).unwrap().any(|entry| entry
+            .unwrap()
+            .file_name()
+            .to_string_lossy()
+            .ends_with(".tmp")));
+        drop(lock);
+    }
+
     #[test]
     fn byte_export_is_atomic_and_rejects_changes_after_confirmation() {
         let root = std::env::temp_dir().join(format!("featherpad-export-{}", uuid::Uuid::new_v4()));
