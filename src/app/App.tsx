@@ -10,7 +10,7 @@ import { FavoriteList } from '../features/workspace/FavoriteList';
 import { favoriteGrantIds, favoritesSetting, mutateFavorites, readFavorites } from '../features/workspace/favorites';
 import { useFavorites } from './use-favorites';
 import { useWorkspaceFile } from './use-workspace-file';
-import { EditorDocument } from '../features/editor/EditorDocument';
+import { DocumentContent } from '../features/markdown/MarkdownView';
 import { ReadOnlyOpenChoices } from '../features/editor/ReadOnlyOpenChoices';
 import { offerReadOnlyOpen, type ReadOnlyOpenCandidate } from '../features/editor/read-only-open';
 import { EditorStatus } from '../features/editor/EditorStatus';
@@ -1262,15 +1262,15 @@ export function App() {
           <div className={`editor-group ${tabState.focusedGroup === 'primary' ? 'editor-group-focused' : ''}`}
             onMouseDown={() => { if (primaryEditorId) tabs.focusPrimary(primaryEditorId); }}>
             {secondaryEditorId && <div className="editor-group-label">主编辑组</div>}
-            {primaryEditorId && <EditorDocument key={`primary-${primaryEditorId}`} registry={documents}
-              id={primaryEditorId} group="primary" autoFocus={autoFocus && tabState.focusedGroup === 'primary'} />}
+            {primaryEditorId && <DocumentContent key={`primary-${primaryEditorId}`} registry={documents}
+              id={primaryEditorId} group="primary" dark={dark} autoFocus={autoFocus && tabState.focusedGroup === 'primary'} />}
           </div>
           {secondaryEditorId && <div className={`editor-group ${tabState.focusedGroup === 'secondary' ? 'editor-group-focused' : ''}`}
             onMouseDown={() => tabs.focusSecondary(secondaryEditorId)}>
             <div className="editor-group-label">第二编辑组<button type="button" className="plain-button"
               onClick={() => tabs.closeSplit()}>关闭</button></div>
-            <EditorDocument key={`secondary-${secondaryEditorId}`} registry={documents}
-              id={secondaryEditorId} group="secondary" autoFocus={autoFocus && tabState.focusedGroup === 'secondary'} />
+            <DocumentContent key={`secondary-${secondaryEditorId}`} registry={documents}
+              id={secondaryEditorId} group="secondary" dark={dark} autoFocus={autoFocus && tabState.focusedGroup === 'secondary'} />
           </div>}
         </div>
       </> : <div className="welcome">

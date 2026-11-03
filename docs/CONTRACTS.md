@@ -276,7 +276,7 @@ export interface TextJobResult {
 }
 ```
 
-取消/超时通过终止对应 Worker 或显式 cancel。文档已变化则不应用迟到结果。格式化结果作为单次 undo transaction；不是成功保存。Markdown HTML 清洗在 renderer 的最后边界执行，Worker 返回不是可信 HTML。预览本地图片只通过受限 asset resolver；不能把裸任意路径组成可读取URL。HTML导出重新清洗、资源内嵌且超限提供占位/取消；PDF通过无IPC/无网络的隔离文档，使用Windows WebView2 PrintToPdf/PrintToPdfStream适配器生成真正本地PDF并验证写出；仅弹系统打印框不算完成。具体输出需M3原生验证。
+取消/超时通过终止对应 Worker 或显式 cancel。文档已变化则不应用迟到结果。格式化结果作为单次 undo transaction；不是成功保存。Markdown HTML 清洗在 renderer 的最后边界执行，Worker 返回不是可信 HTML。T301宿主仅允许同源frame与本地Worker，内容frame采用空sandbox和独立禁脚本/网络CSP；Wry Windows初始化补丁保证仅顶层frame获得Tauri桥。预览本地图片只通过受限 asset resolver；不能把裸任意路径组成可读取URL。HTML导出重新清洗、资源内嵌且超限提供占位/取消；PDF通过无IPC/无网络的隔离文档，使用Windows WebView2 PrintToPdf/PrintToPdfStream适配器生成真正本地PDF并验证写出；仅弹系统打印框不算完成。具体输出需M3原生验证。
 
 ## 6. 桌面与恢复 desktop
 

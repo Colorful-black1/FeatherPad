@@ -1,0 +1,83 @@
+import { expect, test } from './test-fixture';
+
+test('Markdown three modes share the CodeMirror buffer and undo, render GFM, and resize with the keyboard', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.goto('/');
+  await page.getByRole('button', { name: '新建文本', exact: true }).click();
+  await page.getByRole('combobox', { name: '语言模式' }).selectOption('markdown');
+  const source = '# 中文阅读\n\n| 一 | 二 |\n| --- | --- |\n| 值 | ~~删除~~ |\n\n- [x] 已完成\n\n> 引用\n';
+  const editor = page.locator('.cm-content');
+  await editor.focus();
+  await page.keyboard.insertText(source);
+  const lines = await page.locator('.cm-line').allTextContents();
+  const modes = page.getByRole('group', { name: '主编辑组 Markdown视图' });
+  await expect(modes.getByRole('button', { name: '源码', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await modes.getByRole('button', { name: '分屏', exact: true }).click();
+  const frame = page.frameLocator('iframe[title*="Markdown阅读"]');
+  await expect(frame.getByRole('heading', { name: '中文阅读' })).toBeVisible();
+  await expect(frame.locator('table')).toBeVisible();
+  await expect(frame.locator('del')).toHaveText('删除');
+  await expect(frame.getByRole('checkbox')).toBeChecked();
+  const divider = page.getByRole('separator', { name: '源码与阅读分隔' });
+  await divider.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(divider).toHaveAttribute('aria-valuenow', '51');
+  await modes.getByRole('button', { name: '阅读', exact: true }).click();
+  await expect(editor).toBeHidden();
+  await modes.getByRole('button', { name: '源码', exact: true }).click();
+  await expect(page.locator('.cm-line')).toHaveText(lines);
+  await editor.focus();
+  await page.keyboard.press('Control+z');
+  await expect(editor).toHaveText('');
+  await page.keyboard.press('Control+y');
+  await expect(page.locator('.cm-line')).toHaveText(lines);
+  expect(errors).toEqual([]);
+});
+
+test('Markdown preview isolates scripts and IPC, blocks remote images, and replaces old versions', async ({ page }) => {
+  const externalRequests: string[] = [];
+  page.on('request', request => { if (request.url().startsWith('https://example.com/')) externalRequests.push(request.url()); });
+  await page.goto('/');
+  await page.getByRole('button', { name: '新建文本', exact: true }).click();
+  await page.getByRole('combobox', { name: '语言模式' }).selectOption('markdown');
+  const editor = page.locator('.cm-content');
+  await editor.focus();
+  await page.keyboard.insertText('# 原版本\n\n<script>parent.pwned=1</script>\n\n![远程](https://example.com/leak.png)\n\n[危险](javascript:alert%281%29)');
+  const modes = page.getByRole('group', { name: '主编辑组 Markdown视图' });
+  await modes.getByRole('button', { name: '分屏', exact: true }).click();
+  const frame = page.frameLocator('iframe[title*="Markdown阅读"]');
+  await expect(frame.getByRole('heading', { name: '原版本' })).toBeVisible();
+  await expect(frame.locator('script, img, [onclick], [onerror], a[href]')).toHaveCount(0);
+  await expect(frame.getByText('[图片未加载：远程]', { exact: true })).toBeVisible();
+  expect(await frame.locator('body').evaluate(() => {
+    let isolated = false;
+    try { void window.parent.document; } catch { isolated = true; }
+    return { isolated, ipc: '__TAURI_INTERNALS__' in window };
+  })).toEqual({ isolated: true, ipc: false });
+  await editor.focus();
+  await page.keyboard.press('Control+a');
+  await page.keyboard.insertText('# 新版本');
+  await expect(frame.getByRole('heading', { name: '新版本' })).toBeVisible();
+  await expect(frame.getByRole('heading', { name: '原版本' })).toHaveCount(0);
+  expect(externalRequests).toEqual([]);
+  expect(await page.evaluate(() => Reflect.get(window, 'pwned'))).toBeUndefined();
+});
+
+test('Markdown mode belongs to each editor group and narrow layouts retain access to source', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: '新建文本', exact: true }).click();
+  await page.getByRole('combobox', { name: '语言模式' }).selectOption('markdown');
+  await page.locator('.cm-content').focus();
+  await page.keyboard.insertText('# 双组正文');
+  await page.getByRole('button', { name: '向右拆分', exact: true }).click();
+  const primary = page.getByRole('group', { name: '主编辑组 Markdown视图' });
+  const secondary = page.getByRole('group', { name: '第二编辑组 Markdown视图' });
+  await secondary.getByRole('button', { name: '阅读', exact: true }).click();
+  await expect(primary.getByRole('button', { name: '源码', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.frameLocator('iframe[title*="Markdown阅读"]').getByRole('heading', { name: '双组正文' })).toBeVisible();
+  await secondary.getByRole('button', { name: '分屏', exact: true }).click();
+  await expect(page.getByText('空间不足，分屏暂以阅读显示；可切换源码或扩大编辑区域。')).toBeVisible();
+  await secondary.getByRole('button', { name: '源码', exact: true }).click();
+  await expect(page.locator('.cm-content')).toHaveCount(2);
+});

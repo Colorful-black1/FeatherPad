@@ -17,6 +17,7 @@ export default defineConfig({
     { name: 'recovery', testMatch: 'recovery.spec.ts' },
     { name: 'reliability', testMatch: 'reliability.spec.ts' },
     { name: 'g2-special', testMatch: 'g2-special.spec.ts' },
+    { name: 'markdown', testMatch: 'markdown.spec.ts' },
   ],
   workers: 1,
   forbidOnly: true,

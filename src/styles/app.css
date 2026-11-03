@@ -123,6 +123,20 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round
 .document-heading span:first-child { flex: 1; overflow-wrap: anywhere; }
 .document-heading span:last-child { flex: 0 0 auto; }
 .codemirror-host { flex: 1; min-height: 0; }
+.markdown-view { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; }
+.markdown-toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; padding: var(--space-1) var(--space-2); border-bottom: 1px solid var(--border); background: var(--bg-surface); }
+.markdown-toolbar [role="group"] { display: flex; gap: var(--space-1); }
+.markdown-toolbar button[aria-pressed="true"] { background: var(--bg-selected); color: var(--text-primary); }
+.markdown-toolbar > span { color: var(--text-secondary); font-size: 11px; }
+.markdown-panes { display: flex; flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
+.markdown-source { display: flex; flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
+.markdown-source[hidden] { display: none; }
+.markdown-split > .markdown-source { flex: 0 0 clamp(280px, var(--markdown-ratio), calc(100% - 285px)); }
+.markdown-divider { flex: 0 0 5px; background: var(--border); cursor: col-resize; touch-action: none; }
+.markdown-divider:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.markdown-reading { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; background: var(--bg-surface); }
+.markdown-reading iframe { flex: 1; width: 100%; min-height: 0; border: 0; }
+.markdown-render-status { padding: var(--space-6); color: var(--text-secondary); }
 .editor-keyboard-panel { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); padding: var(--space-1) var(--space-2); color: var(--text-secondary); background: var(--bg-sidebar); font: 11px/1.5 var(--font-ui); }
 .editor-keyboard-panel button { border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 0 var(--space-2); min-height: 24px; background: var(--bg-surface); }
 .editor-keyboard-panel button[aria-pressed="true"] { background: var(--bg-selected); color: var(--accent); border-color: var(--accent); }

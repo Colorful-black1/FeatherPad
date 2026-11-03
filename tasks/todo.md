@@ -1,6 +1,6 @@
 # 开发任务清单
 
-当前阶段：**M0/G0、M1/G1、M2/G2 已通过（2026-11-03）；下一项 T301/M3，等待用户确认后开始**。完整 v1 需要 M0–M5 全部 86 项必需功能，M1 只是可试用 MVP，不是成品。
+当前阶段：**M0/G0、M1/G1、M2/G2 已通过（2026-11-03）；用户已确认继续，M3/T301进行中**。完整 v1 需要 M0–M5 全部 86 项必需功能，M1 只是可试用 MVP，不是成品。
 
 2026-11-03 用户修订验收粒度：**以 M 为验收单元**。M 内各 T 只做实现和最小自检，不再每个 T 跑一遍大量测试；整个 M 的 T 全部完成后，统一执行一次全量回归、真实 Release 验收和矩阵证据汇总，通过后打勾并停止，等待用户确认后再推进下一阶段。M0 与 M1 的已完成任务产生于旧的逐任务策略，其逐项证据仍然有效，保存在 [PROGRESS](PROGRESS.md) 和 [M0验收](../docs/acceptance/M0.md)、[M1验收](../docs/acceptance/M1.md)（按 `T1xx` 检索即可定位）。
 
@@ -93,7 +93,7 @@ pnpm test:desktop:all
 | M0 | G0 | 已通过（2026-11-01） | 真实 Tauri 与 Release 启动、测试通路建立，见 [M0验收](../docs/acceptance/M0.md) |
 | M1 | G1 | 已通过（2026-11-03） | T101–T115 完成；34项feature ID统一验收通过，见 [M1验收](../docs/acceptance/M1.md) |
 | M2 | G2 | 已通过（2026-11-03） | T201–T216 完成；29项feature ID统一验收通过，见 [M2验收](../docs/acceptance/M2.md) |
-| M3 | G3 | 未开始 | 依赖 G2；下一项 T301，等待用户确认 |
+| M3 | G3 | 进行中 | 用户确认继续；T301实现中，G3待验 |
 | M4 | G4 | 未开始 | 依赖 G3 |
 | M5 | G5 | 未开始 | 依赖 G4 |
 
@@ -161,8 +161,8 @@ pnpm test:desktop:all
 
 | 状态/任务 | 依赖 | 功能追踪 | 交付内容与验收点 | 主要规划文件（非穷举） |
 |---|---|---|---|---|
-| [ ] T301 Markdown三模式 | T216 | F-MD-001..002 | source/read/split 共 buffer，GFM 渲染，双组布局不改源码 | src/features/markdown/MarkdownView.tsx、src/workers/markdown.worker.ts、src/features/markdown/parser.ts |
-| [ ] T302 代码块/任务编辑 | T301 | F-MD-003,F-MD-011 | 高亮复制安全；勾任务定位原始节点，一次 undo，旧映射不可改 | src/features/markdown/code-block.ts、src/features/markdown/task-mapping.ts |
+| [x] T301 Markdown三模式 | T216 | F-MD-001..002 | source/read/split 共 buffer，GFM 渲染，双组布局不改源码 | src/features/markdown/MarkdownView.tsx、src/workers/markdown.worker.ts、src/features/markdown/parser.ts |
+| [~] T302 代码块/任务编辑 | T301 | F-MD-003,F-MD-011 | 高亮复制安全；勾任务定位原始节点，一次 undo，旧映射不可改 | src/features/markdown/code-block.ts、src/features/markdown/task-mapping.ts |
 | [ ] T303 安全资源和链接 | T301 | F-MD-004,F-MD-006..007 | 相对资源授权、远程默认阻止、受限 HTML 清洗、危险协议拒绝 | src/features/markdown/sanitize.ts、src/features/markdown/links.ts、src-tauri/src/services/assets.rs |
 | [ ] T304 目录与同步滚动 | T302 | F-MD-005,F-MD-008 | H1-6 稳定锚点、源映射、版本取消，大文档降级 | src/features/markdown/Outline.tsx、src/features/markdown/source-map.ts、src/features/markdown/scroll-sync.ts |
 | [ ] T305 HTML导出 | T303,T304 | F-MD-009 | 实际离线独立 HTML，安全资源内嵌、覆盖确认与失败保护 | src/features/markdown/export-html.ts、src-tauri/src/services/export.rs |

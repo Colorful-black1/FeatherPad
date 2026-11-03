@@ -8,6 +8,8 @@ export type { Page, Locator } from '@playwright/test';
 export const test = base.extend({
   page: async ({ page }, use) => {
     await page.addInitScript(() => {
+      // Business mocks belong to the host, never the sandboxed document frames.
+      if (window.top !== window) return;
       let native: Record<string, unknown> | undefined;
       let callbackId = 0;
       Reflect.set(window, '__TAURI_EVENT_PLUGIN_INTERNALS__', { unregisterListener: () => {} });

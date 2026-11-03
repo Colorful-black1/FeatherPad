@@ -1,6 +1,10 @@
 # SPEC-markdown：安全 Markdown 阅读与导出
 
-> 模块 `markdown`；业务依赖仅 `editor`、`file-core`。状态：待实现、待验证，未声称用户已批准。拥有 F-MD-001–011，全部首次在M3验收；完整索引见 [矩阵](../FEATURE-MATRIX.md)。
+> 模块 `markdown`；业务依赖仅 `editor`、`file-core`。状态：2026-11-03用户确认开始M3，T301实现中，G3待验。拥有 F-MD-001–011，全部首次在M3验收；完整索引见 [矩阵](../FEATURE-MATRIX.md)。
+
+实施决策（T301）：锁定Marked18.1.3（MIT）和DOMPurify3.4.17（Apache-2.0或MPL-2.0），已核对包元数据、首次禁脚本安装。150ms合并后才从CodeMirror复制快照到专用Worker，2秒超时终止Worker；结果绑定documentId/bufferVersion/requestId。宿主执行显式标签白名单清洗后，放入无任何sandbox权限的srcdoc iframe，内层CSP禁脚本/联网/表单/插件，绝不授予same-origin、Tauri IPC或顶层导航。T301中的URL和图片只显示安全占位，真实授权资源与用户点击动作留T303。三模式在应用组合层连接editor，editor不反向导入markdown。
+
+原生边界补正：真实Release证实Wry0.57.1在Windows忽略`for_main_frame_only`。工程复用本机已锁定的Wry源码至`src-tauri/vendor/wry`，仅在Windows对标记为main-frame-only的初始化脚本添加顶层窗口判断，显式all-frame脚本保持原行为。许可证与补丁说明一并保留；不升级工具链、不修改共享Cargo缓存。真实测试必须继续断言子frame无Tauri桥，不能仅靠HTML清洗或Web mock证明此边界。
 
 ## Objective 与技术边界
 
