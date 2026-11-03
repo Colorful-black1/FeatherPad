@@ -5,7 +5,7 @@
 - 产品名称：**轻羽 FeatherPad**。
 - 当前交付：完整产品方案、86项功能矩阵、模块规格、UI规范与离线交互原型、技术/本机环境文档、M0–M5实现计划、57个开发任务、agent执行入口。
 - 产品代码：**M0/G0、M1/T101–T115及G1已通过（2026-11-03）**。保存/编辑/树/搜索/标签/命令/恢复、外部变化与安全冲突处理、设置/主题/字体、最近记录与隐私关闭、字号与键盘导航均有相关真实Release证据；M1的34个feature ID已统一验收，但仍不是完整v1。
-- 当前：**M1/G1已收尾并提交`94245d5`；用户已确认开始M2，当前T201编码与逐行换行**。每完成一个M阶段必须停止并等待确认；M2完成后不自动进入M3。
+- 当前：**M1/G1已收尾并提交`94245d5`；用户已确认开始M2，T201已实现并自检，当前T202可选自动保存**。每完成一个M阶段必须停止并等待确认；M2完成后不自动进入M3。
 - 本次交付检查：详见 [DELIVERY-CHECK](../docs/DELIVERY-CHECK.md)，不代表产品关卡G0–G5通过。
 
 ## 已核查环境
@@ -14,17 +14,13 @@
 
 ## 实施证据（未来逐任务追加）
 
-### 2026-11-03 M2启动 / T201.a严格编码核心
+### 2026-11-03 T201实现完成：编码与逐行换行（G2待阶段统一验收）
 
-- 复查环境探针exit 0，复用现有工具；新增`encoding.rs`以固定Windows代码页严格转换GB18030/GBK/Shift_JIS/Big5/Windows-1252，接入已有快照编码，BOM不匹配、非法字节、默认替代和best-fit均拒绝；仅开启已锁windows-sys功能，无新依赖/安装。
-- `cargo test --manifest-path src-tauri/Cargo.toml --locked --offline --test save_encoding` exit 0，6项通过：独立已知字节、混合换行逐字节往返、GB18030补充平面字符、无BOM UTF16、不可表示/非法字节/不匹配BOM均覆盖。`cargo fmt` exit 0；T201尚在实现，下一步接入编码打开/重开、可撤销格式与逐行映射，真实冒烟与G2统一验收待后续。
-- T201.b：CodeMirror新增逐行格式StateField与undo反向效果，保留未改换行、新增行用主导类型（平手取首个），格式转换增加版本/dirty并能撤销；保存Ack记录捕获格式，新格式不被旧Ack清clean。仅在换行变化时复制映射，普通逐键输入复用映射。相关3文件41项与`tsc --noEmit`均exit 0；界面、编码重开和混合/UTF16可写入口尚待接通，T201保持进行中。
-- T201.c原生：文件服务支持显式编码打开/按revision安全重开；比较、重载、身份别名、保存/另存后的当前编码均保留，未完成传统编码保存事务可读成恢复副本。定向Rust encoding_reopen/open_document共14项通过，后续编码保存/另存/事务读取3文件16项通过（均exit 0）；实际源字节与有损拒绝已核对。测试首次编译因DTO无PartialEq改用完整序列化内容比较后通过。当前尚未接新的IPC/UI，不记T201完成。
-- T201.d接口：新增严格schema的`check_encoding`/`reopen_with_encoding`及精确capability、typed bridge和响应校验；预检查返回完整计数/最多32个UTF16位置及未应用的替代候选，不接受任意路径。编码Rust7项、IPC schema1项、bridge1项与TS类型均exit 0。下一步接UI与转换协调器，并保证传统编码暂不能表示的未保存正文仍能独立UTF8恢复；尚未构建Release或运行阶段回归。
-- T201.e恢复：将规范快照元数据/逐行校验与目标编码可表示性分开；恢复/回收保护允许GBK等缓冲包含emoji，正文仍以校验过的UTF8持久化，真正保存仍拒绝有损。相关encoding_reopen/recovery/recovery_snapshot共21项通过/exit 0，保留非法格式/陈旧映射/配额/摘要/来源检查。下一转换协调器与UI；T201未完成。
-- T201.f转换协调器：混合/已支持编码解除M1临时只读，仍强制文件属性/预览只读；有损计划绑定文档版本与原始Text，替代与格式同一撤销事务。dirty重开须保存或最新恢复保护，迟到结果保新输入并恢复原生解释，未知解释无法核对时保留完整只读副本供另存。相关5文件53项、后补重开/迟到等协调器5项及TS类型均exit 0。
-- T201.g界面/会话：编码、BOM、逐行保留/LF/CRLF及显式有损确认已接真实CM，初次解码失败可按选定编码打开；schema1会话可选记录来源编码，独立于未保存的目标格式。Web编码3项和既有只读试开4项均有有效通过证据（dirty标签选择器修正后单项复验；新增取消焦点断言亦通过）；相关TS类型/ESLint、会话/标签/协调器21项、Rust会话5项均exit 0。200%界面截图已检查；未做阶段整体回归。
-- T201.h分块：传统编码及无BOM UTF16支持固定缓冲验证/字符对齐的只读分块，完整revision校验与原字节限额不变，补正1MiB页的窗口额外字节计算。跨64KiB编码边界单测、真实20MiB GBK文件分页/再次打开/拒绝保存均通过，Rust library clippy exit 0；未重跑100k/满盘/强杀/性能专项。初始Release构建exit 0后发现取消焦点与分块编码缺口已修，故该初始构建不记最新产品证据；下一重建并跑一条受控原生编码冒烟。
+- F-FILE-006/007：UTF8/BOM、UTF16LE/BE（含无BOM）、GB18030、GBK、Shift_JIS、Big5、Windows-1252严格往返；固定Windows代码页、不安装新依赖。初次失败可手选，重开核对grant/revision且保护dirty；传统编码及无BOM UTF16的大文件只读分块也保留所选编码、字符边界、完整revision与原限额。
+- CodeMirror StateField保存逐行LF/CRLF/CR及格式，新增行使用原主导类型，格式与替代共同一次undo；格式参与version/dirty，旧SaveAck不清新意图。有损先显示计数/位置、默认取消或换UTF8；恢复正文独立UTF8保存，不能按目标编码保存的emoji输入仍可保护。会话来源编码独立于未保存目标格式；原生保存始终严格编码。
+- 最小自检均exit 0：类型/受影响ESLint、相关模型/bridge/会话/协调器（协调器最终5项）、Rust编码7项/编码读写恢复5项/流式边界1项/会话5项及library clippy；编码Web3项和原只读试开4项各有有效通过证据。200%界面已视觉检查。切片提交与详细失败定位保留在Git和.artifacts，不把mock计为原生。
+- 真实Release一条编码路径1 passed/9.2秒（总10.0秒）/exit 0：原生选择GBK→混合换行精确保存→UTF16/BOM/LF→undo恢复原编码与tokens→有损写入拒绝且源不变→emoji快照/正常退出/重启→明确替代确认后核对实际字节。exe 12,563,456 bytes，SHA256 BEF8355D70B5BE1EE981BA8E5CFB02C46F05EFB6CCA2F2119C85C8DA522382CC，WebView2 156.0.4314.58；证据.artifacts/native/2026-11-03T03-33-14-083Z-1e272bfa-a588-4ee4-b00e-515e2a3a1aeb/encoding/native-release.json，日志.artifacts/T201/logs/{release-build-complete,native-encoding}.{stdout,stderr}.log；同hash exe保留于.artifacts/T201/release-BEF8355D/。
+- T201记实现完成，G2功能验收仍待T216。未执行阶段全量/100k/满盘/强杀/性能专项；没有删除产物或降低断言/门槛。初始Release因后续焦点与分块修复已被新的有效构建替代，原日志保留。下一T202可选自动保存；M2完成后停止等用户确认。
 
 ### 2026-11-03 T115完成：M1/G1统一验收通过并停止
 
