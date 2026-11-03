@@ -118,7 +118,8 @@ export function SettingsDialog({ coordinator, onClose, onShortcuts }: {
           {definitions.map(definition => <div className="settings-row" key={definition.key}>
             <div><label htmlFor={`setting-label-${definition.key}`}>{definition.label}</label>
               <small>默认：{String(defaultSettings[definition.key])} · 当前来源：{sourceNames[snapshot.sources[definition.key]]}</small>
-              <small>当前有效：{String(snapshot.settings[definition.key])}</small></div>
+              <small>当前有效：{String(snapshot.settings[definition.key])}</small>
+              {definition.description && <small>{definition.description}</small>}</div>
             <SettingField key={`${definition.key}-${inputEpoch}`} definition={definition} value={userValues[definition.key]} onChange={value => {
               const result = coordinator.setPreview(definition.key, value);
               setError(result.ok ? null : result.error.message);

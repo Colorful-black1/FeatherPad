@@ -78,6 +78,7 @@ pub fn run() {
             commands::clear_session,
             commands::read_document_chunk,
             commands::save::save_document,
+            commands::save::auto_save_document,
             commands::save::overwrite_document,
             commands::save_as::save_document_as,
             commands::save::stat_document

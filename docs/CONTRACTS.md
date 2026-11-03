@@ -127,6 +127,7 @@ export interface SaveAck {
 | `choose_folder` | `{}` | `{grant: FileRef|null}` | 明确选中后建立 root grant |
 | `open_document` | `{ref,encodingOverride?,mode?:normal或head-preview或text-preview,documentId?}` | `OpenDocument` | 常规打开严格识别；显式试开只读；同一文件复用DocumentId，documentId用于会话恢复 |
 | `save_document` | `SaveRequest` | `SaveAck` | 同一文档串行，冲突不覆盖；超时结果可能未知 |
+| `auto_save_document` | `SaveRequest` | `SaveAck` | T202后台保存只写既有lease；共用版本/事务/请求缓存，不弹另存/硬链接/覆盖确认，需确认或冲突时失败并暂停 |
 | `read_document_chunk` | `{documentId,handleId,expectedDiskRevision,byteOffset,maxBytes}` | `TextChunk` | maxBytes默认64KiB最大1MiB；编码边界对齐、行位置正确，磁盘变化返回CONFLICT，绝不把片段作为可保存全文 |
 | `save_document_as` | `{documentId,requestId,documentVersion,text,format,newlineMap?,intent?:'save-as'|'copy'}` | `{documentId,ref,metadata:FileMetadata,ack:SaveAck}` | 原生保存选择器；取消CANCELLED；覆盖确认绑定目标revision；copy不改源绑定 |
 | `stat_document` | `{documentId}` | `FileMetadata` | 核对未知保存结果或磁盘变化 |

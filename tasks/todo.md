@@ -1,6 +1,6 @@
 # 开发任务清单
 
-当前阶段：**M0/G0、M1/G1 已通过；用户已确认开始M2，当前T202可选自动保存，G2待验**。完整 v1 需要 M0–M5 全部 86 项必需功能，M1 只是可试用 MVP，不是成品。
+当前阶段：**M0/G0、M1/G1 已通过；用户已确认开始M2，当前T203冲突对比，G2待验**。完整 v1 需要 M0–M5 全部 86 项必需功能，M1 只是可试用 MVP，不是成品。
 
 2026-11-03 用户修订验收粒度：**以 M 为验收单元**。M 内各 T 只做实现和最小自检，不再每个 T 跑一遍大量测试；整个 M 的 T 全部完成后，统一执行一次全量回归、真实 Release 验收和矩阵证据汇总，通过后打勾并停止，等待用户确认后再推进下一阶段。M0 与 M1 的已完成任务产生于旧的逐任务策略，其逐项证据仍然有效，保存在 [PROGRESS](PROGRESS.md) 和 [M0验收](../docs/acceptance/M0.md)、[M1验收](../docs/acceptance/M1.md)（按 `T1xx` 检索即可定位）。
 
@@ -92,7 +92,7 @@ pnpm test:desktop:all
 |---|---|---|---|
 | M0 | G0 | 已通过（2026-11-01） | 真实 Tauri 与 Release 启动、测试通路建立，见 [M0验收](../docs/acceptance/M0.md) |
 | M1 | G1 | 已通过（2026-11-03） | T101–T115 完成；34项feature ID统一验收通过，见 [M1验收](../docs/acceptance/M1.md) |
-| M2 | G2 | 进行中 | 用户已确认开始；当前T202，完成M2后停止等待确认 |
+| M2 | G2 | 进行中 | 用户已确认开始；完成M2后停止等待确认 |
 | M3 | G3 | 未开始 | 依赖 G2 |
 | M4 | G4 | 未开始 | 依赖 G3 |
 | M5 | G5 | 未开始 | 依赖 G4 |
@@ -139,8 +139,8 @@ pnpm test:desktop:all
 | 状态/任务 | 依赖 | 功能追踪 | 交付内容与验收点 | 主要规划文件（非穷举） |
 |---|---|---|---|---|
 | [x] T201 编码与逐行换行 | T115 | F-FILE-006..007 | 所列编码 round-trip、原混合换行保留、转换 undo 与有损确认；定向及一条真实Release路径已自检，G2统一验收待阶段末 | src-tauri/src/services/encoding.rs、src/features/editor/line-endings.ts、src/features/editor/EncodingMenu.tsx |
-| [~] T202 可选自动保存 | T201 | F-FILE-012 | 默认 off、1500ms 空闲保存；冲突暂停、无标题仅快照 | src/features/editor/autosave.ts、src/features/desktop/SettingsDialog.tsx |
-| [ ] T203 冲突对比 | T111,T201 | F-FILE-016 | 返回磁盘快照与 revision，对比后变动再次阻止旧授权覆盖 | src/features/editor/ConflictDiff.tsx、src-tauri/src/services/files.rs |
+| [x] T202 可选自动保存 | T201 | F-FILE-012 | 默认 off、1500ms 空闲保存；冲突暂停、无标题仅快照 | src/features/editor/autosave.ts、src/features/desktop/SettingsDialog.tsx |
+| [~] T203 冲突对比 | T111,T201 | F-FILE-016 | 返回磁盘快照与 revision，对比后变动再次阻止旧授权覆盖 | src/features/editor/ConflictDiff.tsx、src-tauri/src/services/files.rs |
 | [ ] T204 多根/收藏/工作区文件 | T115 | F-WORK-002,F-WORK-008..009 | 根重排/移除不删 buffer，收藏独立，迁移相对路径/坏配置保护 | src/features/workspace/roots.ts、src/features/workspace/Favorites.tsx、src/features/workspace/workspace-file.ts |
 | [ ] T205 排除/监听/链接遍历 | T204 | F-WORK-010..012 | ignore 规则可见，默认不跟链接，启用后 visited/越界授权；watch 溢出重扫 | src-tauri/src/services/walker.rs、src-tauri/src/services/watch.rs、src/features/workspace/filters.ts |
 | [ ] T206 拖放与移动 | T105,T204 | F-WORK-006 | 外部拖入打开；内部移动确认/碰撞/跨卷结果不伪原子 | src/features/workspace/drag-drop.ts、src-tauri/src/services/file_ops.rs |

@@ -354,6 +354,7 @@ export const files = {
     (value): value is SessionClearResult => isRecord(value) && value.cleared === true),
   readChunk: (request: ReadChunkRequest) => callCommand('read_document_chunk', { ...request }, isTextChunk),
   save: (request: SaveRequest) => callCommand('save_document', { ...request }, isSaveAck),
+  autoSave: (request: SaveRequest) => callCommand('auto_save_document', { ...request }, isSaveAck),
   saveAs: (request: SaveAsRequest) => callCommand('save_document_as', { ...request }, isSaveAsAck),
   stat: (documentId: DocumentId) => callCommand('stat_document', { documentId }, isFileMetadata),
 };

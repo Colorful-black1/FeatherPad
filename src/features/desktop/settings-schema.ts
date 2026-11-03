@@ -15,6 +15,7 @@ export interface Settings {
   wordWrap: boolean;
   lineNumbers: boolean;
   highlightActiveLine: boolean;
+  autoSave: boolean;
   recentHistoryEnabled: boolean;
 }
 export type SettingKey = keyof Settings;
@@ -23,13 +24,14 @@ export type SettingGroup = 'appearance' | 'editor' | 'privacy';
 export interface SettingDefinition {
   key: SettingKey; label: string; keywords: string; group: SettingGroup;
   kind: 'theme' | 'font' | 'number' | 'tab' | 'boolean';
+  description?: string;
 }
 export interface SettingsDiagnostic { key: string; source: SettingSource; message: string }
 
 export const defaultSettings: Readonly<Settings> = Object.freeze({
   theme: 'system', fontFamily: 'Cascadia Mono', fontSize: 14, lineHeight: 1.85,
   tabSize: 4, insertSpaces: true, wordWrap: true, lineNumbers: true, highlightActiveLine: true,
-  recentHistoryEnabled: true,
+  recentHistoryEnabled: true, autoSave: false,
 });
 export const settingDefinitions: readonly SettingDefinition[] = [
   { key: 'theme', label: '主题', keywords: 'theme light dark system 亮 暗 跟随系统', group: 'appearance', kind: 'theme' },
@@ -41,6 +43,8 @@ export const settingDefinitions: readonly SettingDefinition[] = [
   { key: 'wordWrap', label: '自动换行', keywords: 'word wrap 长行 折行', group: 'editor', kind: 'boolean' },
   { key: 'lineNumbers', label: '显示行号', keywords: 'line numbers 行号', group: 'editor', kind: 'boolean' },
   { key: 'highlightActiveLine', label: '突出当前行', keywords: 'highlight active line 高亮 光标 当前行', group: 'editor', kind: 'boolean' },
+  { key: 'autoSave', label: '自动保存已命名文件', keywords: 'auto save 自动 保存 空闲', group: 'editor', kind: 'boolean',
+    description: '默认关闭。空闲1500ms后保存；冲突或失败时暂停。无标题仅写恢复快照，设置预览期间不自动保存。' },
   { key: 'recentHistoryEnabled', label: '记录最近打开', keywords: 'privacy recent history 最近 文件 工作区 隐私', group: 'privacy', kind: 'boolean' },
 ];
 export const workspaceSettingKeys = new Set<SettingKey>(['tabSize', 'insertSpaces', 'wordWrap', 'lineNumbers', 'highlightActiveLine']);

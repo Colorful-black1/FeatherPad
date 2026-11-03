@@ -13,6 +13,7 @@ export default defineConfig({
     { name: 'text-preview', testMatch: 'text-preview.spec.ts' },
     { name: 'language', testMatch: 'language.spec.ts' },
     { name: 'encoding', testMatch: 'encoding.spec.ts' },
+    { name: 'autosave', testMatch: 'autosave.spec.ts' },
     { name: 'recovery', testMatch: 'recovery.spec.ts' },
   ],
   workers: 1,

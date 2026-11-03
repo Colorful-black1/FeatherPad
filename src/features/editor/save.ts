@@ -13,10 +13,38 @@ export class SaveCoordinator {
 
   constructor(private readonly registry: DocumentRegistry, private readonly transport: SaveTransport = files.save,
     private readonly stat: typeof files.stat = files.stat, private readonly destinationTransport: typeof files.saveAs = files.saveAs,
-    private readonly overwriteTransport: SaveTransport = externalFiles.overwrite) {}
+    private readonly overwriteTransport: SaveTransport = externalFiles.overwrite,
+    private readonly backgroundTransport: SaveTransport = files.autoSave) {}
 
   save(id: DocumentId): Promise<ResultEnvelope<SaveAck>> {
     return this.enqueue(id, () => this.perform(id));
+  }
+
+  autoSave(id: DocumentId, allowed: () => boolean = () => true): Promise<ResultEnvelope<SaveAck | null>> {
+    return this.enqueue<SaveAck | null>(id, async () => {
+      const document = this.registry.getDocument(id);
+      if (!allowed() || !document?.source || !document.summary.dirty || document.summary.missing || document.fragment
+        || document.summary.readOnlyReason || document.summary.closing || document.summary.hotExitFrozen
+        || document.releaseUncertain) return { ok: true, value: null };
+      if (this.uncertain.has(id) || this.uncertainDestinations.has(id) || this.uncertainOverwrites.has(id)) {
+        return { ok: false, error: { code: 'CONFLICT', message: '先前保存结果尚未确认，请手动保存并核对磁盘。', retryable: false } };
+      }
+      const captured = this.registry.captureSave(id);
+      if (!captured.ok) return captured;
+      try {
+        const result = await this.backgroundTransport(captured.value.request);
+        if (!result.ok) {
+          if (result.error.code === 'IPC_UNAVAILABLE') this.uncertain.add(id);
+          return result;
+        }
+        const applied = this.registry.acknowledgeSave(captured.value, result.value);
+        if (!applied.ok) { this.uncertain.add(id); return applied; }
+        return result;
+      } catch {
+        this.uncertain.add(id);
+        return { ok: false, error: { code: 'IPC_UNAVAILABLE', message: '自动保存结果未确认，正文仍保留；请手动保存并核对磁盘。', retryable: false } };
+      }
+    });
   }
 
   saveAs(id: DocumentId, intent: 'save-as' | 'copy' = 'save-as'): Promise<ResultEnvelope<SaveAsAck>> {

@@ -31,6 +31,8 @@ import { applySettingsToEditors } from '../features/desktop/settings-effects';
 import { languagePreferences } from '../features/desktop/language-preferences';
 import { saveAll } from '../features/editor/save-all';
 import { SaveAllResults } from '../features/editor/SaveAllResults';
+import { autoSaves } from '../features/editor/autosave';
+import { AutoSaveStatus } from '../features/editor/AutoSaveStatus';
 import { FindBar } from '../features/search-tools/FindBar';
 import type { SearchScope } from '../features/search-tools/search-query';
 import { Explorer } from '../features/workspace/Explorer';
@@ -111,6 +113,7 @@ export function App() {
 
   useEffect(() => applySettingsToEditors(settings, documents), []);
   useEffect(() => languagePreferences.start(setNotice), []);
+  useEffect(() => autoSaves.start(), []);
 
   useEffect(() => {
     if (!Reflect.get(window, '__TAURI_INTERNALS__')) return;
@@ -701,6 +704,7 @@ export function App() {
         <FindBar registry={documents} id={current.id} version={current.version} readOnlyReason={current.readOnlyReason}
           request={findRequest?.id === current.id ? findRequest : null} open={findOpen} onClose={() => setFindOpen(false)} />
         <SaveAllResults />
+        <AutoSaveStatus id={current.id} />
         <TabStrip documents={snapshot.documents} activeId={snapshot.activeId} previewId={tabState.previewId}
           busy={busy || savingCount > 0 || batchBusy || closingCount > 0} onSelect={selectTab}
           onPin={id => { if (tabs.getSnapshot().previewId === id) void executeCommand('tabs.pin', id); }} onClose={id => void executeCommand('file.close', id)} />

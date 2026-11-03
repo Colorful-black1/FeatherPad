@@ -37,7 +37,21 @@ pub async fn save_document(
     app: AppHandle,
     request: Request<'_>,
 ) -> Result<ResultEnvelope<SaveAck>, ()> {
-    run_save(app, request, false).await
+    run_save(app, request, SaveMode::Interactive).await
+}
+
+#[tauri::command]
+pub async fn auto_save_document(
+    app: AppHandle,
+    request: Request<'_>,
+) -> Result<ResultEnvelope<SaveAck>, ()> {
+    run_save(app, request, SaveMode::Background).await
+}
+
+enum SaveMode {
+    Interactive,
+    Overwrite,
+    Background,
 }
 
 #[tauri::command]
@@ -45,13 +59,13 @@ pub async fn overwrite_document(
     app: AppHandle,
     request: Request<'_>,
 ) -> Result<ResultEnvelope<SaveAck>, ()> {
-    run_save(app, request, true).await
+    run_save(app, request, SaveMode::Overwrite).await
 }
 
 async fn run_save(
     app: AppHandle,
     request: Request<'_>,
-    overwrite: bool,
+    mode: SaveMode,
 ) -> Result<ResultEnvelope<SaveAck>, ()> {
     let value = match request.body() {
         InvokeBody::Json(value) => value.clone(),
@@ -77,11 +91,11 @@ async fn run_save(
             SaveStart::Replay(result) => return result,
             SaveStart::Fresh(ticket) => ticket,
         };
-        let result = if overwrite {
-            confirm_overwrite(&app, &service, &request)
-                .and_then(|()| save_with_confirmation(&app, &service, request))
-        } else {
-            save_with_confirmation(&app, &service, request)
+        let result = match mode {
+            SaveMode::Overwrite => confirm_overwrite(&app, &service, &request)
+                .and_then(|()| save_with_confirmation(&app, &service, request)),
+            SaveMode::Interactive => save_with_confirmation(&app, &service, request),
+            SaveMode::Background => save_without_confirmation(&app, &service, request),
         };
         service
             .lock()
@@ -91,6 +105,17 @@ async fn run_save(
     .await
     .unwrap_or_else(|_| Err(internal_error()));
     Ok(result.into())
+}
+
+fn save_without_confirmation(
+    app: &AppHandle,
+    service: &SharedFiles,
+    request: SaveRequest,
+) -> Result<SaveAck, AppError> {
+    let root = journal_root(app)?;
+    let mut files = service.lock().map_err(|_| internal_error())?;
+    PreparedSave::prepare(&files, request, &root, HardLinkPolicy::RequireConfirmation)?
+        .commit(&mut files)
 }
 
 fn confirm_overwrite(

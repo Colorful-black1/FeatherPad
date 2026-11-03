@@ -31,6 +31,7 @@ fn main() {
             "clear_session",
             "read_document_chunk",
             "save_document",
+            "auto_save_document",
             "overwrite_document",
             "save_document_as",
             "stat_document",
