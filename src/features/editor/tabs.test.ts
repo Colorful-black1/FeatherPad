@@ -36,6 +36,7 @@ it('replaces only the clean preview and releases its buffer while keeping one pr
   expect(h.tabs.getSnapshot().previewId).toBe('a');
   await h.tabs.open(reference('b'), 'preview');
   expect(h.tabs.getSnapshot().previewId).toBe('b');
+  expect(h.tabs.getSnapshot().primaryId).toBe('b');
   expect(h.registry.getSnapshot().documents.map(document => document.id)).toEqual(['b']);
   expect(h.release).toHaveBeenCalledTimes(1);
 });
@@ -65,6 +66,24 @@ it('reopening a pinned document focuses its existing state without demoting it',
   expect(h.registry.getDocument('a' as DocumentId)?.state).toBe(state);
   await h.tabs.open(reference('b'), 'preview');
   expect(h.registry.getSnapshot().documents).toHaveLength(2);
+});
+
+it('focuses each newly opened pinned document while keeping earlier buffers retained', async () => {
+  const h = setup();
+  await h.tabs.open(reference('a'));
+  await h.tabs.open(reference('b'));
+  expect(h.tabs.getSnapshot().primaryId).toBe('b');
+  expect(h.registry.getSnapshot().activeId).toBe('b');
+  expect(h.registry.getSnapshot().documents.map(document => document.id)).toEqual(['a', 'b']);
+});
+
+it('keeps an unsplit editor synchronized when the registry activates an existing document', async () => {
+  const h = setup();
+  await h.tabs.open(reference('a'));
+  await h.tabs.open(reference('b'));
+
+  h.registry.activate('a' as DocumentId);
+  expect(h.tabs.getSnapshot()).toMatchObject({ primaryId: 'a', secondaryId: null, focusedGroup: 'primary' });
 });
 
 it('serializes rapid open requests and ends with the last requested preview', async () => {
@@ -120,6 +139,15 @@ it('stores a named untitled tab and follows native rename mappings without stori
   expect(raw).toBe(JSON.stringify({ schemaVersion: 1, pinnedPaths: ['E:\\fixtures\\renamed.txt'] }));
 });
 
+it('focuses a newly created untitled document in the active editor group', async () => {
+  const h = setup();
+  await h.tabs.open(reference('a'));
+  const id = await h.tabs.createUntitled();
+  expect(h.tabs.getSnapshot().primaryId).toBe(id);
+  expect(h.registry.getSnapshot().activeId).toBe(id);
+  expect(h.registry.getSnapshot().documents.map(document => document.id)).toEqual(['a', id]);
+});
+
 it('reports damaged preferences and write failure while retaining the opened document', async () => {
   const storage = preferences();
   storage.values.set('featherpad.tabs.pins.v1', '{broken');
@@ -145,4 +173,42 @@ it('keeps the old path pinned when another retained document still uses it after
   const next = setup(h.storage);
   await next.tabs.open(reference('a'), 'preview');
   expect(next.tabs.getSnapshot().previewId).toBeNull();
+});
+
+it('supports two groups, repairs a closed primary group, reopens the latest closed tab and computes batch scopes', async () => {
+  const h = setup();
+  await h.tabs.open(reference('a'));
+  await h.tabs.open(reference('b'));
+  await h.tabs.open(reference('c'));
+
+  h.tabs.focusPrimary('a' as DocumentId);
+  expect(h.tabs.split('b' as DocumentId)).toBe(true);
+  expect(h.tabs.getSnapshot()).toMatchObject({ primaryId: 'a', secondaryId: 'b', focusedGroup: 'secondary' });
+  expect(h.tabs.closeCandidates('others', 'b' as DocumentId)).toEqual(['a', 'c']);
+  expect(h.tabs.closeCandidates('right', 'b' as DocumentId)).toEqual(['c']);
+  expect(h.tabs.closeCandidates('clean', 'b' as DocumentId)).toEqual(['a', 'b', 'c']);
+
+  const c = h.registry.getDocument('c' as DocumentId)!;
+  h.registry.commit('c' as DocumentId, [c.state.update({ changes: { from: 0, insert: 'dirty ' } })]);
+  expect(h.tabs.closeCandidates('clean', 'b' as DocumentId)).toEqual(['a', 'b']);
+
+  h.tabs.focusPrimary('a' as DocumentId);
+  const closed = await h.tabs.close('a' as DocumentId, 0, 'clean');
+  expect(closed.ok && closed.value.closed).toBe(true);
+  expect(h.tabs.getSnapshot()).toMatchObject({ primaryId: 'c', secondaryId: 'b', focusedGroup: 'primary' });
+
+  await h.tabs.reopenLastClosed();
+  expect(h.registry.getDocument('a' as DocumentId)).toBeDefined();
+  expect(h.tabs.getSnapshot().recentlyClosed).toHaveLength(0);
+});
+
+it('allows the same document in both groups while keeping one registry buffer', async () => {
+  const h = setup();
+  await h.tabs.open(reference('a'));
+  h.tabs.focusPrimary('a' as DocumentId);
+  expect(h.tabs.split('a' as DocumentId)).toBe(true);
+  expect(h.tabs.getSnapshot()).toMatchObject({ primaryId: 'a', secondaryId: 'a', focusedGroup: 'secondary' });
+  expect(h.registry.getSnapshot().documents).toHaveLength(1);
+  h.tabs.closeSplit();
+  expect(h.tabs.getSnapshot()).toMatchObject({ primaryId: 'a', secondaryId: null, focusedGroup: 'primary' });
 });

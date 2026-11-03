@@ -5,7 +5,20 @@ import { documents, type DocumentRegistry } from './documents';
 import { closes, type CloseChoice, type CloseCoordinator, type CloseResult } from './close';
 
 type PreferenceStorage = Pick<Storage, 'getItem' | 'setItem'>;
-interface TabSnapshot { previewId: DocumentId | null; warning: string | null }
+export interface RecentlyClosedTab {
+  title: string;
+  displayPath: string | null;
+  ref: FileRef | null;
+}
+export type TabCloseScope = 'current' | 'others' | 'right' | 'clean';
+interface TabSnapshot {
+  previewId: DocumentId | null;
+  warning: string | null;
+  primaryId: DocumentId | null;
+  secondaryId: DocumentId | null;
+  focusedGroup: 'primary' | 'secondary';
+  recentlyClosed: readonly RecentlyClosedTab[];
+}
 interface OpenTabResult { id: DocumentId; warning: string | null }
 const preferenceKey = 'featherpad.tabs.pins.v1';
 const isPinnedPath = (value: unknown): value is string => typeof value === 'string' && value.length > 0 && value.length <= 32_767;
@@ -15,7 +28,10 @@ function browserStorage(): PreferenceStorage | null {
 }
 
 export class TabController {
-  private snapshot: TabSnapshot = { previewId: null, warning: null };
+  private snapshot: TabSnapshot = {
+    previewId: null, warning: null, primaryId: null, secondaryId: null,
+    focusedGroup: 'primary', recentlyClosed: [],
+  };
   private previewVersion = 0;
   private readonly pinnedPaths = new Set<string>();
   private readonly knownPaths = new Map<DocumentId, string | null>();
@@ -57,6 +73,24 @@ export class TabController {
         }
         this.knownPaths.set(summary.id, summary.displayPath);
       }
+      const activeId = registry.getSnapshot().activeId;
+      const secondaryId = this.snapshot.secondaryId && live.has(this.snapshot.secondaryId)
+        ? this.snapshot.secondaryId : null;
+      const primaryId = secondaryId
+        ? this.snapshot.primaryId && live.has(this.snapshot.primaryId)
+          ? this.snapshot.primaryId
+          : activeId && live.has(activeId) && activeId !== secondaryId
+            ? activeId
+            : summaries.find(summary => summary.id !== secondaryId)?.id ?? secondaryId ?? null
+        : activeId && live.has(activeId)
+          ? activeId
+          : summaries[0]?.id ?? null;
+      const focusedGroup = secondaryId ? this.snapshot.focusedGroup : 'primary';
+      if (primaryId !== this.snapshot.primaryId || secondaryId !== this.snapshot.secondaryId
+        || focusedGroup !== this.snapshot.focusedGroup) {
+        this.snapshot = { ...this.snapshot, primaryId, secondaryId, focusedGroup };
+        this.listeners.forEach(listener => listener());
+      }
       for (const knownId of this.knownPaths.keys()) if (!live.has(knownId)) this.knownPaths.delete(knownId);
       if (changed) this.persist();
     });
@@ -69,7 +103,11 @@ export class TabController {
   readonly getSnapshot = () => this.snapshot;
 
   createUntitled(): Promise<DocumentId> {
-    return this.enqueue(async () => this.registry.createUntitled());
+    return this.enqueue(async () => {
+      const id = this.registry.createUntitled();
+      this.focusFocusedGroup(id);
+      return id;
+    });
   }
 
   pin(id: DocumentId) {
@@ -92,6 +130,66 @@ export class TabController {
     this.publish(document.summary.dirty ? null : id, this.snapshot.warning);
   }
 
+  split(id: DocumentId) {
+    if (!this.registry.getDocument(id)) return false;
+    const primaryId = this.snapshot.primaryId ?? this.registry.getSnapshot().activeId ?? id;
+    this.snapshot = { ...this.snapshot, primaryId, secondaryId: id, focusedGroup: 'secondary' };
+    this.registry.activate(id);
+    this.listeners.forEach(listener => listener());
+    return true;
+  }
+
+  focusPrimary(id: DocumentId) {
+    if (!this.registry.getDocument(id)) return false;
+    this.snapshot = { ...this.snapshot, primaryId: id, focusedGroup: 'primary' };
+    this.registry.activate(id);
+    this.listeners.forEach(listener => listener());
+    return true;
+  }
+
+  focusSecondary(id: DocumentId) {
+    if (!this.registry.getDocument(id)) return false;
+    this.snapshot = { ...this.snapshot, secondaryId: id, focusedGroup: 'secondary' };
+    this.registry.activate(id);
+    this.listeners.forEach(listener => listener());
+    return true;
+  }
+
+  closeSplit() {
+    this.snapshot = { ...this.snapshot, secondaryId: null, focusedGroup: 'primary' };
+    const primaryId = this.snapshot.primaryId;
+    if (primaryId) this.registry.activate(primaryId);
+    this.listeners.forEach(listener => listener());
+  }
+
+  closeCandidates(scope: TabCloseScope, anchorId = this.registry.getSnapshot().activeId): readonly DocumentId[] {
+    const ids = this.registry.getSnapshot().documents.map(document => document.id);
+    if (!anchorId || !ids.includes(anchorId)) return [];
+    if (scope === 'current') return [anchorId];
+    if (scope === 'others') return ids.filter(id => id !== anchorId);
+    if (scope === 'right') return ids.slice(ids.indexOf(anchorId) + 1);
+    return this.registry.getSnapshot().documents
+      .filter(document => !document.dirty && !document.closing)
+      .map(document => document.id);
+  }
+
+  async reopenLastClosed(): Promise<ResultEnvelope<OpenTabResult> | null> {
+    const previous = this.snapshot.recentlyClosed.at(-1);
+    if (!previous) return null;
+    this.snapshot = { ...this.snapshot, recentlyClosed: this.snapshot.recentlyClosed.slice(0, -1) };
+    this.listeners.forEach(listener => listener());
+    if (!previous.ref) return {
+      ok: false,
+      error: { code: 'UNSUPPORTED', message: '未命名文档关闭后不能从最近关闭恢复。', retryable: false },
+    };
+    const result = await this.open(previous.ref, 'pinned');
+    if (!result.ok) {
+      this.snapshot = { ...this.snapshot, recentlyClosed: [...this.snapshot.recentlyClosed, previous] };
+      this.listeners.forEach(listener => listener());
+    }
+    return result;
+  }
+
   open(reference: FileRef, intent: 'preview' | 'pinned' = 'pinned', mode?: Exclude<OpenMode, 'normal'>,
     encoding?: EncodingId): Promise<ResultEnvelope<OpenTabResult>> {
     return this.enqueue(async () => {
@@ -103,13 +201,20 @@ export class TabController {
       const id = this.registry.openDocument(result.value);
       if (existing) {
         if (intent === 'pinned') this.pin(id);
+        if (this.snapshot.focusedGroup === 'secondary') this.focusSecondary(id);
+        else this.focusPrimary(id);
         return { ok: true, value: { id, warning: this.snapshot.warning } };
       }
-      if (intent === 'pinned' || this.pinnedPaths.has(result.value.metadata.displayPath)) this.pin(id);
+      if (intent === 'pinned' || this.pinnedPaths.has(result.value.metadata.displayPath)) {
+        this.pin(id);
+        if (this.snapshot.focusedGroup === 'secondary') this.focusSecondary(id);
+        else this.focusPrimary(id);
+      }
       else {
         if (previousId) this.pin(previousId);
         this.previewVersion = this.registry.getDocument(id)!.summary.version;
         this.publish(id, this.snapshot.warning);
+        this.focusFocusedGroup(id);
         if (previousId && previousVersion !== undefined && !this.registry.getDocument(previousId)?.summary.dirty) {
           const closed = await this.closeNow(previousId, previousVersion, 'clean');
           if (!closed.ok) return { ok: true, value: { id, warning: `原预览仍保留：${closed.error.message}` } };
@@ -124,10 +229,20 @@ export class TabController {
   }
 
   private async closeNow(id: DocumentId, version: number, choice: CloseChoice): Promise<ResultEnvelope<CloseResult>> {
-    const path = this.registry.getDocument(id)?.summary.displayPath;
+    const summary = this.registry.getDocument(id)?.summary;
+    const path = summary?.displayPath;
+    const reference = this.registry.getDocument(id)?.source?.ref ?? null;
     const result = await this.closing.close(id, version, choice);
-    if (result.ok && result.value.closed && path) {
-      if (!this.registry.getSnapshot().documents.some(document => document.displayPath === path && document.id !== this.snapshot.previewId)) this.pinnedPaths.delete(path);
+    if (result.ok && result.value.closed) {
+      if (summary) {
+        this.snapshot = {
+          ...this.snapshot,
+          recentlyClosed: [...this.snapshot.recentlyClosed,
+            { title: summary.title, displayPath: summary.displayPath, ref: reference }].slice(-10),
+        };
+      }
+      if (path && !this.registry.getSnapshot().documents.some(document =>
+        document.displayPath === path && document.id !== this.snapshot.previewId)) this.pinnedPaths.delete(path);
       this.persist();
     }
     return result;
@@ -137,6 +252,11 @@ export class TabController {
     const scheduled = this.pending.then(run, run);
     this.pending = scheduled.then(() => undefined, () => undefined);
     return scheduled;
+  }
+
+  private focusFocusedGroup(id: DocumentId) {
+    if (this.snapshot.secondaryId && this.snapshot.focusedGroup === 'secondary') this.focusSecondary(id);
+    else this.focusPrimary(id);
   }
 
   private persist() {
@@ -150,7 +270,8 @@ export class TabController {
 
   private publish(previewId: DocumentId | null, warning: string | null) {
     if (this.snapshot.previewId === previewId && this.snapshot.warning === warning) return;
-    this.snapshot = { previewId, warning };
+    this.snapshot = { ...this.snapshot, previewId, warning,
+      primaryId: this.snapshot.primaryId ?? this.registry.getSnapshot().activeId };
     this.listeners.forEach(listener => listener());
   }
 }

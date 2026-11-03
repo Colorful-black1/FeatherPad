@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-transfer-entry"
+description = "Enables the transfer_entry command without any pre-configured scope."
+commands.allow = ["transfer_entry"]
+
+[[permission]]
+identifier = "deny-transfer-entry"
+description = "Denies the transfer_entry command without any pre-configured scope."
+commands.deny = ["transfer_entry"]

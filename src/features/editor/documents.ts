@@ -2,11 +2,13 @@ import { EditorSelection, type EditorState, type Text, type Transaction } from '
 import { isolateHistory } from '@codemirror/commands';
 import { documentFormat, formatState, sameDocumentFormat, setDocumentFormat, type DocumentFormatState } from './line-endings';
 import { encodingIds, type EncodingId } from '../../shared/contracts/encoding';
-import type { EditorView } from '@codemirror/view';
+import type { Command, EditorView } from '@codemirror/view';
 import type { DocumentId, LoadedRecoveryEntry, OpenDocument, RenamedDocument, ResultEnvelope, SaveAck, SaveAsAck, SaveRequest, TextFormat, TrashEntryResult, WriteRecoverySnapshotRequest } from '../../shared/contracts/files';
 import { createEditorState, reconfigureBracketMatching, reconfigureCloseBrackets, reconfigureIndentation,
-  reconfigureLanguage, reconfigureReadOnly, reconfigureEditorPreferences, defaultEditorPreferences,
+  reconfigureLanguage, reconfigureReadOnly, reconfigureEditorPreferences, reconfigureEditingBindings,
+  defaultEditorPreferences,
   setSearchHighlights, type EditorPreferences, type IndentWidth } from './editor-state';
+import { defaultEditingCommandBindings, type EditingCommandBindings } from './editing';
 import { countCharacters, editorMetrics, type EditorMetrics } from './editor-metrics';
 import { detectLanguage, type LanguageId } from './editor-language';
 import { captureExisting, captureDestination, captureRecovery, acknowledgeExisting, acknowledgeDestination, readOnlyReason,
@@ -88,11 +90,13 @@ export class DocumentRegistry {
   private readonly metrics = new Map<DocumentId, EditorMetrics>();
   private readonly metricsListeners = new Map<DocumentId, Set<() => void>>();
   private readonly languageGenerations = new Map<DocumentId, number>();
-  private readonly views = new Map<DocumentId, EditorView>();
+  private readonly views = new Map<DocumentId, Set<EditorView>>();
+  private readonly viewScrolls = new WeakMap<EditorView, { top: number; left: number }>();
   private snapshot: RegistrySnapshot = { documents: [], activeId: null };
   private untitledCount = 0;
   private hotExitFrozen = false;
   private editorPreferences: EditorPreferences = { ...defaultEditorPreferences };
+  private commandBindings: EditingCommandBindings = defaultEditingCommandBindings;
 
   readonly subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -114,12 +118,47 @@ export class DocumentRegistry {
     return this.metrics.get(id) ?? null;
   }
 
-  attachView(id: DocumentId, view: EditorView) {
-    this.views.set(id, view);
+  runEditorCommand(id: DocumentId, command: Command): boolean {
+    const views = this.views.get(id);
+    if (!views || views.size === 0) return false;
+    const view = [...views].find(candidate => candidate.hasFocus) ?? views.values().next().value;
+    if (!view) return false;
+    view.focus();
+    return command(view);
+  }
+
+  focusOffset(id: DocumentId, offset: number, extend = false): boolean {
     const document = this.documents.get(id);
-    if (document) this.restoreViewScroll(id, view, document.scroll);
+    if (!document) return false;
+    const position = Math.max(0, Math.min(document.state.doc.length, Math.trunc(offset)));
+    const views = this.views.get(id);
+    const view = views ? [...views].find(candidate => candidate.hasFocus) ?? views.values().next().value : undefined;
+    if (view) {
+      const current = view.state.selection.main;
+      view.dispatch({
+        selection: extend ? EditorSelection.range(current.anchor, position) : EditorSelection.cursor(position),
+        scrollIntoView: true,
+      });
+      view.focus();
+      return true;
+    }
+    document.state = document.state.update({
+      selection: extend ? EditorSelection.range(document.state.selection.main.anchor, position)
+        : EditorSelection.cursor(position),
+    }).state;
+    (this.views.get(id) ?? new Set<EditorView>()).forEach(candidate => candidate.setState(document.state));
+    return true;
+  }
+
+  attachView(id: DocumentId, view: EditorView) {
+    const views = this.views.get(id) ?? new Set<EditorView>();
+    views.add(view);
+    this.views.set(id, views);
+    const document = this.documents.get(id);
+    if (document) this.restoreViewScroll(id, view, this.viewScrolls.get(view) ?? document.scroll);
     return () => {
-      if (this.views.get(id) === view) this.views.delete(id);
+      views.delete(view);
+      if (views.size === 0) this.views.delete(id);
     };
   }
 
@@ -127,7 +166,7 @@ export class DocumentRegistry {
     view.requestMeasure({
       read: () => scroll,
       write: position => {
-        if (this.views.get(id) !== view) return;
+        if (!this.views.get(id)?.has(view)) return;
         view.scrollDOM.scrollTop = position.top;
         view.scrollDOM.scrollLeft = position.left;
       },
@@ -146,13 +185,16 @@ export class DocumentRegistry {
 
   createUntitled(): DocumentId {
     const id = crypto.randomUUID() as DocumentId;
-    const state = createEditorState('', this.hotExitFrozen);
+    const state = createEditorState('', this.hotExitFrozen, {
+      ...this.editorPreferences, languageId: 'plaintext', commandBindings: this.commandBindings,
+    });
     const summary: DocumentSummary = {
       id, title: `无标题 ${++this.untitledCount}`, displayPath: null,
       format: { encoding: 'utf-8', bom: 'none', lineEnding: 'crlf' },
       version: 0, dirty: false, missing: false, recoveryProtected: false, recoveryError: null, recovered: false,
       closing: false, hotExitFrozen: this.hotExitFrozen, readOnlyReason: null,
-      canSaveAs: true, indentWidth: 4, indentOverridden: false, languageId: 'plaintext', languageSource: 'auto',
+      canSaveAs: true, indentWidth: this.editorPreferences.indentWidth, indentOverridden: false,
+      languageId: 'plaintext', languageSource: 'auto',
       languageRevision: 0, bracketMatching: true, closeBrackets: true,
     };
     this.documents.set(id, {
@@ -169,13 +211,15 @@ export class DocumentRegistry {
     const id = this.createUntitled();
     const document = this.documents.get(id)!;
     const reason = readOnlyReason({ isReadOnly: false }, loaded.format);
+    const languageId = detectLanguage(loaded.displayName);
     document.state = createEditorState(loaded.text, this.hotExitFrozen || reason !== null,
-      { documentFormat: formatState(loaded.format, loaded.newlineMap.endings) });
+      { ...this.editorPreferences, languageId, commandBindings: this.commandBindings,
+        documentFormat: formatState(loaded.format, loaded.newlineMap.endings) });
     document.originalNewlines = { documentVersion: 1, endings: [...loaded.newlineMap.endings] };
     document.characterCount = countCharacters(loaded.text);
     document.summary = { ...document.summary, title: `${loaded.displayName}（恢复副本）`,
       format: loaded.format, version: 1, dirty: true, recovered: true, readOnlyReason: reason,
-      languageId: detectLanguage(loaded.displayName) };
+      languageId };
     this.scheduleLanguage(id);
     this.publishMetrics(id, document.state, document.characterCount);
     this.publish(id);
@@ -198,7 +242,9 @@ export class DocumentRegistry {
           : document.content.text;
       const languageId = isPlainTextMode(document.mode) ? 'plaintext' : detectLanguage(document.metadata.displayPath);
       const initialState = createEditorState(initialText, this.hotExitFrozen || reason !== null,
-        document.content.kind === 'text' ? { documentFormat: formatState(document.format, document.content.newlineMap.endings) } : {});
+        { ...this.editorPreferences, languageId, commandBindings: this.commandBindings,
+          ...(document.content.kind === 'text'
+            ? { documentFormat: formatState(document.format, document.content.newlineMap.endings) } : {}) });
       const state = document.mode === 'text-preview'
         ? reconfigureEditorPreferences(initialState, previewPreferences(initialState, document.mode, this.editorPreferences))
         : initialState;
@@ -265,7 +311,9 @@ export class DocumentRegistry {
       ? '磁盘内容在应用关闭期间发生变化；恢复副本保持只读，请比较后另存或明确覆盖。'
       : formatReadOnly;
     const state = createEditorState(text, this.hotExitFrozen || readOnly !== null,
-      { documentFormat: formatState(loaded.entry.format, newlineMap.endings) });
+      { ...this.editorPreferences, languageId: detectLanguage(loaded.entry.sourcePath ?? sourceDocument?.metadata.displayPath ?? ''),
+        commandBindings: this.commandBindings,
+        documentFormat: formatState(loaded.entry.format, newlineMap.endings) });
     const displayPath = sourceDocument?.metadata.displayPath ?? loaded.entry.sourcePath;
     const title = displayPath?.split(/[\\/]/).pop() || `恢复的无标题 ${++this.untitledCount}`;
     const characterCount = countCharacters(text);
@@ -377,9 +425,10 @@ export class DocumentRegistry {
     return { ok: true, value: { closed: true } };
   }
 
-  setScroll(id: DocumentId, top: number, left: number) {
+  setScroll(id: DocumentId, view: EditorView, top: number, left: number) {
     const document = this.documents.get(id);
     if (document && (document.scroll.top !== top || document.scroll.left !== left)) {
+      this.viewScrolls.set(view, { top, left });
       document.scroll = { top, left };
       this.notifySession();
     }
@@ -395,8 +444,7 @@ export class DocumentRegistry {
     ));
     document.state = document.state.update({ selection: EditorSelection.create(ranges, 0) }).state;
     document.scroll = { top: Math.max(0, scrollTop), left: Math.max(0, scrollLeft) };
-    const view = this.views.get(id);
-    if (view) {
+    for (const view of this.views.get(id) ?? []) {
       view.setState(document.state);
       this.restoreViewScroll(id, view, document.scroll);
     }
@@ -425,7 +473,7 @@ export class DocumentRegistry {
   }
 
   selectRange(id: DocumentId, from: number, to: number, focus = true): boolean {
-    const view = this.views.get(id);
+    const view = this.views.get(id)?.values().next().value;
     if (!view) return false;
     const anchor = Math.max(0, Math.min(view.state.doc.length, from));
     const head = Math.max(0, Math.min(view.state.doc.length, to));
@@ -435,20 +483,20 @@ export class DocumentRegistry {
   }
 
   focus(id: DocumentId): boolean {
-    const view = this.views.get(id);
+    const view = this.views.get(id)?.values().next().value;
     if (!view) return false;
     view.focus();
     return true;
   }
 
   highlightSearch(id: DocumentId, ranges: readonly { from: number; to: number; current: boolean }[]) {
-    const view = this.views.get(id);
+    const view = this.views.get(id)?.values().next().value;
     if (view) view.dispatch({ effects: setSearchHighlights.of(ranges) });
   }
 
   replaceRanges(id: DocumentId, expectedVersion: number, changes: readonly BufferChange[]): ResultEnvelope<{ version: number }> {
     const document = this.documents.get(id);
-    const view = this.views.get(id);
+    const view = this.views.get(id)?.values().next().value;
     if (!document || !view) return failure('NOT_FOUND', '文档已关闭。');
     if (document.summary.readOnlyReason) return failure('READ_ONLY', document.summary.readOnlyReason);
     if (document.summary.version !== expectedVersion) return failure('CONFLICT', '文档已变化，请重新查找后再替换。');
@@ -492,7 +540,7 @@ export class DocumentRegistry {
     if (sameDocumentFormat(current, next) && replacements.length === 0) return { ok: true, value: { version: expectedVersion } };
     const transaction = document.state.update({ effects: setDocumentFormat.of(next),
       changes: replacements.map(change => ({ ...change })), annotations: isolateHistory.of('full') });
-    const view = this.views.get(id);
+    const view = this.views.get(id)?.values().next().value;
     if (view) {
       view.dispatch(transaction);
       return document.state === transaction.state ? { ok: true, value: { version: document.summary.version } }
@@ -526,8 +574,26 @@ export class DocumentRegistry {
       if (next === document.state) continue;
       document.state = next;
       document.summary = { ...document.summary, indentWidth };
-      const view = this.views.get(id);
-      if (view) { view.setState(next); this.restoreViewScroll(id, view, document.scroll); }
+      for (const view of this.views.get(id) ?? []) {
+        view.setState(next);
+        this.restoreViewScroll(id, view, document.scroll);
+      }
+      changed = true;
+    }
+    if (changed) this.publish(this.snapshot.activeId);
+  }
+
+  applyCommandBindings(bindings: EditingCommandBindings) {
+    const normalized = Object.fromEntries(Object.entries(bindings)
+      .filter((entry): entry is [string, string | null] => typeof entry[1] === 'string' || entry[1] === null));
+    if (JSON.stringify(normalized) === JSON.stringify(this.commandBindings)) return;
+    this.commandBindings = normalized;
+    let changed = false;
+    for (const [id, document] of this.documents) {
+      const next = reconfigureEditingBindings(document.state, normalized);
+      if (next === document.state) continue;
+      document.state = next;
+      for (const view of this.views.get(id) ?? []) view.setState(next);
       changed = true;
     }
     if (changed) this.publish(this.snapshot.activeId);
@@ -541,10 +607,10 @@ export class DocumentRegistry {
       : selection;
     const languageSource = selection === 'auto' ? 'auto' : 'manual';
     if (document.summary.languageId === languageId && document.summary.languageSource === languageSource) return;
-    document.state = reconfigureLanguage(document.state, []);
     document.summary = {
       ...document.summary, languageId, languageSource, languageRevision: document.summary.languageRevision + 1,
     };
+    document.state = reconfigureLanguage(document.state, [], languageId, this.editorPreferences.folding);
     this.scheduleLanguage(id);
     this.publish(this.snapshot.activeId);
   }
@@ -597,7 +663,8 @@ export class DocumentRegistry {
       : readOnlyReason(opened.metadata, opened.format);
     const previousSelection = document.state.selection.ranges;
     const version = expectedVersion + 1;
-    document.state = createEditorState(text, reason !== null, { ...document.summary,
+    document.state = createEditorState(text, reason !== null, { ...this.editorPreferences,
+      ...document.summary, languageId: document.summary.languageId, commandBindings: this.commandBindings,
       ...(opened.content.kind === 'text' ? { documentFormat: formatState(opened.format, opened.content.newlineMap.endings) } : {}) });
     if (opened.mode === 'text-preview') {
       document.state = reconfigureEditorPreferences(document.state, previewPreferences(document.state, opened.mode, this.editorPreferences));
@@ -621,8 +688,10 @@ export class DocumentRegistry {
       title: opened.metadata.displayPath.split(/[\\/]/).pop() || opened.metadata.displayPath,
       languageId: isPlainTextMode(opened.mode) ? 'plaintext' : document.summary.languageSource === 'auto'
         ? detectLanguage(opened.metadata.displayPath) : document.summary.languageId };
-    const view = this.views.get(opened.documentId);
-    if (view) { view.setState(document.state); this.restoreViewScroll(opened.documentId, view, document.scroll); }
+    for (const view of this.views.get(opened.documentId) ?? []) {
+      view.setState(document.state);
+      this.restoreViewScroll(opened.documentId, view, document.scroll);
+    }
     this.scheduleLanguage(opened.documentId);
     this.publishMetrics(opened.documentId, document.state, document.characterCount);
     this.publish(this.snapshot.activeId);
@@ -646,10 +715,10 @@ export class DocumentRegistry {
       if (document?.summary.languageSource === 'auto') {
         const languageId = isPlainTextMode(document.source?.mode) ? 'plaintext' : detectLanguage(document.summary.displayPath);
         if (languageId !== document.summary.languageId) {
-          document.state = reconfigureLanguage(document.state, []);
           document.summary = {
             ...document.summary, languageId, languageRevision: document.summary.languageRevision + 1,
           };
+          document.state = reconfigureLanguage(document.state, [], languageId, this.editorPreferences.folding);
           this.scheduleLanguage(captured.request.documentId);
         }
       }
@@ -677,12 +746,12 @@ export class DocumentRegistry {
       if (document.summary.languageSource === 'auto') {
         const languageId = isPlainTextMode(document.source.mode) ? 'plaintext' : detectLanguage(mapping.displayPath);
         if (languageId !== document.summary.languageId) {
-          document.state = reconfigureLanguage(document.state, []);
           document.summary = {
             ...document.summary,
             languageId,
             languageRevision: document.summary.languageRevision + 1,
           };
+          document.state = reconfigureLanguage(document.state, [], languageId, this.editorPreferences.folding);
           this.scheduleLanguage(mapping.documentId);
         }
       }
@@ -724,7 +793,7 @@ export class DocumentRegistry {
     this.publish(this.snapshot.activeId);
   }
 
-  commit(id: DocumentId, transactions: readonly Transaction[]): ResultEnvelope<{ version: number }> {
+  commit(id: DocumentId, transactions: readonly Transaction[], sourceView?: EditorView): ResultEnvelope<{ version: number }> {
     const document = this.documents.get(id);
     if (!document) return failure('NOT_FOUND', '文档已关闭。');
     let state = document.state;
@@ -732,7 +801,7 @@ export class DocumentRegistry {
     let characterCount = document.characterCount;
     // Validate the entire batch before committing any part of it.
     for (const transaction of transactions) {
-      if (transaction.startState !== state) return failure('CONFLICT', '文档版本已变化，请重试操作。');
+      if (!transaction.startState.doc.eq(state.doc)) return failure('CONFLICT', '文档版本已变化，请重试操作。');
       const modified = transaction.docChanged || !sameDocumentFormat(state.field(documentFormat), transaction.state.field(documentFormat));
       if (modified && document.summary.closing) return failure('BUSY', '文档正在关闭，这次修改尚未接受。');
       if (modified && document.summary.hotExitFrozen) {
@@ -764,6 +833,23 @@ export class DocumentRegistry {
       document.originalNewlines = { documentVersion: document.summary.version, endings: currentFormat.endings };
       document.recoveryReceiptId = null;
       this.publish(this.snapshot.activeId);
+      for (const view of this.views.get(id) ?? []) {
+        if (view === sourceView || view.state.doc.eq(state.doc)) continue;
+        const main = view.state.selection.main;
+        let anchor = main.anchor;
+        let head = main.head;
+        for (const transaction of transactions) {
+          if (!transaction.docChanged) continue;
+          anchor = transaction.changes.mapPos(anchor, -1);
+          head = transaction.changes.mapPos(head, 1);
+        }
+        view.setState(state.update({
+          selection: EditorSelection.single(
+            Math.min(anchor, state.doc.length),
+            Math.min(head, state.doc.length),
+          ),
+        }).state);
+      }
     }
     return { ok: true, value: { version: document.summary.version } };
   }
@@ -815,7 +901,7 @@ export class DocumentRegistry {
     void import('./language-loader').then(module => module.loadLanguageExtension(languageId)).then(language => {
       const current = this.documents.get(id);
       if (!current || this.languageGenerations.get(id) !== generation || current.summary.languageId !== languageId) return;
-      current.state = reconfigureLanguage(current.state, language);
+      current.state = reconfigureLanguage(current.state, language, languageId, this.editorPreferences.folding);
       current.summary = { ...current.summary, languageRevision: current.summary.languageRevision + 1 };
       this.publish(this.snapshot.activeId);
     }).catch(() => {

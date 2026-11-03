@@ -1,4 +1,5 @@
 import { settingsBridge } from '../../bridge/settings';
+import { favoritesSetting } from '../workspace/favorites';
 import { files } from '../../bridge/files';
 import type { FileRef, ResultEnvelope, SaveAsRequest } from '../../shared/contracts/files';
 import type { JsonValue, LoadedSettings, LocalFonts, RawSettings, SavedSettings, SettingsCopy } from '../../shared/contracts/settings';
@@ -267,7 +268,7 @@ export class SettingsCoordinator {
   }
 
   async updatePersistedValue(key: string, update: JsonValue | ((current: JsonValue | undefined) => JsonValue)): Promise<ResultEnvelope<SavedSettings>> {
-    if (key !== 'recentHistoryItems' && key !== languagePreferencesSetting) return fail('此内部设置键不允许独立写入。');
+    if (key !== 'recentHistoryItems' && key !== languagePreferencesSetting && key !== favoritesSetting) return fail('此内部设置键不允许独立写入。');
     return this.enqueuePersistence(async () => {
       if (this.snapshot.version === null) {
         const result = fail('尚未读取到设置版本；此修改仅本次生效。');

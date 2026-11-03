@@ -12,7 +12,7 @@ import type { FileMetadata, ResultEnvelope, SessionManifest } from '../../src/sh
 const runFile = promisify(execFile);
 const sha = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 
-test('real Release text previews preserve binary bytes, reject every write and restore the readonly mode', async () => {
+test('real Release text previews preserve binary bytes, reject every write and recognize lossless UTF16', async () => {
   test.setTimeout(180_000);
   const project = process.cwd();
   const executable = path.join(project, 'src-tauri/target/release/featherpad.exe');
@@ -136,8 +136,9 @@ test('real Release text previews preserve binary bytes, reject every write and r
     await expect(app.page.getByRole('button', { name: '打开文件', exact: true })).toBeEnabled();
     await app.page.getByRole('treeitem', { name: '真实UTF16.txt', exact: true }).click();
     await expect(app.page.locator('.cm-content')).toHaveText('中文😀正常UTF16');
-    await expect(app.page.locator('.cm-content')).toHaveAttribute('contenteditable', 'false');
+    await expect(app.page.locator('.cm-content')).toHaveAttribute('contenteditable', 'true');
     await expect(app.page.getByRole('status')).toContainText('UTF-16LE');
+    await expect(app.page.getByRole('button', { name: '保存', exact: true })).toBeEnabled();
     await expect(app.page.getByRole('button', { name: '只读试开所选文件 1', exact: true })).toHaveCount(0);
     await closeNormally(app.child);
     const session = JSON.parse(await readFile(path.join(state, 'session/manifest.json'), 'utf8')) as SessionManifest;

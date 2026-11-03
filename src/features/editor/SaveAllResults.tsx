@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { documents } from './documents';
 import { saveAll, type SaveAllItem } from './save-all';
+import { tabs } from './tabs';
 
 function itemResult(item: SaveAllItem, dirty: boolean) {
   switch (item.status) {
@@ -43,7 +44,9 @@ export function SaveAllResults() {
         const summary = summaries.get(item.id);
         return <li key={item.id} data-save-result={item.status}>
           <button className="save-all-document" title={summary?.displayPath ?? item.title} onClick={() => {
-            documents.activate(item.id);
+            const groups = tabs.getSnapshot();
+            if (groups.secondaryId && groups.focusedGroup === 'secondary') tabs.focusSecondary(item.id);
+            else tabs.focusPrimary(item.id);
             document.getElementById(`tab-${item.id}`)?.focus();
           }}>{summary?.title ?? item.title}</button>
           <span>{itemResult(item, summary?.dirty ?? false)}</span>

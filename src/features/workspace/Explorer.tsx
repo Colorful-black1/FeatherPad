@@ -1,8 +1,10 @@
-import { useEffect, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent } from 'react';
+import { useEffect, useState, useSyncExternalStore, type CSSProperties, type DragEvent, type KeyboardEvent } from 'react';
 import type { DirectoryEntry, FileRef, RenamedDocument } from '../../shared/contracts/files';
 import { EntryInput } from './EntryInput';
 import { creationParent, findDirectoryEntry } from './file-actions';
 import { workspace, type WorkspaceSnapshot, type WorkspaceStore } from './store';
+import { defaultIgnoredDirectories, parsePatternLines } from './filters';
+import { dragPayload, parseDragPayload, transferConfirmation, transferMode, workspaceDragType } from './drag-drop';
 
 interface ExplorerProps {
   currentReference: FileRef | undefined;
@@ -66,6 +68,25 @@ function EntryRow({
   const selected = snapshot.selectedPath === entry.ref.relativePath;
   const renaming = editing?.mode === 'rename'
     && editing.entry?.ref.relativePath === entry.ref.relativePath;
+  const transferable = !['junction', 'symlink'].includes(entry.kind);
+
+  async function transferTo(event: DragEvent<HTMLElement>) {
+    if (!expandable) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const payload = parseDragPayload(event.dataTransfer.getData(workspaceDragType));
+    if (!payload || payload.grantId !== entry.ref.grantId) return;
+    const source = findDirectoryEntry(snapshot, payload.relativePath);
+    if (!source || source.revision !== payload.revision || source.ref.relativePath === entry.ref.relativePath) return;
+    const mode = transferMode(event.ctrlKey);
+    if (mode === 'move' && !window.confirm(transferConfirmation(source, entry.name, mode))) return;
+    const result = await store.transferEntry(source, entry.ref, mode);
+    if (!result.ok) {
+      window.alert(result.error.message);
+      return;
+    }
+    onRenamed?.(result.value.renamedDocuments);
+  }
 
   function activate() {
     store.select(entry);
@@ -139,6 +160,20 @@ function EntryRow({
       data-tree-key={entry.ref.relativePath}
       data-tree-parent={parentKey ?? ''}
       style={{ '--tree-depth': depth } as CSSProperties}
+      draggable={transferable && !renaming}
+      onDragStart={event => {
+        if (!transferable) return;
+        event.dataTransfer.effectAllowed = 'copyMove';
+        event.dataTransfer.setData(workspaceDragType, JSON.stringify(dragPayload(entry)));
+        event.dataTransfer.setData('text/plain', entry.name);
+      }}
+      onDragOver={event => {
+        if (!expandable) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = event.ctrlKey ? 'copy' : 'move';
+      }}
+      onDrop={event => void transferTo(event)}
+      data-drop-target={expandable ? true : undefined}
       onClick={activate}
       onDoubleClick={() => { if (!expandable && !['junction', 'symlink'].includes(entry.kind)) onOpen(entry.ref, 'pinned'); }}
       onKeyDown={navigate}
@@ -225,7 +260,7 @@ export function Explorer({ currentReference, onOpen, onRenamed, onTrash, mutatio
   const [editing, setEditing] = useState<EditingEntry | null>(null);
   const [focusPath, setFocusPath] = useState<string | null>(null);
   const root = snapshot.root;
-  const currentInRoot = root && currentReference?.grantId === root.grant.grantId;
+  const currentInRoot = snapshot.roots.some(item => currentReference?.grantId === item.grant.grantId);
   const selectedEntry = snapshot.selectedPath
     ? findDirectoryEntry(snapshot, snapshot.selectedPath)
     : null;
@@ -267,6 +302,20 @@ export function Explorer({ currentReference, onOpen, onRenamed, onTrash, mutatio
       }
     }
     setEditing({ mode, parent });
+  }
+
+  async function transferToRoot(event: DragEvent<HTMLElement>) {
+    event.preventDefault();
+    if (!root) return;
+    const payload = parseDragPayload(event.dataTransfer.getData(workspaceDragType));
+    if (!payload || payload.grantId !== root.grant.grantId) return;
+    const source = findDirectoryEntry(snapshot, payload.relativePath);
+    if (!source || source.revision !== payload.revision) return;
+    const mode = transferMode(event.ctrlKey);
+    if (mode === 'move' && !window.confirm(transferConfirmation(source, root.displayName, mode))) return;
+    const result = await store.transferEntry(source, root.grant, mode);
+    if (!result.ok) window.alert(result.error.message);
+    else onRenamed?.(result.value.renamedDocuments);
   }
 
   return <section className="workspace-explorer" aria-label="文件树" onKeyDown={event => {
@@ -312,7 +361,38 @@ export function Explorer({ currentReference, onOpen, onRenamed, onTrash, mutatio
         <input type="checkbox" checked={snapshot.showHidden} onChange={event => store.setShowHidden(event.target.checked)} />
         显示隐藏项
       </label>
-      <div className="tree-root-label">{root.displayName}</div>
+      <details className="workspace-filter-rules">
+        <summary>搜索与遍历过滤</summary>
+        <label><input type="checkbox" checked={snapshot.filters.respectGitignore}
+          onChange={event => store.setFilters({ ...snapshot.filters, respectGitignore: event.target.checked })} />
+          遵循 .gitignore</label>
+        <label><input type="checkbox" checked={snapshot.filters.followDirectoryLinks}
+          onChange={event => store.setFilters({ ...snapshot.filters, followDirectoryLinks: event.target.checked })} />
+          跟随目录链接（按 canonical 身份防循环）</label>
+        <label>包含 glob（每行一个）
+          <textarea aria-label="包含 glob" defaultValue={snapshot.filters.include.join('\n')}
+            onBlur={event => {
+              try { store.setFilters({ ...snapshot.filters, include: parsePatternLines(event.currentTarget.value) }); }
+              catch { store.setFilters(snapshot.filters); }
+            }} />
+        </label>
+        <label>排除 glob（每行一个）
+          <textarea aria-label="排除 glob" defaultValue={snapshot.filters.exclude.join('\n')}
+            onBlur={event => {
+              try { store.setFilters({ ...snapshot.filters, exclude: parsePatternLines(event.currentTarget.value) }); }
+              catch { store.setFilters(snapshot.filters); }
+            }} />
+        </label>
+        <small>默认排除 {defaultIgnoredDirectories.join('、')}；显式包含规则可临时覆盖其余默认目录。</small>
+      </details>
+      <div className="tree-root-label" data-drop-target="true"
+        onDragOver={event => {
+          event.preventDefault();
+          event.dataTransfer.dropEffect = event.ctrlKey ? 'copy' : 'move';
+        }}
+        onDrop={event => void transferToRoot(event)}>{root.displayName}</div>
+      {snapshot.syncStatus.message && <p className={`tree-state ${snapshot.syncStatus.kind === 'unavailable' ? 'tree-error' : ''}`}
+        role={snapshot.syncStatus.kind === 'unavailable' ? 'alert' : 'status'}>{snapshot.syncStatus.message}</p>}
       {snapshot.rootError && <p className="tree-state tree-error" role="alert">{snapshot.rootError}</p>}
       <div className="tree" role="tree" aria-label={`${root.displayName} 文件树`} data-workspace-tree>
         <DirectoryContents

@@ -14,6 +14,7 @@ test('transaction candidates fail visibly and open independent copies with expli
         const fail = (code: string, message: string) => ({ ok: false, error: { code, message, retryable: false } });
         if (command === 'plugin:event|listen') return 1;
         if (command === 'plugin:event|unlisten') return null;
+        if (command === 'set_global_shortcut') return { ok: true, value: { enabled: false } };
         if (command === 'load_session') return { ok: true, value: { session: null, warning: null, restoredGrantIds: [] } };
         if (command === 'save_session') {
           const manifest = args.manifest as { persistedAt: string };

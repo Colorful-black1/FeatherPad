@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-commit-replace-plan"
+description = "Enables the commit_replace_plan command without any pre-configured scope."
+commands.allow = ["commit_replace_plan"]
+
+[[permission]]
+identifier = "deny-commit-replace-plan"
+description = "Denies the commit_replace_plan command without any pre-configured scope."
+commands.deny = ["commit_replace_plan"]

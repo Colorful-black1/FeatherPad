@@ -1,8 +1,8 @@
 use crate::{
     models::{
         AppError, CreateEntryRequest, DirectoryEntry, ErrorCode, RenameEntryRequest,
-        RenameEntryResult, ResultEnvelope, TrashEntryRequest, TrashEntryResult, TrashImpact,
-        TrashImpactRequest,
+        RenameEntryResult, ResultEnvelope, TransferEntryRequest, TransferEntryResult,
+        TrashEntryRequest, TrashEntryResult, TrashImpact, TrashImpactRequest,
     },
     services::files::FileService,
 };
@@ -116,6 +116,29 @@ pub async fn rename_entry(
             .lock()
             .map_err(|_| internal_error())?
             .rename_entry(request)
+    })
+    .await
+    .unwrap_or_else(|_| Err(internal_error()));
+    Ok(result.into())
+}
+
+#[tauri::command]
+pub async fn transfer_entry(
+    app: AppHandle,
+    request: Request<'_>,
+) -> Result<ResultEnvelope<TransferEntryResult>, ()> {
+    let value = match request_value(&request) {
+        Ok(value) => value,
+        Err(error) => return Ok(Err(error).into()),
+    };
+    let service = app.state::<SharedFiles>().inner().clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let request: TransferEntryRequest = serde_json::from_value(value)
+            .map_err(|_| AppError::new(ErrorCode::InvalidInput, "移动或复制请求格式无效。"))?;
+        service
+            .lock()
+            .map_err(|_| internal_error())?
+            .transfer_entry(request)
     })
     .await
     .unwrap_or_else(|_| Err(internal_error()));

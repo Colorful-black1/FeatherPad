@@ -68,7 +68,7 @@ export class SessionCoordinator {
     phase: 'idle', persistedAt: null, error: null, missingSources: [], availableGrantIds: [],
   };
   private pendingViews: SessionView[] = [];
-  private pendingRoot: { id: string; label: string } | null = null;
+  private pendingRoots: { id: string; label: string }[] = [];
   private activeSave: Promise<ResultEnvelope<SessionSaveResult>> | null = null;
   private lastSavedFingerprint: string | null = null;
   private lastSaveResult: ResultEnvelope<SessionSaveResult> | null = null;
@@ -76,7 +76,7 @@ export class SessionCoordinator {
   constructor(
     private readonly registry: DocumentRegistry,
     private readonly tabController: Pick<TabController, 'subscribe' | 'getSnapshot' | 'restorePreview'>,
-    private readonly workspaceStore: Pick<WorkspaceStore, 'subscribe' | 'getSnapshot' | 'setRoot'>,
+    private readonly workspaceStore: Pick<WorkspaceStore, 'subscribe' | 'getSnapshot' | 'setRoot' | 'addRoot'>,
     private readonly saveTransport: SaveSession = files.saveSession,
     private readonly loadTransport: LoadSession = files.loadSession,
     private readonly clearTransport: ClearSession = files.clearSession,
@@ -127,17 +127,19 @@ export class SessionCoordinator {
     const warnings: string[] = [];
     if (!window) return { sources, warnings };
     const available = new Set(availableGrantIds);
-    const rootId = window.rootIds[0];
-    const rootLabel = window.rootLabels[0];
-    if (rootId && rootLabel) {
+    this.pendingRoots = [];
+    let firstRoot = true;
+    for (let index = 0; index < window.rootIds.length; index++) {
+      const rootId = window.rootIds[index]!, rootLabel = window.rootLabels[index]!;
       if (available.has(rootId)) {
-        this.pendingRoot = null;
-        this.workspaceStore.setRoot({
+        const root = {
           grant: { grantId: rootId as GrantId, relativePath: '' },
           displayName: rootLabel,
-        });
+        };
+        if (firstRoot) this.workspaceStore.setRoot(root); else this.workspaceStore.addRoot(root);
+        firstRoot = false;
       } else {
-        this.pendingRoot = { id: rootId, label: rootLabel };
+        this.pendingRoots.push({ id: rootId, label: rootLabel });
         warnings.push(`工作区“${rootLabel}”的目录授权已失效，请重新选择。`);
       }
     }
@@ -224,13 +226,13 @@ export class SessionCoordinator {
 
   forgetMissing(id: string) {
     this.pendingViews = this.pendingViews.filter(view => view.viewId !== id);
-    if (this.pendingRoot?.id === id) this.pendingRoot = null;
+    this.pendingRoots = this.pendingRoots.filter(root => root.id !== id);
     this.publish(this.snapshot);
     this.changed();
   }
 
   private readonly changed = () => {
-    if (this.workspaceStore.getSnapshot().root) this.pendingRoot = null;
+    this.removeRestoredRootPlaceholders();
     this.arm();
   };
 
@@ -290,17 +292,16 @@ export class SessionCoordinator {
       current.documentId === view.documentId || (view.displayPath !== null
         && current.displayPath?.toLocaleLowerCase() === view.displayPath.toLocaleLowerCase())));
     views.push(...this.pendingViews);
-    if (workspaceState.root) this.pendingRoot = null;
+    this.removeRestoredRootPlaceholders();
+    const roots = workspaceState.roots.length ? workspaceState.roots : workspaceState.root ? [workspaceState.root] : [];
     const refs = [...new Set(views
       .map(view => view.recoveryReceiptId)
       .filter((receipt): receipt is string => receipt !== null))];
     const windowSession: SessionWindow = {
       windowId: 'main',
       bounds: currentBounds(),
-      rootIds: workspaceState.root ? [workspaceState.root.grant.grantId]
-        : this.pendingRoot ? [this.pendingRoot.id] : [],
-      rootLabels: workspaceState.root ? [workspaceState.root.displayName]
-        : this.pendingRoot ? [this.pendingRoot.label] : [],
+      rootIds: [...roots.map(root => root.grant.grantId), ...this.pendingRoots.map(root => root.id)],
+      rootLabels: [...roots.map(root => root.displayName), ...this.pendingRoots.map(root => root.label)],
       activeViewId: state.activeId,
       groups: [{ groupId: 'primary', viewIds: views.map(view => view.viewId) }],
       views,
@@ -352,10 +353,17 @@ export class SessionCoordinator {
 
   private publish(snapshot: Omit<SessionSnapshot, 'missingSources'>) {
     this.snapshot = { ...snapshot, missingSources: [
-      ...(this.pendingRoot ? [{ id: this.pendingRoot.id, title: this.pendingRoot.label, kind: 'workspace' as const }] : []),
+      ...this.pendingRoots.map(root => ({ id: root.id, title: root.label, kind: 'workspace' as const })),
       ...this.pendingViews.map(view => ({ id: view.viewId, title: view.title, kind: 'file' as const })),
     ] };
     this.listeners.forEach(listener => listener());
+  }
+
+  private removeRestoredRootPlaceholders() {
+    const current = this.workspaceStore.getSnapshot();
+    const ids = new Set(current.roots.map(root => root.grant.grantId));
+    if (current.root) ids.add(current.root.grant.grantId);
+    this.pendingRoots = this.pendingRoots.filter(root => !ids.has(root.id as GrantId));
   }
 }
 

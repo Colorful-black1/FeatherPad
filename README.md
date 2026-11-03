@@ -2,7 +2,7 @@
 
 **快开文件，专心编辑。** 一个免费、离线、面向常用文档、配置和代码文本的轻量桌面编辑器。
 
-本目录是轻羽桌面编辑器的独立工程。**M0/G0、M1/G1已通过（2026-11-03）；M2/G2进行中，当前任务见PROGRESS。** M1交付真实Tauri Release、原生打开/保存/另存/副本/全部保存、外部冲突、回收站、恢复/热退出、文件内搜索替换、最近记录、设置与主题、只读文本试开、键盘导航和无障碍能力，并有Web Playwright与真实桌面Playwright证据。M1仍是可试用MVP，不覆盖完整编码转换、Markdown/PDF和后续桌面整合；完整v1需要M0–M5全部86项必需功能。最新验收范围、边界和证据见 [M1验收](docs/acceptance/M1.md) 与 [PROGRESS](tasks/PROGRESS.md)。
+本目录是轻羽桌面编辑器的独立工程。**M0/G0、M1/G1、M2/G2已通过（2026-11-03）；下一项T301/M3，等待用户确认。** M1交付真实Tauri Release、原生打开/保存/另存/副本/全部保存、外部冲突、回收站、恢复/热退出、文件内搜索替换、最近记录、设置与主题、只读文本试开、键盘导航和无障碍能力。M2补齐完整编码与逐行换行、自动保存、磁盘冲突diff、多根/收藏/工作区文件、安全遍历与监听、拖放移动、标签/双分栏、多光标/列选择/折叠/导航、全文搜索、跨文件替换、全局唤起与隐私清理，并有Web Playwright、真实桌面Playwright和实际Windows文件系统证据。完整v1仍需要M3–M5；最新范围、边界和证据见 [M1验收](docs/acceptance/M1.md)、[M2验收](docs/acceptance/M2.md) 与 [PROGRESS](tasks/PROGRESS.md)。
 
 ## 立即开始
 
@@ -41,6 +41,7 @@ powershell.exe -NoProfile -File .\scripts\Probe-Environment.ps1
 | 预览隔离、文件可靠性、本地隐私 | [SECURITY-AND-RELIABILITY](docs/SECURITY-AND-RELIABILITY.md) |
 | 分阶段实施、任务与进度 | [plan](tasks/plan.md)、[todo](tasks/todo.md)、[PROGRESS](tasks/PROGRESS.md) |
 | 质量、性能与故障验收 | [QUALITY-GATES](docs/QUALITY-GATES.md) |
+| M0/M1/M2阶段验收 | [M0](docs/acceptance/M0.md)、[M1](docs/acceptance/M1.md)、[M2](docs/acceptance/M2.md) |
 | Agent首次开发、loop、恢复提示 | [AGENT-START](docs/AGENT-START.md)、[AGENTS](AGENTS.md) |
 | 本次交付实际检查结果 | [DELIVERY-CHECK](docs/DELIVERY-CHECK.md) |
 
@@ -58,7 +59,7 @@ powershell.exe -NoProfile -File .\scripts\Probe-Environment.ps1
 ## 环境约束与当前事实
 
 本机复用 Node22.13.0、pnpm10.32.1、Rust1.99.1、VS2022 C++工具、Windows SDK和WebView2；没有升级全局工具链。项目依赖已在E盘安装，原生编译和运行的实际证据按阶段记录。
-项目依赖已精确安装并双锁，原生Rust/Tauri、Release WebView2离线重载和IPC越界拒绝已实际验证，见 [M0验收](docs/acceptance/M0.md)。保存/新目标另存/副本/全部保存及标签关闭保护见 [M1验收](docs/acceptance/M1.md)。开发使用上述会话入口后运行`pnpm dev`；日常每个T只做最小自检，M收尾按 [M统一验收清单](tasks/todo.md) 执行一次全量回归，`powershell.exe -NoProfile -File scripts/check.ps1 -Desktop`仅用于整体关卡。当前Release已验证M1单组会话恢复和热退出；完整v1仍需全部后续阶段。
+项目依赖已精确安装并双锁，原生Rust/Tauri、Release WebView2离线重载和IPC越界拒绝已实际验证，见 [M0验收](docs/acceptance/M0.md)。保存/新目标另存/副本/全部保存及标签关闭保护见 [M1验收](docs/acceptance/M1.md)；编码、工作区、编辑效率、搜索替换与可靠性补齐见 [M2验收](docs/acceptance/M2.md)。开发使用上述会话入口后运行`pnpm dev`；日常每个T只做最小自检，M收尾按 [M统一验收清单](tasks/todo.md) 执行一次全量回归。G2最终真实桌面回归为17 passed；完整v1仍需M3–M5。
 
 优先复用 `E:\Codeing` 和默认目录的已有环境；确实缺失时，**所有新增开发工具/SDK/浏览器/安装包/缓存只能放在 `E:\Codeing` 下**，默认 `E:\Codeing\featherpad-dev`。全局Node不切换，系统PATH不修改。
 

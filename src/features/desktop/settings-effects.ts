@@ -9,7 +9,8 @@ export function applySettingsToEditors(coordinator: SettingsCoordinator, registr
     try {
       const settings = coordinator.getSnapshot().settings;
       registry.applyEditorPreferences({ indentWidth: settings.tabSize, insertSpaces: settings.insertSpaces,
-        wordWrap: settings.wordWrap, lineNumbers: settings.lineNumbers, highlightActiveLine: settings.highlightActiveLine });
+        wordWrap: settings.wordWrap, lineNumbers: settings.lineNumbers, highlightActiveLine: settings.highlightActiveLine,
+        whitespaceMode: settings.whitespaceMode, folding: settings.folding });
     } finally { applying = false; }
   };
   const unsubscribeSettings = coordinator.subscribe(sync);

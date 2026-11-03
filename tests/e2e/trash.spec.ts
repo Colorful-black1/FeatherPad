@@ -14,6 +14,7 @@ async function openFixture(page: Page, mode: 'success' | 'failure' | 'uncertain'
       invoke: async (command: string, request: Record<string, unknown>) => {
         calls.push({ command, request });
         if (command === 'choose_folder') return { ok: true, value: { grant, displayName: 'Controlled trash fixture' } };
+        if (command === 'inspect_workspace_root') return { ok: true, value: { ref: grant, displayName: 'Controlled trash fixture', displayPath: 'E:/controlled', canonicalIdentity: 'c'.repeat(64) } };
         if (command === 'list_directory') return { ok: true, value: { items: exists
           ? [{ id: 'entry', ref, name: 'trash.txt', kind: 'file', isHidden: false, isReadOnly: false, revision }] : [], nextCursor: null } };
         if (command === 'open_document') {

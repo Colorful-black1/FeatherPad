@@ -11,12 +11,17 @@ interface CommandPaletteProps {
   onClose: () => void;
   onBind?: (id: string, value: string | null) => CommandResult;
   onResetBindings?: () => void;
+  onImportBindings?: (text: string) => CommandResult;
+  onExportBindings?: () => string;
 }
 
-export function CommandPalette({ mode, items, scope, onPick, onClose, onBind, onResetBindings }: CommandPaletteProps) {
+export function CommandPalette({
+  mode, items, scope, onPick, onClose, onBind, onResetBindings, onImportBindings, onExportBindings,
+}: CommandPaletteProps) {
   const dialog = useRef<HTMLDialogElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const bindingInput = useRef<HTMLInputElement>(null);
+  const importing = useRef<HTMLInputElement>(null);
   const listId = useId();
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -67,6 +72,24 @@ export function CommandPalette({ mode, items, scope, onPick, onClose, onBind, on
     if (result.ok) setEditing(false);
   }
 
+  function exportBindings() {
+    if (!onExportBindings) return;
+    const url = URL.createObjectURL(new Blob([onExportBindings()], { type: 'application/json' }));
+    const anchor = window.document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'featherpad-shortcuts.json';
+    anchor.click();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+    setMessage('快捷键配置已导出。');
+  }
+
+  async function importBindings(file: File | undefined) {
+    if (!file || !onImportBindings) return;
+    if (file.size > 65_536) { setMessage('快捷键文件超过64KiB，原配置未改变。'); return; }
+    const result = onImportBindings(await file.text());
+    setMessage(result.ok ? '快捷键配置已导入。' : result.reason);
+  }
+
   return <dialog ref={dialog} className="command-palette" aria-labelledby={`${listId}-title`}
     onCancel={event => { event.preventDefault(); if (editing) setEditing(false); else onClose(); }}>
     <header>
@@ -110,6 +133,12 @@ export function CommandPalette({ mode, items, scope, onPick, onClose, onBind, on
         {mode === 'commands' && onBind && <button type="button" className="plain-button" disabled={!selected}
           onClick={() => { setBinding(selected?.binding ?? ''); setMessage(null); setEditing(true); }}>修改快捷键</button>}
         {mode === 'commands' && onResetBindings && <button type="button" className="plain-button" onClick={() => { onResetBindings(); setMessage('已恢复全部默认快捷键。'); }}>恢复默认快捷键</button>}
+        {mode === 'commands' && onImportBindings && <>
+          <input ref={importing} type="file" accept=".json,application/json" hidden aria-label="导入快捷键文件"
+            onChange={event => { void importBindings(event.currentTarget.files?.[0]); event.currentTarget.value = ''; }} />
+          <button type="button" className="plain-button" onClick={() => importing.current?.click()}>导入快捷键…</button>
+        </>}
+        {mode === 'commands' && onExportBindings && <button type="button" className="plain-button" onClick={exportBindings}>导出快捷键…</button>}
       </>}
       {message && <p className="palette-message" role="alert">{message}</p>}
     </footer>

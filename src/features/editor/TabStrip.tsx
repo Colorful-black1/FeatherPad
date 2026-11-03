@@ -10,9 +10,10 @@ interface TabStripProps {
   onSelect: (id: DocumentId) => void;
   onPin: (id: DocumentId) => void;
   onClose: (id: DocumentId) => void;
+  onReorder?: (ids: readonly DocumentId[]) => void;
 }
 
-export function TabStrip({ documents, activeId, previewId, busy, onSelect, onPin, onClose }: TabStripProps) {
+export function TabStrip({ documents, activeId, previewId, busy, onSelect, onPin, onClose, onReorder }: TabStripProps) {
   const names = new Map<string, number>();
   for (const document of documents) names.set(document.title, (names.get(document.title) ?? 0) + 1);
 
@@ -36,7 +37,27 @@ export function TabStrip({ documents, activeId, previewId, busy, onSelect, onPin
       const preview = document.id === previewId;
       const parent = (names.get(document.title) ?? 0) > 1 && document.displayPath
         ? document.displayPath.replace(/[\\/][^\\/]+$/, '') : null;
-      return <div key={document.id} className="document-tab" role="presentation" data-active={selected}>
+      return <div key={document.id} className="document-tab" role="presentation" data-active={selected}
+        draggable={!busy} onDragStart={event => {
+          event.dataTransfer.effectAllowed = 'move';
+          event.dataTransfer.setData('application/x-featherpad-tab', document.id);
+        }} onDragOver={event => {
+          if (!onReorder || !event.dataTransfer.types.includes('application/x-featherpad-tab')) return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = 'move';
+        }} onDrop={event => {
+          if (!onReorder) return;
+          const source = event.dataTransfer.getData('application/x-featherpad-tab') as DocumentId;
+          const from = documents.findIndex(item => item.id === source);
+          const to = documents.findIndex(item => item.id === document.id);
+          if (from < 0 || to < 0 || from === to) return;
+          event.preventDefault();
+          const ids = documents.map(item => item.id);
+          const [moved] = ids.splice(from, 1);
+          if (!moved) return;
+          ids.splice(to, 0, moved);
+          onReorder(ids);
+        }}>
         <button id={`tab-${document.id}`} role="tab" aria-selected={selected}
           aria-controls={selected ? `panel-${document.id}` : undefined}
           aria-description={[preview ? '预览标签，双击固定' : '固定标签',

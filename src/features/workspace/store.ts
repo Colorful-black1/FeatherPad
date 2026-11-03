@@ -2,11 +2,16 @@ import { files } from '../../bridge/files';
 import type {
   CreateEntryRequest, DirectoryEntry, DirectoryPage, FileRef, ListDirectoryRequest,
   RenameEntryRequest, RenameEntryResult, ResultEnvelope, TrashEntryRequest, TrashEntryResult,
+  TransferEntryRequest, TransferEntryResult,
 } from '../../shared/contracts/files';
+import { defaultWorkspaceFilters, normalizedFilters, type WorkspaceFilters } from './filters';
 
 export interface WorkspaceRoot {
   grant: FileRef;
   displayName: string;
+  rootId?: string;
+  displayPath?: string;
+  canonicalIdentity?: string;
 }
 
 export interface DirectoryRecord {
@@ -19,17 +24,21 @@ export interface DirectoryRecord {
 
 export interface WorkspaceSnapshot {
   root: WorkspaceRoot | null;
+  roots: readonly WorkspaceRoot[];
   records: Readonly<Record<string, DirectoryRecord>>;
   expanded: Readonly<Record<string, true>>;
   selectedPath: string | null;
   showHidden: boolean;
   rootError: string | null;
+  filters: WorkspaceFilters;
+  syncStatus: { kind: 'ready' | 'syncing' | 'unavailable'; message: string | null };
 }
 
 type ListDirectory = (request: ListDirectoryRequest) => Promise<ResultEnvelope<DirectoryPage>>;
 type CreateEntry = (request: CreateEntryRequest) => Promise<ResultEnvelope<DirectoryEntry>>;
 type RenameEntry = (request: RenameEntryRequest) => Promise<ResultEnvelope<RenameEntryResult>>;
 type TrashEntry = (request: TrashEntryRequest) => Promise<ResultEnvelope<TrashEntryResult>>;
+type TransferEntry = (request: TransferEntryRequest) => Promise<ResultEnvelope<TransferEntryResult>>;
 
 const nameCollator = new Intl.Collator('zh-CN', { numeric: true, sensitivity: 'base' });
 
@@ -46,8 +55,9 @@ const isAtOrBelow = (candidate: string, parent: string) =>
   parent === '' || candidate === parent || candidate.startsWith(`${parent}/`);
 
 const initialSnapshot = (): WorkspaceSnapshot => ({
-  root: null, records: { '': emptyRecord() }, expanded: {}, selectedPath: null,
-  showHidden: false, rootError: null,
+  root: null, roots: [], records: { '': emptyRecord() }, expanded: {}, selectedPath: null,
+  showHidden: false, rootError: null, filters: { ...defaultWorkspaceFilters },
+  syncStatus: { kind: 'ready', message: null },
 });
 
 export class WorkspaceStore {
@@ -55,15 +65,20 @@ export class WorkspaceStore {
   private readonly createEntryAction: CreateEntry;
   private readonly renameEntryAction: RenameEntry;
   private readonly trashEntryAction: TrashEntry;
+  private readonly transferEntryAction: TransferEntry;
   private readonly listeners = new Set<() => void>();
   private readonly records = new Map<string, DirectoryRecord>();
   private readonly expanded = new Set<string>();
   private readonly requestVersions = new Map<string, number>();
   private snapshot: WorkspaceSnapshot;
   private root: WorkspaceRoot | null = null;
+  private roots: readonly WorkspaceRoot[] = [];
+  private readonly rootStates = new Map<string, WorkspaceSnapshot>();
   private showHidden = false;
   private selectedPath: string | null = null;
   private rootError: string | null = null;
+  private filters: WorkspaceFilters = { ...defaultWorkspaceFilters };
+  private syncStatus: WorkspaceSnapshot['syncStatus'] = { kind: 'ready', message: null };
   private generation = 0;
 
   constructor(
@@ -71,11 +86,13 @@ export class WorkspaceStore {
     createEntry: CreateEntry = request => files.createEntry(request),
     renameEntry: RenameEntry = request => files.renameEntry(request),
     trashEntry: TrashEntry = request => files.trashEntry(request),
+    transferEntry: TransferEntry = request => files.transferEntry(request),
   ) {
     this.listDirectory = listDirectory;
     this.createEntryAction = createEntry;
     this.renameEntryAction = renameEntry;
     this.trashEntryAction = trashEntry;
+    this.transferEntryAction = transferEntry;
     this.records.set('', emptyRecord());
     this.snapshot = initialSnapshot();
   }
@@ -88,6 +105,59 @@ export class WorkspaceStore {
   readonly getSnapshot = () => this.snapshot;
 
   setRoot(root: WorkspaceRoot | null) {
+    this.roots = root ? [root] : [];
+    this.rootStates.clear();
+    this.resetRoot(root);
+  }
+
+  replaceRoots(roots: readonly WorkspaceRoot[]) {
+    const unique: WorkspaceRoot[] = [];
+    for (const root of roots) if (!unique.some(item => item.grant.grantId === root.grant.grantId
+      || (!!item.canonicalIdentity && item.canonicalIdentity === root.canonicalIdentity))) unique.push(root);
+    if (unique.length > 16) return false;
+    this.roots = unique; this.rootStates.clear(); this.resetRoot(unique[0] ?? null); return true;
+  }
+
+  addRoot(root: WorkspaceRoot) {
+    const existing = this.roots.find(item => item.grant.grantId === root.grant.grantId
+      || (!!item.canonicalIdentity && item.canonicalIdentity === root.canonicalIdentity));
+    if (existing) { this.activateRoot(existing.grant.grantId); return true; }
+    if (this.roots.length >= 16) { this.rootError = '工作区最多包含16个根。'; this.publish(); return false; }
+    this.roots = [...this.roots, root]; this.activateRoot(root.grant.grantId); return true;
+  }
+
+  reorderRoots(ids: readonly string[]) {
+    if (ids.length !== this.roots.length || new Set(ids).size !== ids.length) return false;
+    const roots = ids.map(id => this.roots.find(root => root.grant.grantId === id));
+    if (roots.some(root => !root)) return false;
+    this.roots = roots.filter((root): root is WorkspaceRoot => !!root); this.publish(); return true;
+  }
+
+  removeRoot(grantId: string) {
+    // Caller first revokes the native directory grant and rebinds open documents.
+    this.roots = this.roots.filter(root => root.grant.grantId !== grantId);
+    this.rootStates.delete(grantId);
+    if (this.root?.grant.grantId === grantId) this.resetRoot(this.roots[0] ?? null);
+    else this.publish();
+  }
+
+  activateRoot(grantId: string) {
+    const root = this.roots.find(item => item.grant.grantId === grantId);
+    if (!root || this.root?.grant.grantId === grantId) { this.publish(); return; }
+    if (this.root) this.rootStates.set(this.root.grant.grantId, this.snapshot);
+    const previous = this.rootStates.get(grantId);
+    this.resetRoot(root, false);
+    if (previous) {
+      this.records.clear();
+      for (const [path, record] of Object.entries(previous.records)) this.records.set(path, { ...record, loading: false });
+      for (const path of Object.keys(previous.expanded)) this.expanded.add(path);
+      this.selectedPath = previous.selectedPath; this.rootError = previous.rootError;
+      this.publish();
+    }
+    if (!this.records.get('')?.loaded) void this.load(root.grant, false);
+  }
+
+  private resetRoot(root: WorkspaceRoot | null, load = true) {
     this.generation++;
     this.root = root;
     this.records.clear();
@@ -97,7 +167,7 @@ export class WorkspaceStore {
     this.rootError = null;
     this.records.set('', emptyRecord());
     this.publish();
-    if (root) void this.load(root.grant, false);
+    if (root && load) void this.load(root.grant, false);
   }
 
   clearRoot() {
@@ -108,6 +178,7 @@ export class WorkspaceStore {
     if (this.showHidden === showHidden) return;
     this.generation++;
     this.showHidden = showHidden;
+    this.rootStates.clear();
     const root = this.root;
     this.records.clear();
     this.expanded.clear();
@@ -117,6 +188,17 @@ export class WorkspaceStore {
     this.records.set('', emptyRecord());
     this.publish();
     if (root) void this.load(root.grant, false);
+  }
+
+  setFilters(filters: WorkspaceFilters) {
+    this.filters = normalizedFilters(filters);
+    this.publish();
+  }
+
+  setSyncStatus(status: WorkspaceSnapshot['syncStatus']) {
+    if (this.syncStatus.kind === status.kind && this.syncStatus.message === status.message) return;
+    this.syncStatus = status;
+    this.publish();
   }
 
   select(entry: DirectoryEntry) {
@@ -338,7 +420,83 @@ export class WorkspaceStore {
     return result;
   }
 
+  async transferEntry(
+    entry: DirectoryEntry,
+    targetParent: FileRef,
+    mode: TransferEntryRequest['mode'],
+  ): Promise<ResultEnvelope<TransferEntryResult>> {
+    const requestGeneration = this.generation;
+    const result = await this.transferEntryAction({
+      source: entry.ref,
+      targetParent,
+      mode,
+      expectedRevision: entry.revision,
+      requestId: crypto.randomUUID(),
+    });
+    if (!result.ok) return result;
+    if (requestGeneration !== this.generation) return result;
+    const sourceParentPath = entry.ref.relativePath.split('/').slice(0, -1).join('/');
+    const sourceParent = { grantId: entry.ref.grantId, relativePath: sourceParentPath };
+    const destinationParent = { grantId: result.value.entry.ref.grantId,
+      relativePath: result.value.entry.ref.relativePath.split('/').slice(0, -1).join('/') };
+    if (mode === 'move') {
+      this.applyTransferRemap(entry, result.value.entry);
+      this.selectedPath = result.value.entry.ref.relativePath;
+    } else {
+      const record = this.records.get(destinationParent.relativePath) ?? emptyRecord();
+      if (destinationParent.grantId === this.root?.grant.grantId) {
+        this.records.set(destinationParent.relativePath, {
+          ...record,
+          items: [...record.items.filter(item => item.ref.relativePath !== result.value.entry.ref.relativePath),
+            result.value.entry].sort(compareEntries),
+          loaded: true,
+          loading: false,
+          error: null,
+        });
+      }
+      this.selectedPath = result.value.entry.ref.relativePath;
+    }
+    this.rootError = null;
+    this.publish();
+    if (sourceParent.grantId === this.root?.grant.grantId) await this.load(sourceParent, false);
+    if (destinationParent.grantId === this.root?.grant.grantId
+      && destinationParent.relativePath !== sourceParent.relativePath) {
+      await this.load(destinationParent, false);
+    }
+    return result;
+  }
+
+  private applyTransferRemap(source: DirectoryEntry, target: DirectoryEntry) {
+    const from = source.ref.relativePath;
+    const to = target.ref.relativePath;
+    const remap = (path: string) => path === from || path.startsWith(`${from}/`)
+      ? `${to}${path.slice(from.length)}` : null;
+    const remapped = new Map<string, DirectoryRecord>();
+    for (const [key, record] of this.records) {
+      const nextKey = remap(key);
+      const targetGrant = target.ref.grantId;
+      remapped.set(nextKey ?? key, {
+        ...record,
+        items: record.items.flatMap(item => {
+          const itemPath = remap(item.ref.relativePath);
+          if (item.ref.relativePath === from) return [target];
+          return itemPath === null ? [item] : [{ ...item, ref: { ...item.ref, grantId: targetGrant, relativePath: itemPath } }];
+        }),
+      });
+    }
+    this.records.clear();
+    for (const [key, record] of remapped) this.records.set(key, record);
+    const expanded = new Set<string>();
+    for (const path of this.expanded) expanded.add(remap(path) ?? path);
+    this.expanded.clear();
+    for (const path of expanded) this.expanded.add(path);
+    if (this.selectedPath) this.selectedPath = remap(this.selectedPath) ?? this.selectedPath;
+  }
+
   async locate(reference: FileRef): Promise<boolean> {
+    if (this.root?.grant.grantId !== reference.grantId && this.roots.some(root => root.grant.grantId === reference.grantId)) {
+      this.activateRoot(reference.grantId);
+    }
     if (!this.root || reference.grantId !== this.root.grant.grantId) {
       this.rootError = '当前文件不在已打开的文件夹中。';
       this.publish();
@@ -452,11 +610,14 @@ export class WorkspaceStore {
   private publish() {
     this.snapshot = {
       root: this.root,
+      roots: this.roots,
       records: Object.fromEntries(this.records),
       expanded: Object.fromEntries([...this.expanded].map(key => [key, true])),
       selectedPath: this.selectedPath,
       showHidden: this.showHidden,
       rootError: this.rootError,
+      filters: this.filters,
+      syncStatus: this.syncStatus,
     };
     this.listeners.forEach(listener => listener());
   }

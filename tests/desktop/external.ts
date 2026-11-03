@@ -30,6 +30,8 @@ export async function verifyNativeExternal(page: Page, dataDir: string, evidence
     const native = Reflect.get(window, '__TAURI_INTERNALS__') as { callbacks: Map<number, (data: unknown) => void> };
     const callbacks = native.callbacks;
     if (!(callbacks instanceof Map)) throw new Error('Framework callback table unavailable');
+    const overflowListeners: Array<(watchId: string) => void> = [];
+    Reflect.set(window, 'nativeExternalOverflowListeners', overflowListeners);
     const get = callbacks.get;
     callbacks.get = function (id) {
       const callback = get.call(this, id);
@@ -40,7 +42,7 @@ export async function verifyNativeExternal(page: Page, dataDir: string, evidence
             Reflect.set(window, 'nativeExternalSubscription', data.value);
           }
           if ('event' in data && data.event === 'filesystem_changed') {
-            Reflect.set(window, 'nativeExternalOverflow', (watchId: string) => callback({ ...data,
+            overflowListeners.push((watchId: string) => callback({ ...data,
               payload: { watchId, sequence: 9000, entries: [], overflow: true } }));
           }
         }
@@ -170,9 +172,9 @@ export async function verifyNativeExternal(page: Page, dataDir: string, evidence
   await writeFile(afterDelete, '溢出通知之后读取的实际磁盘正文', 'utf8');
   await page.evaluate(() => {
     const subscription = Reflect.get(window, 'nativeExternalSubscription') as { watchId: string };
-    const overflow = Reflect.get(window, 'nativeExternalOverflow');
-    if (typeof overflow !== 'function') throw new Error('Real filesystem listener callback was not observed');
-    overflow(subscription.watchId);
+    const listeners = Reflect.get(window, 'nativeExternalOverflowListeners') as Array<(watchId: string) => void>;
+    if (!Array.isArray(listeners) || listeners.length === 0) throw new Error('Real filesystem listener callbacks were not observed');
+    for (const overflow of listeners) overflow(subscription.watchId);
   });
   await expect(editor()).toHaveText('溢出通知之后读取的实际磁盘正文');
   await remember('overflowFallbackDisk', afterDelete);

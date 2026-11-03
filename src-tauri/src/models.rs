@@ -592,6 +592,41 @@ pub struct RenameEntryResult {
     pub renamed_documents: Vec<RenamedDocument>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TransferMode {
+    Move,
+    Copy,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TransferEntryRequest {
+    pub source: FileRef,
+    pub target_parent: FileRef,
+    pub mode: TransferMode,
+    pub expected_revision: String,
+    pub request_id: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TransferEntryResult {
+    pub entry: DirectoryEntry,
+    pub renamed_documents: Vec<RenamedDocument>,
+    pub mode: TransferMode,
+    pub source_removed: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NativeDropEntry {
+    #[serde(rename = "ref")]
+    pub reference: FileRef,
+    pub display_name: String,
+    pub is_directory: bool,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TrashImpactRequest {

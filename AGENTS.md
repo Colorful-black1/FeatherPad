@@ -9,7 +9,7 @@
 3. [任务清单](tasks/todo.md)：第一个依赖满足的未完成任务；[计划](tasks/plan.md) 给阶段关卡。
 4. 按feature ID只读 [功能矩阵](docs/FEATURE-MATRIX.md)、[能力地图](CAPABILITY-MAP.md) 和相关模块SPEC；跨进程先读 [CONTRACTS](docs/CONTRACTS.md)。UI参考 [UI-DESIGN](design/UI-DESIGN.md)。
 
-当前**M0/G0、M1/G1已通过（2026-11-03）；M2/G2进行中，当前任务见PROGRESS**。M1的T101–T115实现及34项feature ID统一验收已完成，最终Release和可试用包见[M1验收](docs/acceptance/M1.md)。用户已确认开始M2，T201–T202已实现并自检，当前任务与证据见PROGRESS；按用户要求，每完成一个M阶段必须停止并等待确认，未确认前不得开始下一阶段。HTML原型不是CodeMirror/Tauri应用，演示保存不写源文件；完整v1必须推进M0–M5全部86项必需功能。
+当前**M0/G0、M1/G1、M2/G2已通过（2026-11-03）；下一项M3/T301，等待用户确认**。M1的T101–T115和M2的T201–T216均已实现并完成各自统一验收，最终Release、真实/mock边界和证据见[M1验收](docs/acceptance/M1.md)与[M2验收](docs/acceptance/M2.md)。按用户要求，每完成一个M阶段必须停止并等待确认，未确认前不得开始下一阶段。HTML原型不是CodeMirror/Tauri应用，演示保存不写源文件；完整v1必须推进M0–M5全部86项必需功能。
 
 ## 固定技术与环境
 

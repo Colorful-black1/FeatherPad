@@ -1,5 +1,7 @@
 mod commands;
+mod global_shortcut;
 pub mod models;
+use tauri::Manager;
 pub mod services {
     pub mod create_file;
     pub mod directories;
@@ -14,10 +16,12 @@ pub mod services {
     pub mod identity;
     pub mod open_policy;
     pub mod recovery;
+    pub mod replace_plan;
     pub mod save;
     pub mod save_as;
     pub mod save_journal;
     pub mod save_requests;
+    pub mod search;
     pub mod session;
     pub mod session_grants;
     pub mod settings;
@@ -29,10 +33,12 @@ pub mod services {
     pub mod text;
     pub mod text_preview;
     pub mod trash;
+    pub mod walker;
     pub mod watch;
     pub mod windows_file;
     pub mod windows_trash;
     pub mod workspace;
+    pub mod workspace_file;
     pub mod workspace_settings;
 }
 
@@ -48,14 +54,38 @@ pub fn run() {
         .manage(std::sync::Arc::new(std::sync::Mutex::new(
             services::watch::WatchRegistry::default(),
         )))
+        .manage(std::sync::Arc::new(
+            services::walker::WalkCoordinator::default(),
+        ))
+        .manage(std::sync::Arc::new(
+            services::search::SearchCoordinator::default(),
+        ))
+        .manage(global_shortcut::GlobalShortcutState::default())
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
+                commands::workspace::handle_native_drop(window.app_handle(), paths.clone());
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             commands::choose_files,
             commands::choose_folder,
             commands::workspace::inspect_workspace_root,
             commands::workspace::release_workspace_root,
+            commands::workspace::open_workspace_file,
+            commands::workspace::save_workspace_file,
+            commands::workspace::save_workspace_file_as,
+            commands::workspace::walk_workspace,
+            commands::workspace::cancel_workspace_walk,
+            commands::search::search_workspace,
+            commands::search::cancel_workspace_search,
+            commands::set_global_shortcut,
+            commands::replacement::create_replace_plan,
+            commands::replacement::commit_replace_plan,
+            commands::replacement::rollback_replace_batch,
             commands::list_directory,
             commands::file_ops::create_entry,
             commands::file_ops::rename_entry,
+            commands::file_ops::transfer_entry,
             commands::file_ops::get_trash_impact,
             commands::file_ops::trash_entry,
             commands::open_document,

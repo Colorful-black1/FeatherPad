@@ -295,6 +295,20 @@ export interface RenameEntryResult {
   entry: DirectoryEntry;
   renamedDocuments: RenamedDocument[];
 }
+export type TransferMode = 'move' | 'copy';
+export interface TransferEntryRequest {
+  source: FileRef;
+  targetParent: FileRef;
+  mode: TransferMode;
+  expectedRevision: string;
+  requestId: string;
+}
+export interface TransferEntryResult {
+  entry: DirectoryEntry;
+  renamedDocuments: RenamedDocument[];
+  mode: TransferMode;
+  sourceRemoved: boolean;
+}
 
 export interface TrashImpactRequest { ref: FileRef; expectedRevision: string }
 export interface TrashDocument { documentId: DocumentId; displayPath: string; canSnapshot: boolean }

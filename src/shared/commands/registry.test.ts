@@ -79,3 +79,29 @@ it('keeps an in-memory remap and warns when preferences cannot be written', () =
   expect(h.registry.binding('file.save')).toBe('Ctrl+K');
   expect(h.registry.getSnapshot().warning).toBe('快捷键仅本次生效，配置未能保存。');
 });
+
+it('exports and atomically imports the complete canonical binding map', () => {
+  const h = fixture();
+  h.registry.setBinding('file.save', 'Ctrl+K');
+  const exported = h.registry.exportBindings();
+  expect(JSON.parse(exported)).toEqual({
+    schemaVersion: 1,
+    bindings: [['file.save', 'Ctrl+K'], ['commands.open', 'Ctrl+Shift+P']],
+  });
+  expect(exported).not.toContain('keywords');
+  expect(exported).not.toContain('action');
+
+  h.registry.setBinding('commands.open', null);
+  const imported = JSON.parse(exported) as { bindings: [string, string | null][] };
+  imported.bindings[0]![1] = 'Ctrl+Shift+O';
+  imported.bindings[1]![1] = 'Ctrl+Shift+J';
+  expect(h.registry.importBindings(JSON.stringify(imported))).toEqual({ ok: true });
+  expect(h.registry.bindings()).toEqual({ 'file.save': 'Ctrl+Shift+O', 'commands.open': 'Ctrl+Shift+J' });
+
+  imported.bindings[1]![1] = 'Ctrl+Shift+O';
+  expect(h.registry.importBindings(JSON.stringify(imported))).toMatchObject({ ok: false, reason: expect.stringContaining('冲突') });
+  expect(h.registry.bindings()).toEqual({ 'file.save': 'Ctrl+Shift+O', 'commands.open': 'Ctrl+Shift+J' });
+  expect(h.registry.importBindings(JSON.stringify({ schemaVersion: 1, bindings: [['file.save', 'Ctrl+K']] })))
+    .toMatchObject({ ok: false });
+  expect(h.registry.bindings()).toEqual({ 'file.save': 'Ctrl+Shift+O', 'commands.open': 'Ctrl+Shift+J' });
+});

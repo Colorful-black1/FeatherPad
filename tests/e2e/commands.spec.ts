@@ -1,4 +1,5 @@
 import { expect, test, type Page } from './test-fixture';
+import { readFile } from 'node:fs/promises';
 
 const palette = (page: Page) => page.getByRole('dialog', { name: '命令面板', exact: true });
 const query = (page: Page) => palette(page).getByRole('combobox', { name: '搜索命令', exact: true });
@@ -62,22 +63,60 @@ test('shortcut editing rejects conflicts and reserved keys, persists valid chang
   await binding.fill('Ctrl+Shift+K');
   await palette(page).getByRole('button', { name: '应用快捷键', exact: true }).click();
   await expect(palette(page).getByRole('alert')).toContainText('保留给原生文本编辑');
-  await binding.press('Control+Shift+l');
-  await expect(binding).toHaveValue('Ctrl+Shift+L');
+  await binding.press('Shift+Alt+O');
+  await expect(binding).toHaveValue('Shift+Alt+O');
   await palette(page).getByRole('button', { name: '应用快捷键', exact: true }).click();
-  await expect(palette(page).getByRole('option')).toContainText('Ctrl+Shift+L');
+  await expect(palette(page).getByRole('option')).toContainText('Shift+Alt+O');
   await page.keyboard.press('Escape');
   await page.evaluate(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'p', ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true })));
   await expect(palette(page)).toHaveCount(0);
-  await page.keyboard.press('Control+Shift+l');
+  await page.keyboard.press('Shift+Alt+O');
   await expect(query(page)).toBeFocused();
   await page.keyboard.press('Escape');
   await page.reload();
-  await page.keyboard.press('Control+Shift+l');
+  await page.keyboard.press('Shift+Alt+O');
   await expect(query(page)).toBeFocused();
   await palette(page).getByRole('button', { name: '恢复默认快捷键', exact: true }).click();
   await page.keyboard.press('Escape');
   await page.keyboard.press('Control+Shift+p');
+  await expect(query(page)).toBeFocused();
+});
+
+test('remapped editor shortcuts execute inside CodeMirror and complete shortcut files import atomically', async ({ page }) => {
+  await page.goto('/');
+  await page.keyboard.press('Control+n');
+  const editor = page.locator('.cm-content');
+  await page.keyboard.insertText('same other same\nline');
+  await page.keyboard.press('Control+Home');
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('Control+Shift+p');
+  await query(page).fill('select all occurrences');
+  await palette(page).getByRole('button', { name: '修改快捷键', exact: true }).click();
+  const binding = palette(page).getByRole('textbox', { name: '快捷键组合', exact: true });
+  await binding.fill('Shift+Alt+O');
+  await palette(page).getByRole('button', { name: '应用快捷键', exact: true }).click();
+
+  const downloadPromise = page.waitForEvent('download');
+  await palette(page).getByRole('button', { name: '导出快捷键…', exact: true }).click();
+  const download = await downloadPromise;
+  const path = await download.path();
+  expect(path).not.toBeNull();
+  const exported = JSON.parse(await readFile(path!, 'utf8')) as {
+    schemaVersion: number; bindings: [string, string | null][];
+  };
+  const commandPalette = exported.bindings.find(([id]) => id === 'commands.open');
+  expect(commandPalette?.[1]).toBe('Ctrl+Shift+P');
+  commandPalette![1] = 'Shift+Alt+U';
+  await palette(page).getByLabel('导入快捷键文件').setInputFiles({
+    name: 'shortcuts.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(exported)),
+  });
+  await expect(palette(page).getByRole('alert')).toContainText('已导入');
+  await page.keyboard.press('Escape');
+
+  await page.keyboard.press('Shift+Alt+O');
+  await page.keyboard.insertText('X');
+  await expect(editor).toHaveText('X other Xline');
+  await page.keyboard.press('Shift+Alt+U');
   await expect(query(page)).toBeFocused();
 });
 
@@ -108,6 +147,7 @@ test('Web mock: quick open uses loaded authorized candidates, distinguishes path
     Reflect.set(window, '__TAURI_INTERNALS__', { invoke: async (command: string, args: { ref?: { grantId: string; relativePath: string } }) => {
       const ref = args.ref ?? { grantId: 'quick-root', relativePath: '' };
       if (command === 'choose_folder') return { ok: true, value: { grant: ref, displayName: 'quick-root' } };
+      if (command === 'inspect_workspace_root') return { ok: true, value: { ref, displayName: 'quick-root', displayPath: 'E:/quick-root', canonicalIdentity: 'c'.repeat(64) } };
       if (command === 'list_directory') return { ok: true, value: { items: (ref.relativePath ? ['note.txt'] : ['alpha', 'beta', 'root.txt']).map(name => ({
         id: `${ref.relativePath}/${name}`, name, ref: { ...ref, relativePath: ref.relativePath ? `${ref.relativePath}/${name}` : name },
         kind: name.includes('.') ? 'file' : 'directory', isHidden: false, isReadOnly: false, revision: 'a'.repeat(64),
@@ -156,9 +196,11 @@ test('Web mock: quick open uses loaded authorized candidates, distinguishes path
   await search.press('ArrowDown');
   await expect(options.nth(0)).toHaveAttribute('aria-selected', 'true');
   await search.press('ArrowDown');
-  await search.press('Enter');
-  await expect(page.locator('.cm-content')).toHaveText('原文 beta/note.txt');
+  await expect(options.nth(1)).toHaveAttribute('aria-selected', 'true');
+  await options.nth(1).click();
+  await expect(quick).toHaveCount(0);
   expect(await page.evaluate(() => Reflect.get(window, 'quickOpened'))).toEqual(['root.txt', 'beta/note.txt']);
+  await expect(page.locator('.cm-content')).toHaveText('原文 beta/note.txt');
   await page.getByRole('tab', { name: /root\.txt/ }).click();
   await expect(page.locator('.cm-content')).toHaveText('原文 root.txt 保留修改');
   await page.locator('.cm-content').focus();

@@ -221,7 +221,7 @@ export async function verifyNativeWorkspace(
     const createFile = page.getByRole('textbox', { name: '新建文件名称' });
     await createFile.fill('CON');
     await createFile.press('Enter');
-    await expect(page.getByRole('alert')).toContainText('Windows保留设备名');
+    await expect(page.locator('.tree-input-error')).toContainText('Windows保留设备名');
     await createFile.fill('树内新建.txt');
     await createFile.press('Enter');
     const createdName = '树内新建.txt';
@@ -272,7 +272,7 @@ export async function verifyNativeWorkspace(
     const collidingDirectory = page.getByRole('textbox', { name: '新建文件夹名称' });
     await collidingDirectory.fill('树内目录');
     await collidingDirectory.press('Enter');
-    await expect(page.getByRole('alert')).toContainText('目标名称已存在');
+    await expect(page.locator('.tree-input-error')).toContainText('目标名称已存在');
     await collidingDirectory.press('Escape');
     expect(await readdir(alpha)).toContain('树内目录');
 

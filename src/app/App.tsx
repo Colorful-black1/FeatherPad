@@ -1,8 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { availableMonitors, getCurrentWindow, LogicalPosition, LogicalSize } from '@tauri-apps/api/window';
+import { listen } from '@tauri-apps/api/event';
 import { Shell } from '../shared/ui/Shell';
 import { CommandPalette } from '../shared/ui/CommandPalette';
 import { files } from '../bridge/files';
+import { WorkspaceRoots } from '../features/workspace/roots';
+import { RootList } from '../features/workspace/RootList';
+import { FavoriteList } from '../features/workspace/FavoriteList';
+import { favoriteGrantIds, favoritesSetting, mutateFavorites, readFavorites } from '../features/workspace/favorites';
+import { useFavorites } from './use-favorites';
+import { useWorkspaceFile } from './use-workspace-file';
 import { EditorDocument } from '../features/editor/EditorDocument';
 import { ReadOnlyOpenChoices } from '../features/editor/ReadOnlyOpenChoices';
 import { offerReadOnlyOpen, type ReadOnlyOpenCandidate } from '../features/editor/read-only-open';
@@ -11,6 +18,13 @@ import { EncodingMenu } from '../features/editor/EncodingMenu';
 import type { EncodingId } from '../shared/contracts/encoding';
 import { fontSizeAfterZoom, listenEditorFontWheel, type FontZoomAction } from '../features/editor/view-settings';
 import { languageLabel, languageOptions, type LanguageId } from '../features/editor/editor-language';
+import { editingCommands } from '../features/editor/editing';
+import { Breadcrumbs } from '../features/editor/Breadcrumbs';
+import { GoToLineDialog } from '../features/editor/GoToLineDialog';
+import { OutlineDialog } from '../features/editor/OutlineDialog';
+import {
+  lineColumnAt, localOutline, NavigationHistory, positionAt, type LineColumn, type NavigationTarget,
+} from '../features/editor/navigation';
 import { documents } from '../features/editor/documents';
 import { tabs } from '../features/editor/tabs';
 import { TabStrip } from '../features/editor/TabStrip';
@@ -26,9 +40,11 @@ import { HotExitDialog } from '../features/desktop/HotExitDialog';
 import { fitSessionBounds } from '../features/desktop/window-restore';
 import { RecoveryPanel } from '../features/desktop/RecoveryPanel';
 import { settings } from '../features/desktop/settings';
+import { mergeSettings } from '../features/desktop/settings-schema';
 import { SettingsDialog } from '../features/desktop/SettingsDialog';
 import { applySettingsToEditors } from '../features/desktop/settings-effects';
 import { languagePreferences } from '../features/desktop/language-preferences';
+import { inactiveRecoveryGroups } from '../features/desktop/privacy';
 import { saveAll } from '../features/editor/save-all';
 import { SaveAllResults } from '../features/editor/SaveAllResults';
 import { autoSaves } from '../features/editor/autosave';
@@ -38,15 +54,36 @@ import type { SearchScope } from '../features/search-tools/search-query';
 import { Explorer } from '../features/workspace/Explorer';
 import { RecentList } from '../features/workspace/RecentList';
 import { TrashDialog } from '../features/workspace/TrashDialog';
-import { workspace } from '../features/workspace/store';
+import { workspace, type WorkspaceRoot } from '../features/workspace/store';
+import { WorkspaceSync } from '../features/workspace/sync';
+import { searchBridge, type SearchFileResult, type SearchMatch } from '../bridge/search';
+import {
+  replacementBridge,
+  type ReplaceBatchOutcome,
+  type ReplacementPlan,
+  type RollbackBatchOutcome,
+} from '../bridge/replacement';
+import { WorkspaceSearchPanel, type WorkspaceSearchDraft } from '../features/search-tools/WorkspaceSearchPanel';
+import { WorkspaceSearchStore } from '../features/search-tools/workspace-search';
+import { ReplacePreviewDialog } from '../features/search-tools/ReplacePreviewDialog';
+import { isNativeDropEntries, type NativeDropEntry } from '../bridge/workspace';
 import {
   addRecentEntry, clearRecentHistory, readRecentHistory, recentFileCandidate, recentGrantIds,
   recentHistoryItemsSetting, recentWorkspaceCandidate, removeRecentEntry, writeRecentHistory,
   type RecentCandidate, type RecentEntry,
 } from '../features/workspace/recent';
-import type { DirectoryEntry, DocumentId, FileRef, OpenDocument, RenamedDocument, SaveTransactionCandidate } from '../shared/contracts/files';
+import type {
+  DirectoryEntry, DocumentId, FileRef, OpenDocument, RecoveryInventory, RenamedDocument, SaveTransactionCandidate,
+} from '../shared/contracts/files';
 import { ariaShortcut } from '../shared/commands/keyboard';
-import { createAppCommands, type AppCommandActions, type AppCommandState, type AppCommandId } from './register-commands';
+import { globalShortcutBridge } from '../bridge/global-shortcut';
+import {
+  appCommandIds,
+  createAppCommands,
+  type AppCommandActions,
+  type AppCommandState,
+  type AppCommandId,
+} from './register-commands';
 import { quickCandidates } from './quick-candidates';
 
 interface FindRequest {
@@ -70,16 +107,27 @@ export function App() {
   const exitState = useSyncExternalStore(hotExit.subscribe, hotExit.getSnapshot);
   const sessionState = useSyncExternalStore(session.subscribe, session.getSnapshot);
   const recentEntries = readRecentHistory(settingsState.user[recentHistoryItemsSetting]);
+  const persistedGlobalSettings = mergeSettings(settingsState.user).settings;
+  const globalLaunchEnabled = persistedGlobalSettings.globalLaunchEnabled;
+  const globalLaunchShortcut = persistedGlobalSettings.globalLaunchShortcut;
   const batchBusy = batch.phase === 'running' || batch.phase === 'cancelling';
   const current = snapshot.documents.find(document => document.id === snapshot.activeId);
+  const primaryEditorId = tabState.primaryId ?? snapshot.activeId;
+  const secondaryEditorId = tabState.secondaryId;
   const currentSource = current ? documents.getDocument(current.id)?.source : undefined;
   const currentReference = currentSource?.ref;
+  const [navigationHistory] = useState(() => new NavigationHistory());
+  const navigationAvailability = useSyncExternalStore(navigationHistory.subscribe, navigationHistory.getSnapshot);
+  const [goToOpen, setGoToOpen] = useState(false);
+  const [outlineOpen, setOutlineOpen] = useState(false);
+  const [startupPending, setStartupPending] = useState(() => !!Reflect.get(window, '__TAURI_INTERNALS__'));
   const [autoFocus, setAutoFocus] = useState(true);
   const [openingCount, setOpeningCount] = useState(0);
   const busy = openingCount > 0;
   const setBusy = useCallback((active: boolean) => { setOpeningCount(count => count + (active ? 1 : -1)); }, []);
   const [closingCount, setClosingCount] = useState(0);
   const [closeTarget, setCloseTarget] = useState<CloseTarget | null>(null);
+  const [closeQueue, setCloseQueue] = useState<readonly DocumentId[]>([]);
   const closeOrigin = useRef<HTMLElement | null>(null);
   const closingIds = useRef(new Set<DocumentId>());
   const [savingCount, setSavingCount] = useState(0);
@@ -87,15 +135,63 @@ export function App() {
   const [notice, setNotice] = useState<string | null>(null);
   const [findOpen, setFindOpen] = useState(false);
   const [findRequest, setFindRequest] = useState<FindRequest | null>(null);
+  const [workspaceSearchOpen, setWorkspaceSearchOpen] = useState(false);
+  const [workspaceSearch] = useState(() => new WorkspaceSearchStore(searchBridge.run, searchBridge.cancel));
+  const [replacementPlan, setReplacementPlan] = useState<ReplacementPlan | null>(null);
+  const [replacementBusy, setReplacementBusy] = useState(false);
+  const [replacementError, setReplacementError] = useState<string | null>(null);
+  const [replaceOutcome, setReplaceOutcome] = useState<ReplaceBatchOutcome | null>(null);
+  const [rollbackOutcome, setRollbackOutcome] = useState<RollbackBatchOutcome | null>(null);
+  const [replacementCommitUnknown, setReplacementCommitUnknown] = useState(false);
   const [previewCandidates, setPreviewCandidates] = useState<ReadOnlyOpenCandidate[]>([]);
   const [trashEntry, setTrashEntry] = useState<DirectoryEntry | null>(null);
   const opening = useRef(false);
   const [commands] = useState(createAppCommands);
+  const [workspaceSync] = useState(() => new WorkspaceSync(workspace));
   const commandState = useSyncExternalStore(commands.subscribe, commands.getSnapshot);
   const [paletteMode, setPaletteMode] = useState<'commands' | 'files' | null>(null);
   const paletteOrigin = useRef<HTMLElement | null>(null);
   const [saveTransactions, setSaveTransactions] = useState<SaveTransactionCandidate[]>([]);
+  const [recoveryInventory, setRecoveryInventory] = useState<RecoveryInventory | null>(() =>
+    Reflect.get(window, '__TAURI_INTERNALS__') ? null : { entries: [], failures: [], startupWarnings: [], storageBytes: 0, saveTransactions: [] });
+  const [recoveryInventoryError, setRecoveryInventoryError] = useState<string | null>(null);
   const transactionCopies = useRef(new Map<string, DocumentId>());
+
+  const refreshRecoveryInventory = useCallback(async (): Promise<string | null> => {
+    if (!Reflect.get(window, '__TAURI_INTERNALS__')) return null;
+    const result = await files.listRecoveryEntries();
+    if (!result.ok) {
+      setRecoveryInventoryError(result.error.message);
+      return result.error.message;
+    }
+    setRecoveryInventory(result.value);
+    setSaveTransactions(result.value.saveTransactions);
+    setRecoveryInventoryError(null);
+    return null;
+  }, []);
+
+  const cleanupInactiveRecovery = useCallback(async (): Promise<string | null> => {
+    const inventory = await files.listRecoveryEntries();
+    if (!inventory.ok) {
+      setRecoveryInventoryError(inventory.error.message);
+      return inventory.error.message;
+    }
+    const active = new Set(documents.getSnapshot().documents.filter(document => document.dirty).map(document => document.id));
+    const groups = inactiveRecoveryGroups(inventory.value.entries, active);
+    const failures: string[] = [];
+    for (const { documentId, throughVersion } of groups) {
+      const discarded = await files.discardRecovery({ documentId, throughVersion });
+      if (!discarded.ok) failures.push(discarded.error.message);
+    }
+    await refreshRecoveryInventory();
+    if (failures.length > 0) {
+      return `已处理 ${groups.length - failures.length} 个文档；${failures.length} 个文档的记录未清理，已保留并可重试。${failures[0]}`;
+    }
+    const entries = groups.reduce((sum, group) => sum + group.entries, 0);
+    return groups.length > 0
+      ? `已清理 ${entries} 个非活动恢复条目；活动未保存副本未改动。`
+      : '没有可清理的非活动恢复条目。';
+  }, [refreshRecoveryInventory]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
@@ -112,8 +208,52 @@ export function App() {
   }, []);
 
   useEffect(() => applySettingsToEditors(settings, documents), []);
+  useEffect(() => {
+    const all = commands.bindings();
+    documents.applyCommandBindings(Object.fromEntries(appCommandIds.map(id => [id, all[id] ?? null])));
+  }, [commands, commandState.revision]);
+  useEffect(() => {
+    if (!Reflect.get(window, '__TAURI_INTERNALS__')) return;
+    let active = true;
+    const enabled = globalLaunchEnabled;
+    const shortcut = globalLaunchShortcut;
+    void globalShortcutBridge.configure(enabled, shortcut).then(result => {
+      if (!active) return;
+      if (!result.ok) setError(`全局唤起未注册：${result.error.message} 设置已保留，可修正后重试。`);
+      else if (enabled) setNotice(`全局唤起已启用：${shortcut}。`);
+    });
+    return () => { active = false; };
+  }, [globalLaunchEnabled, globalLaunchShortcut]);
+  useEffect(() => () => {
+    if (Reflect.get(window, '__TAURI_INTERNALS__')) {
+      void globalShortcutBridge.configure(false, 'Ctrl+Shift+Space');
+    }
+  }, []);
   useEffect(() => languagePreferences.start(setNotice), []);
   useEffect(() => autoSaves.start(), []);
+  useEffect(() => workspaceSync.start(), [workspaceSync]);
+  useEffect(() => {
+    if (!Reflect.get(window, '__TAURI_INTERNALS__')) return;
+    let active = true;
+    let unlisten: (() => void) | null = null;
+    void searchBridge.listenProgress(progress => workspaceSearch.updateProgress(progress)).then(stop => {
+      if (active) unlisten = stop; else stop();
+    }).catch(() => setNotice('目录搜索进度监听不可用；搜索本身仍可继续并显示最终结果。'));
+    return () => {
+      active = false;
+      unlisten?.();
+    };
+  }, [workspaceSearch]);
+  useEffect(() => {
+    const live = documents.getSnapshot();
+    navigationHistory.retainDocuments(new Set(live.documents.map(document => document.id)));
+    const active = live.activeId ? documents.getDocument(live.activeId) : undefined;
+    if (active) navigationHistory.record({
+      documentId: active.summary.id,
+      offset: active.state.selection.main.head,
+      label: active.summary.displayPath ?? active.summary.title,
+    });
+  }, [navigationHistory, snapshot.activeId, snapshot.documents.length]);
 
   useEffect(() => {
     if (!Reflect.get(window, '__TAURI_INTERNALS__')) return;
@@ -143,7 +283,8 @@ export function App() {
       try {
         const loadedSettings = await settings.load();
         const restoreGrantIds = loadedSettings.ok
-          ? recentGrantIds(readRecentHistory(loadedSettings.value.settings[recentHistoryItemsSetting]))
+          ? [...new Set([...recentGrantIds(readRecentHistory(loadedSettings.value.settings[recentHistoryItemsSetting])),
+            ...favoriteGrantIds(loadedSettings.value.settings[favoritesSetting])])]
           : [];
         const loaded = await session.load(restoreGrantIds);
         let sources = new Map<DocumentId, OpenDocument>();
@@ -195,6 +336,7 @@ export function App() {
           }
           notices.push(...recovery.value.warnings);
         }
+        if (active) await refreshRecoveryInventory();
         if (loaded.ok && loaded.value.session) {
             const applied = session.apply(loaded.value.session);
             notices.push(...applied.warnings);
@@ -210,6 +352,7 @@ export function App() {
           stopExternal = externalChanges.start();
           if (notices.length > 0) setNotice(notices.join(' '));
         }
+        if (active) setStartupPending(false);
         releaseStartup();
       }
     })();
@@ -223,7 +366,7 @@ export function App() {
       stopSettings();
       if (hotExit.getSnapshot().phase !== 'idle') hotExit.resume();
     };
-  }, []);
+  }, [refreshRecoveryInventory]);
 
   const rememberRecentCandidate = useCallback(async (candidate: RecentCandidate): Promise<RecentEntry | null> => {
     session.markGrantAvailable(candidate.ref.grantId);
@@ -284,6 +427,25 @@ export function App() {
     if (error) setNotice(`最近记录的路径未能随重命名更新：${error}`);
   }, [persistRecentEntries, setNotice]);
 
+  const applyPathMappings = useCallback(async (renamed: readonly RenamedDocument[]) => {
+    documents.applyRenamedPaths(renamed);
+    await applyRecentRenames(renamed);
+    const sources = renamed.map(mapping => documents.getDocument(mapping.documentId)?.source).filter(source => !!source);
+    if (sources.length && settings.getSnapshot().user[favoritesSetting] !== undefined) {
+      const result = await settings.updatePersistedValue(favoritesSetting, value => {
+        let next = value;
+        for (const source of sources) {
+          const candidate = recentFileCandidate(source);
+          const existing = readFavorites(next).find(entry => entry.kind === 'file' && entry.canonicalIdentity === candidate.canonicalIdentity);
+          if (existing) next = mutateFavorites(next, { kind: 'rebind', id: existing.id, candidate });
+        }
+        return next ?? { schemaVersion: 1, entries: [] };
+      });
+      if (!result.ok) setNotice(`路径已更新，收藏更新未保存：${result.error.message}`);
+    }
+  }, [applyRecentRenames, setNotice]);
+  const roots = useMemo(() => new WorkspaceRoots(workspace, applyPathMappings), [applyPathMappings]);
+
   const openOne = useCallback(async (
     reference: FileRef,
     intent: 'preview' | 'pinned' = 'pinned',
@@ -302,7 +464,51 @@ export function App() {
     }
     setPreviewCandidates(candidates => offerReadOnlyOpen(candidates, reference, result.error));
     return result.error.message;
-  }, [rememberRecentFile, setSidebarOpen]);
+  }, [rememberRecentFile, setSidebarOpen, setNotice]);
+
+  const favorites = useFavorites(roots, openOne, rememberRecentWorkspace);
+  const workspaceFile = useWorkspaceFile(roots, setNotice);
+
+  useEffect(() => {
+    if (!Reflect.get(window, '__TAURI_INTERNALS__')) return;
+    let active = true;
+    let stopDrop: (() => void) | null = null;
+    void Promise.all([
+      listen<NativeDropEntry[]>('featherpad:native-drop', event => {
+        if (!active || !isNativeDropEntries(event.payload)) {
+          if (active) setError('拖入项目返回了无效的本地授权信息。');
+          return;
+        }
+        void (async () => {
+          for (const item of event.payload) {
+            if (item.isDirectory) {
+              const opened = await roots.openRoot({ grant: item.ref, displayName: item.displayName });
+              if (!opened.ok) setError(opened.error.message);
+              else {
+                setSidebarOpen(true);
+                await rememberRecentWorkspace(item.ref, item.displayName);
+              }
+            } else {
+              const message = await openOne(item.ref, 'pinned');
+              if (message) setError(message);
+            }
+          }
+        })();
+      }),
+      listen<{ message?: unknown }>('featherpad:native-drop-error', event => {
+        if (active && typeof event.payload?.message === 'string') setError(event.payload.message);
+      }),
+    ]).then(unlisten => {
+      if (active) stopDrop = () => unlisten.forEach(stop => stop());
+      else unlisten.forEach(stop => stop());
+    }).catch(() => {
+      if (active) setError('无法注册外部拖放监听；仍可通过打开命令载入文件。');
+    });
+    return () => {
+      active = false;
+      stopDrop?.();
+    };
+  }, [openOne, rememberRecentWorkspace, roots]);
 
   const openFile = useCallback(async () => {
     if (opening.current) return;
@@ -380,24 +586,90 @@ export function App() {
     });
   }, []);
 
-  const requestClose = useCallback(async (id: DocumentId) => {
-    if (batchBusy || closingIds.current.has(id)) return;
-    const document = documents.getDocument(id);
-    if (!document) return;
+  const focusNavigationTarget = useCallback((target: NavigationTarget) => {
+    const document = documents.getDocument(target.documentId);
+    if (!document) return false;
     setAutoFocus(false);
-    if (document.summary.dirty) {
-      closeOrigin.current = window.document.activeElement instanceof HTMLElement ? window.document.activeElement : null;
-      setCloseTarget({ id, version: document.summary.version });
-      return;
+    if (documents.getSnapshot().activeId !== target.documentId) documents.activate(target.documentId);
+    requestAnimationFrame(() => {
+      documents.focusOffset(target.documentId, target.offset);
+    });
+    return true;
+  }, []);
+
+  const currentNavigationTarget = useCallback((): NavigationTarget | null => {
+    const id = documents.getSnapshot().activeId;
+    const document = id ? documents.getDocument(id) : undefined;
+    return document ? {
+      documentId: document.summary.id,
+      offset: document.state.selection.main.head,
+      label: document.summary.displayPath ?? document.summary.title,
+    } : null;
+  }, []);
+
+  const goToPosition = useCallback((position: LineColumn) => {
+    const id = documents.getSnapshot().activeId;
+    const document = id ? documents.getDocument(id) : undefined;
+    if (!document) return;
+    const currentTarget = currentNavigationTarget();
+    if (currentTarget) navigationHistory.record(currentTarget);
+    const target = positionAt(document.state, position);
+    documents.focusOffset(document.summary.id, target.offset);
+    navigationHistory.record({
+      documentId: document.summary.id,
+      offset: target.offset,
+      label: `${document.summary.displayPath ?? document.summary.title}:${target.line}:${target.column}`,
+    });
+    if (target.clamped) setNotice(`目标行列超出当前文档范围，已移动到 ${target.line}:${target.column}。`);
+  }, [currentNavigationTarget, navigationHistory, setNotice]);
+
+  const navigateBack = useCallback(() => {
+    const target = navigationHistory.back();
+    if (!target) return false;
+    return focusNavigationTarget(target);
+  }, [focusNavigationTarget, navigationHistory]);
+
+  const navigateForward = useCallback(() => {
+    const target = navigationHistory.forward();
+    if (!target) return false;
+    return focusNavigationTarget(target);
+  }, [focusNavigationTarget, navigationHistory]);
+
+  const requestCloseBatch = useCallback(async (requestedIds: readonly DocumentId[]) => {
+    if (batchBusy) return;
+    const ids = [...new Set(requestedIds)];
+    setAutoFocus(false);
+    for (let index = 0; index < ids.length; index++) {
+      const id = ids[index];
+      if (!id || closingIds.current.has(id)) continue;
+      const document = documents.getDocument(id);
+      if (!document) continue;
+      if (document.summary.dirty) {
+        closeOrigin.current = window.document.activeElement instanceof HTMLElement ? window.document.activeElement : null;
+        setCloseQueue(ids.slice(index + 1));
+        setCloseTarget({ id, version: document.summary.version });
+        return;
+      }
+      closingIds.current.add(id);
+      setClosingCount(count => count + 1);
+      try {
+        const result = await tabs.close(id, document.summary.version, 'clean');
+        if (!result.ok || !result.value.closed) {
+          setCloseQueue([]);
+          setError(result.ok ? '文档没有关闭，已停止后续批量关闭。' : result.error.message);
+          focusAfterClose();
+          return;
+        }
+      } finally {
+        closingIds.current.delete(id);
+        setClosingCount(count => count - 1);
+      }
     }
-    closingIds.current.add(id);
-    setClosingCount(count => count + 1);
-    try {
-      const result = await tabs.close(id, document.summary.version, 'clean');
-      if (!result.ok) setError(result.error.message);
-      else if (result.value.closed) focusAfterClose();
-    } finally { closingIds.current.delete(id); setClosingCount(count => count - 1); }
-  }, [batchBusy, focusAfterClose]);
+    focusAfterClose();
+  }, [batchBusy, focusAfterClose, setAutoFocus, setCloseQueue, setCloseTarget, setClosingCount]);
+
+  const requestClose = useCallback(async (id: DocumentId) => requestCloseBatch([id]),
+    [requestCloseBatch]);
 
   const saveCurrent = useCallback(async () => {
     if (saveAll.getSnapshot().phase === 'running' || saveAll.getSnapshot().phase === 'cancelling') return;
@@ -467,19 +739,39 @@ export function App() {
     setBusy(true);
     setError(null);
     try {
-      const result = await files.chooseFolder();
+      const result = await roots.chooseRoot();
       if (!result.ok) { setError(result.error.message); return; }
-      if (result.value.grant && result.value.displayName) {
-        workspace.setRoot({ grant: result.value.grant, displayName: result.value.displayName });
+      if (result.value) {
         setSidebarOpen(true);
         await rememberRecentWorkspace(result.value.grant, result.value.displayName);
       }
     } finally { opening.current = false; setBusy(false); }
-  }, [rememberRecentWorkspace, setBusy]);
+  }, [rememberRecentWorkspace, setBusy, roots]);
+
+  const addRoot = useCallback(async () => {
+    if (opening.current) return;
+    opening.current = true; setBusy(true); setError(null);
+    try {
+      const result = await roots.chooseRoot(true);
+      if (!result.ok) setError(result.error.message);
+      else if (result.value) await rememberRecentWorkspace(result.value.grant, result.value.displayName);
+    } finally { opening.current = false; setBusy(false); }
+  }, [rememberRecentWorkspace, setBusy, roots]);
+
+  const removeRoot = useCallback(async (root: WorkspaceRoot) => {
+    if (opening.current) return;
+    opening.current = true; setBusy(true); setError(null);
+    try {
+      const result = await roots.removeRoot(root);
+      if (!result.ok) setError(result.error.message);
+      else await session.flush();
+    } finally { opening.current = false; setBusy(false); }
+  }, [roots, setBusy]);
 
   const openRecent = useCallback(async (entry: RecentEntry): Promise<string | null> => {
     if (entry.kind === 'workspace') {
-      workspace.setRoot({ grant: entry.ref, displayName: entry.displayPath });
+      const result = await roots.openRoot({ grant: entry.ref, displayName: entry.displayPath });
+      if (!result.ok) return result.error.message;
       setSidebarOpen(true);
       await rememberRecentWorkspace(entry.ref, entry.displayPath);
       return null;
@@ -490,7 +782,7 @@ export function App() {
     try {
       return await openOne(entry.ref, 'pinned');
     } finally { setBusy(false); }
-  }, [openOne, rememberRecentWorkspace, setBusy]);
+  }, [openOne, rememberRecentWorkspace, setBusy, roots]);
 
   const repairRecent = useCallback(async (entry: RecentEntry): Promise<string | null> => {
     setBusy(true);
@@ -501,7 +793,8 @@ export function App() {
         const selected = await files.chooseFolder();
         if (!selected.ok) return selected.error.message;
         if (!selected.value.grant || !selected.value.displayName) return '未重新选择工作区。';
-        workspace.setRoot({ grant: selected.value.grant, displayName: selected.value.displayName });
+        const opened = await roots.openRoot({ grant: selected.value.grant, displayName: selected.value.displayName });
+        if (!opened.ok) return opened.error.message;
         setSidebarOpen(true);
         stored = await rememberRecentCandidate(recentWorkspaceCandidate(
           selected.value.grant,
@@ -527,7 +820,7 @@ export function App() {
       const removalError = await persistRecentEntries(removeRecentEntry(current, entry.id));
       return removalError ? `已重新打开新项目，但旧记录未能移除：${removalError}` : null;
     } finally { setBusy(false); }
-  }, [openOne, persistRecentEntries, rememberRecentCandidate, setBusy]);
+  }, [openOne, persistRecentEntries, rememberRecentCandidate, setBusy, roots]);
 
   const removeRecent = useCallback(async (entry: RecentEntry): Promise<string | null> => {
     const current = readRecentHistory(settings.getSnapshot().user[recentHistoryItemsSetting]);
@@ -544,12 +837,24 @@ export function App() {
     const batch = saveAll.getSnapshot();
     return { hasDocument: !!active, readOnlyReason: active?.readOnlyReason ?? null, canSaveAs: active?.canSaveAs ?? false,
       hasDirty: snapshot.documents.some(document => document.dirty), isPreview: !!active && tabs.getSnapshot().previewId === active.id,
+      tabCount: snapshot.documents.length,
+      cleanTabCount: snapshot.documents.filter(document => !document.dirty && !document.closing).length,
+      isSplit: !!tabs.getSnapshot().secondaryId, canReopen: tabs.getSnapshot().recentlyClosed.length > 0,
+      canNavigateBack: navigationAvailability.canGoBack,
+      canNavigateForward: navigationAvailability.canGoForward,
+      hasWorkspace: workspace.getSnapshot().roots.length > 0,
       opening: busy, saving: savingCount > 0, closing: closingCount > 0 || !!active?.closing,
       batchBusy: batch.phase === 'running' || batch.phase === 'cancelling' };
-  }, [busy, savingCount, closingCount]);
+  }, [busy, savingCount, closingCount, navigationAvailability]);
   const commandAvailability: AppCommandState = {
     hasDocument: !!current, readOnlyReason: current?.readOnlyReason ?? null, canSaveAs: current?.canSaveAs ?? false,
     hasDirty: snapshot.documents.some(document => document.dirty), isPreview: !!current && tabState.previewId === current.id,
+    tabCount: snapshot.documents.length,
+    cleanTabCount: snapshot.documents.filter(document => !document.dirty && !document.closing).length,
+    isSplit: !!tabState.secondaryId, canReopen: tabState.recentlyClosed.length > 0,
+    canNavigateBack: navigationAvailability.canGoBack,
+    canNavigateForward: navigationAvailability.canGoForward,
+    hasWorkspace: workspaceState.roots.length > 0,
     opening: busy, saving: savingCount > 0, closing: closingCount > 0 || !!current?.closing, batchBusy,
   };
   const openPalette = useCallback((mode: 'commands' | 'files') => {
@@ -577,18 +882,198 @@ export function App() {
     });
   }, [setNotice]);
   useEffect(() => listenEditorFontWheel(window, zoomEditor, () => documents.isHotExitFrozen()), [zoomEditor]);
+  const runEditingCommand = useCallback((name: keyof typeof editingCommands) => {
+    const id = documents.getSnapshot().activeId;
+    if (!id) return;
+    if (!documents.runEditorCommand(id, editingCommands[name])) {
+      setNotice('编辑器尚未挂载，请在正文区域聚焦后重试。');
+    }
+  }, [setNotice]);
+  const startWorkspaceSearch = useCallback((draft: WorkspaceSearchDraft) => {
+    const dirtyDocuments = documents.getSnapshot().documents.flatMap(summary => {
+      const managed = documents.getDocument(summary.id);
+      if (!managed?.summary.dirty || !managed.source) return [];
+      return [{
+        id: summary.id,
+        ref: managed.source.ref,
+        displayName: summary.title,
+        displayPath: summary.displayPath ?? summary.title,
+        text: managed.state.doc.toString(),
+        version: summary.version,
+      }];
+    });
+    void workspaceSearch.start({
+      requestId: crypto.randomUUID(),
+      roots: draft.roots,
+      query: draft.query,
+      include: draft.include,
+      exclude: draft.exclude,
+      respectGitignore: draft.respectGitignore,
+      followDirectoryLinks: draft.followDirectoryLinks,
+      includeHidden: draft.includeHidden,
+      maxMatches: 10_000,
+    }, dirtyDocuments);
+  }, [workspaceSearch]);
+
+  const openWorkspaceSearchResult = useCallback(async (
+    file: SearchFileResult,
+    match: SearchMatch,
+  ) => {
+    const errorMessage = await openOne(file.ref, 'pinned', false);
+    if (errorMessage) {
+      setError(errorMessage);
+      return;
+    }
+    const id = documents.getSnapshot().activeId;
+    const managed = id ? documents.getDocument(id) : undefined;
+    if (!managed) return;
+    if (file.encoding !== 'buffer' && managed.source?.metadata.diskRevision !== file.revision) {
+      setNotice('文件在搜索后已变化，旧位置未跳转；请重新搜索后再定位。');
+      return;
+    }
+    goToPosition({ line: match.line, column: match.column });
+    setWorkspaceSearchOpen(false);
+  }, [goToPosition, openOne, setNotice]);
+
+  const previewWorkspaceReplace = useCallback(async (draft: WorkspaceSearchDraft, replacement: string) => {
+    setAutoFocus(false);
+    setReplacementBusy(true);
+    setReplacementError(null);
+    setReplaceOutcome(null);
+    setRollbackOutcome(null);
+    setReplacementCommitUnknown(false);
+    const dirtyPaths = documents.getSnapshot().documents.flatMap(summary => {
+      const managed = documents.getDocument(summary.id);
+      return summary.dirty && managed?.source ? [managed.source.metadata.displayPath] : [];
+    });
+    try {
+      const result = await replacementBridge.preview({
+        requestId: crypto.randomUUID(),
+        roots: draft.roots,
+        pattern: draft.query.pattern,
+        replacement,
+        isRegex: draft.query.isRegex,
+        isCaseSensitive: draft.query.isCaseSensitive,
+        isWholeWord: draft.query.isWholeWord,
+        include: draft.include,
+        exclude: draft.exclude,
+        respectGitignore: draft.respectGitignore,
+        followDirectoryLinks: draft.followDirectoryLinks,
+        includeHidden: draft.includeHidden,
+        dirtyPaths,
+      });
+      if (!result.ok) {
+        setNotice(result.error.message);
+        return;
+      }
+      setReplacementPlan(result.value);
+      setWorkspaceSearchOpen(false);
+    } finally {
+      setReplacementBusy(false);
+    }
+  }, []);
+
+  const commitReplacement = useCallback(async (selected: readonly FileRef[]) => {
+    const plan = replacementPlan;
+    if (!plan || replacementBusy) return;
+    setReplacementBusy(true);
+    setReplacementError(null);
+    setReplacementCommitUnknown(false);
+    try {
+      const result = await replacementBridge.commit({
+        planId: plan.planId,
+        confirmationToken: plan.confirmationToken,
+        selected: [...selected],
+      });
+      if (!result.ok) {
+        setReplacementError(result.error.code === 'IPC_UNAVAILABLE'
+          ? '提交回执未知，暂时不能把任何文件标为成功。'
+          : result.error.message);
+        setReplacementCommitUnknown(result.error.code === 'IPC_UNAVAILABLE');
+      } else {
+        setReplaceOutcome(result.value);
+      }
+      await externalChanges.checkAll();
+    } finally {
+      setReplacementBusy(false);
+    }
+  }, [replacementBusy, replacementPlan]);
+
+  const rollbackReplacement = useCallback(async () => {
+    const batchId = replaceOutcome?.batchId ?? replacementPlan?.planId;
+    if (!batchId || replacementBusy) return;
+    setReplacementBusy(true);
+    setReplacementError(null);
+    try {
+      const result = await replacementBridge.rollback({ batchId });
+      if (!result.ok) {
+        setReplacementError(result.error.message);
+      } else {
+        setRollbackOutcome(result.value);
+        setReplacementCommitUnknown(false);
+      }
+      await externalChanges.checkAll();
+    } finally {
+      setReplacementBusy(false);
+    }
+  }, [replacementBusy, replacementPlan, replaceOutcome]);
+
+  const closeReplacement = useCallback(() => {
+    if (replacementBusy) return;
+    setReplacementPlan(null);
+    setReplacementError(null);
+    setReplaceOutcome(null);
+    setRollbackOutcome(null);
+    setReplacementCommitUnknown(false);
+    setAutoFocus(true);
+  }, [replacementBusy]);
+
   const commandActions = useMemo<AppCommandActions>(() => ({
     'file.new': newFile, 'file.open': openFile, 'workspace.open': openFolder, 'file.save': saveCurrent,
     'file.saveAs': () => saveDestination(), 'file.saveCopy': () => saveDestination('copy'),
     'file.saveAll': async () => { await saveAll.run(); },
     'file.close': async () => { const id = documents.getSnapshot().activeId; if (id) await requestClose(id); },
-    'editor.find': openFind, 'tabs.pin': () => { const id = documents.getSnapshot().activeId; if (id) tabs.pin(id); },
+    'editor.find': openFind,
+    'search.workspace': () => setWorkspaceSearchOpen(true),
+    'editor.toggleComment': () => runEditingCommand('toggleComment'),
+    'editor.toggleBlockComment': () => runEditingCommand('toggleBlockComment'),
+    'editor.moveLineUp': () => runEditingCommand('moveLineUp'),
+    'editor.moveLineDown': () => runEditingCommand('moveLineDown'),
+    'editor.copyLineUp': () => runEditingCommand('copyLineUp'),
+    'editor.copyLineDown': () => runEditingCommand('copyLineDown'),
+    'editor.insertBlankLine': () => runEditingCommand('insertBlankLine'),
+    'editor.complete': () => runEditingCommand('startCompletion'),
+    'editor.selectNextOccurrence': () => runEditingCommand('selectNextOccurrence'),
+    'editor.selectAllOccurrences': () => runEditingCommand('selectAllOccurrences'),
+    'editor.toggleFold': () => runEditingCommand('toggleFold'),
+    'navigation.goToLine': () => setGoToOpen(true),
+    'navigation.back': () => { navigateBack(); },
+    'navigation.forward': () => { navigateForward(); },
+    'navigation.outline': () => setOutlineOpen(true),
+    'tabs.pin': () => { const id = documents.getSnapshot().activeId; if (id) tabs.pin(id); },
+    'tabs.split': () => { const id = documents.getSnapshot().activeId; if (id) tabs.split(id); },
+    'tabs.closeSplit': () => tabs.closeSplit(),
+    'tabs.reopen': async () => {
+      const result = await tabs.reopenLastClosed();
+      if (result && !result.ok) setError(result.error.message);
+    },
+    'tabs.closeOthers': async () => {
+      const id = documents.getSnapshot().activeId;
+      if (id) await requestCloseBatch(tabs.closeCandidates('others', id));
+    },
+    'tabs.closeRight': async () => {
+      const id = documents.getSnapshot().activeId;
+      if (id) await requestCloseBatch(tabs.closeCandidates('right', id));
+    },
+    'tabs.closeClean': async () => requestCloseBatch(tabs.closeCandidates('clean')),
     'editor.fontIncrease': () => zoomEditor('in'), 'editor.fontDecrease': () => zoomEditor('out'),
     'editor.fontReset': () => zoomEditor('reset'),
     'view.sidebar': () => setSidebarOpen(open => !open),
     'view.theme': () => settings.setSession('theme', dark ? 'light' : 'dark'), 'settings.open': openSettings,
     'commands.open': () => openPalette('commands'), 'files.quickOpen': () => openPalette('files'),
-  }), [newFile, openFile, openFolder, saveCurrent, saveDestination, requestClose, openFind, openPalette, openSettings, dark, zoomEditor]);
+  }), [newFile, openFile, openFolder, saveCurrent, saveDestination, requestClose, requestCloseBatch,
+    openFind, runEditingCommand, navigateBack, navigateForward, openPalette, openSettings, dark, zoomEditor,
+    setGoToOpen, setOutlineOpen, setSidebarOpen, setWorkspaceSearchOpen]);
 
   const executeCommand = useCallback(async (id: string, targetId?: DocumentId) => {
     const actions = targetId ? { ...commandActions, 'file.close': () => requestClose(targetId), 'tabs.pin': () => tabs.pin(targetId) } : commandActions;
@@ -599,6 +1084,11 @@ export function App() {
   const quickFiles = useMemo(() => paletteMode === 'files' ? quickCandidates(snapshot.documents.map(document => ({
     id: document.id, title: document.title, displayPath: document.displayPath, ref: documents.getDocument(document.id)?.source?.ref ?? null,
   })), workspaceState) : null, [paletteMode, snapshot.documents, workspaceState]);
+  const currentOutline = (() => {
+    const managed = current ? documents.getDocument(current.id) : undefined;
+    if (!managed) return [];
+    return localOutline(managed.summary.languageId, managed.state.doc.sliceString(0, 2_000_000));
+  })();
 
   function commandProps(id: AppCommandId) {
     const reason = commands.disabledReason(id, commandAvailability);
@@ -612,14 +1102,26 @@ export function App() {
       const id = commands.commandForEvent(event);
       if (!id) return;
       event.preventDefault();
-      if (event.repeat || window.document.querySelector('dialog[open]')) return;
+      if (startupPending || event.repeat || window.document.querySelector('dialog[open]')) return;
       void executeCommand(id);
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [commands, executeCommand]);
+  }, [commands, executeCommand, startupPending]);
 
-  function selectTab(id: DocumentId) { setAutoFocus(false); documents.activate(id); }
+  function selectTab(id: DocumentId) {
+    setAutoFocus(false);
+    const groups = tabs.getSnapshot();
+    if (groups.secondaryId && groups.focusedGroup === 'secondary') tabs.focusSecondary(id);
+    else tabs.focusPrimary(id);
+  }
+
+  if (startupPending) return <main className="startup-screen" role="status" aria-live="polite">
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="brand-mark">
+      <path d="M5 21 19 3C9 2 3 8 7 16c7 2 13-3 12-13M10 14l6 0M13 10V6" />
+    </svg>
+    <p>正在恢复本地会话…</p>
+  </main>;
 
   return (
     <Shell
@@ -645,11 +1147,20 @@ export function App() {
           enabled={settingsState.settings.recentHistoryEnabled}
           busy={busy || savingCount > 0 || batchBusy || closingCount > 0}
           onOpen={openRecent} onRepair={repairRecent} onRemove={removeRecent} onClear={clearRecent} />
+        <RootList busy={busy || savingCount > 0 || batchBusy || closingCount > 0}
+          workspaceFile={workspaceFile.document?.displayPath ?? null}
+          onAdd={() => void addRoot()} onRemove={root => void removeRoot(root)}
+          onOpenFile={() => void workspaceFile.open().then(error => { if (error) setError(error); })}
+            onSaveFile={() => void workspaceFile.save().then(error => { if (error) setError(error); })}
+            onRenamed={renamed => { void applyPathMappings(renamed); }} />
+        <FavoriteList entries={favorites.entries} problem={favorites.problem} availableGrantIds={sessionState.availableGrantIds}
+          busy={busy || savingCount > 0 || batchBusy || closingCount > 0} canAddFile={!!currentSource} canAddRoot={!!workspaceState.root}
+          onAddFile={favorites.addFile} onAddRoot={favorites.addRoot} onOpen={favorites.open} onRepair={favorites.repair}
+          onChange={favorites.change} onClear={favorites.clear} />
         <Explorer currentReference={currentReference} onOpen={(reference, intent) => void openTreeFile(reference, intent ?? 'preview')}
           onTrash={setTrashEntry} mutationBlocked={busy || savingCount > 0 || batchBusy || closingCount > 0}
           onRenamed={renamed => {
-            documents.applyRenamedPaths(renamed);
-            void applyRecentRenames(renamed);
+            void applyPathMappings(renamed);
           }} />
       </div>}
       status={<><span>{closingCount > 0 || current?.closing ? '正在关闭…' : batchBusy ? '正在全部保存…' : savingCount > 0 ? '正在保存…' : busy ? '正在打开…' : current ? current.readOnlyReason ? '只读' : current.dirty ? '未保存修改' : current.displayPath ? '未修改' : '未命名' : '就绪'}</span>{current && <><span role="group" aria-label="光标与字数" aria-live="off"><EditorStatus registry={documents} id={current.id} summary={current} /></span><span aria-label="编辑字号">{settingsState.settings.fontSize}px</span></>}<span className="status-end">{current ? `${current.format.encoding.toUpperCase()}${current.format.bom === 'none' ? '' : ' BOM'} · ${current.format.lineEnding.toUpperCase()}` : '轻羽 FeatherPad'}</span></>}
@@ -658,7 +1169,21 @@ export function App() {
       {notice && <div className="notice error-notice" aria-live="polite"><span>{notice}</span><button onClick={() => setNotice(null)}>关闭提示</button></div>}
       {tabState.warning && <p className="notice" role="alert">{tabState.warning}</p>}
       {commandState.warning && <p className="notice" role="alert">{commandState.warning}</p>}
+      {workspaceSearchOpen && <WorkspaceSearchPanel store={workspaceSearch} roots={workspaceState.roots}
+        onSearch={startWorkspaceSearch} onOpen={(file, match) => void openWorkspaceSearchResult(file, match)}
+        onPreviewReplace={(draft, replacement) => void previewWorkspaceReplace(draft, replacement)}
+        onClose={() => setWorkspaceSearchOpen(false)} />}
+      {replacementPlan && <ReplacePreviewDialog plan={replacementPlan} busy={replacementBusy}
+        error={replacementError} outcome={replaceOutcome} rollback={rollbackOutcome}
+        commitUnknown={replacementCommitUnknown}
+        onCommit={selection => void commitReplacement(selection)} onRollback={() => void rollbackReplacement()}
+        onClose={closeReplacement} />}
       <RecoveryPanel candidates={saveTransactions} onOpen={openTransactionCopy}
+        inventory={recoveryInventory} inventoryError={recoveryInventoryError}
+        activeRecovery={snapshot.documents.filter(document => document.dirty).map(document => ({
+          id: document.id, title: document.displayPath ?? document.title, version: document.version,
+        }))}
+        onRefresh={refreshRecoveryInventory} onCleanupInactive={cleanupInactiveRecovery}
         missingSources={sessionState.missingSources} onForget={id => session.forgetMissing(id)}
         onReselect={kind => { if (kind === 'workspace') void openFolder(); else void openFile(); }}
         blocked={exitState.phase !== 'idle' || busy || savingCount > 0 || batchBusy || closingCount > 0} />
@@ -674,12 +1199,25 @@ export function App() {
           <button className="plain-button" {...commandProps('workspace.open')} onClick={() => void executeCommand('workspace.open')}>打开文件夹</button>
           <button className="plain-button" {...commandProps('file.save')} onClick={() => void executeCommand('file.save')}>保存</button>
           <button className="plain-button" {...commandProps('editor.find')} onClick={() => void executeCommand('editor.find')}>查找</button>
+          <button className="plain-button" {...commandProps('search.workspace')} onClick={() => void executeCommand('search.workspace')}>目录搜索</button>
           <button id="save-all-button" className="plain-button" {...commandProps('file.saveAll')} onClick={() => void executeCommand('file.saveAll')}>全部保存</button>
           <button className="plain-button" {...commandProps('file.saveAs')} onClick={() => void executeCommand('file.saveAs')}>另存为</button>
           <button className="plain-button" {...commandProps('file.saveCopy')} onClick={() => void executeCommand('file.saveCopy')}>保存副本</button>
           <EncodingMenu key={current.id} registry={documents} summary={current}
             blocked={busy || savingCount > 0 || batchBusy || closingCount > 0 || exitState.phase !== 'idle'} onMessage={setNotice} />
           <button type="button" className="plain-button tab-pin-control" {...commandProps('tabs.pin')} onClick={() => void executeCommand('tabs.pin')}>{tabState.previewId === current.id ? '固定标签' : '已固定'}</button>
+          <button type="button" className="plain-button" {...commandProps('tabs.split')}
+            onClick={() => void executeCommand('tabs.split')}>向右拆分</button>
+          {secondaryEditorId && <button type="button" className="plain-button" {...commandProps('tabs.closeSplit')}
+            onClick={() => void executeCommand('tabs.closeSplit')}>关闭拆分</button>}
+          {tabState.recentlyClosed.length > 0 && <button type="button" className="plain-button" {...commandProps('tabs.reopen')}
+            onClick={() => void executeCommand('tabs.reopen')}>重新打开关闭的标签</button>}
+          {snapshot.documents.length > 1 && <button type="button" className="plain-button" {...commandProps('tabs.closeOthers')}
+            onClick={() => void executeCommand('tabs.closeOthers')}>关闭其他</button>}
+          {snapshot.documents.length > 1 && <button type="button" className="plain-button" {...commandProps('tabs.closeRight')}
+            onClick={() => void executeCommand('tabs.closeRight')}>关闭右侧</button>}
+          {snapshot.documents.some(document => !document.dirty) && <button type="button" className="plain-button" {...commandProps('tabs.closeClean')}
+            onClick={() => void executeCommand('tabs.closeClean')}>关闭已保存</button>}
           <label className="toolbar-field">缩进
             <select aria-label="缩进宽度" value={current.indentWidth} onChange={event => {
               const width = Number(event.currentTarget.value);
@@ -701,15 +1239,40 @@ export function App() {
           <label className="toolbar-check"><input type="checkbox" checked={current.closeBrackets}
             onChange={event => documents.setCloseBrackets(current.id, event.currentTarget.checked)} />自动配对</label>
         </div>
+        <Breadcrumbs displayPath={current.displayPath} language={languageLabel(current.languageId)}>
+          <button type="button" className="plain-button breadcrumb-action" {...commandProps('navigation.back')}
+            onClick={() => void executeCommand('navigation.back')}>后退</button>
+          <button type="button" className="plain-button breadcrumb-action" {...commandProps('navigation.forward')}
+            onClick={() => void executeCommand('navigation.forward')}>前进</button>
+          <button type="button" className="plain-button breadcrumb-action" {...commandProps('navigation.goToLine')}
+            onClick={() => void executeCommand('navigation.goToLine')}>行:列</button>
+          <button type="button" className="plain-button breadcrumb-action" {...commandProps('navigation.outline')}
+            onClick={() => void executeCommand('navigation.outline')}>大纲{currentOutline.length > 0 ? ` (${currentOutline.length})` : ''}</button>
+        </Breadcrumbs>
         <FindBar registry={documents} id={current.id} version={current.version} readOnlyReason={current.readOnlyReason}
           request={findRequest?.id === current.id ? findRequest : null} open={findOpen} onClose={() => setFindOpen(false)} />
         <SaveAllResults />
         <AutoSaveStatus id={current.id} />
         <TabStrip documents={snapshot.documents} activeId={snapshot.activeId} previewId={tabState.previewId}
           busy={busy || savingCount > 0 || batchBusy || closingCount > 0} onSelect={selectTab}
-          onPin={id => { if (tabs.getSnapshot().previewId === id) void executeCommand('tabs.pin', id); }} onClose={id => void executeCommand('file.close', id)} />
+          onPin={id => { if (tabs.getSnapshot().previewId === id) void executeCommand('tabs.pin', id); }}
+          onClose={id => void executeCommand('file.close', id)} onReorder={ids => documents.reorder(ids)} />
         <ConflictBanner key={`conflict-${snapshot.activeId}`} id={snapshot.activeId} registry={documents} coordinator={externalChanges} saving={saves} />
-        <EditorDocument key={snapshot.activeId} registry={documents} id={snapshot.activeId} autoFocus={autoFocus} />
+        <div className={`editor-groups ${secondaryEditorId ? 'editor-groups-split' : ''}`}>
+          <div className={`editor-group ${tabState.focusedGroup === 'primary' ? 'editor-group-focused' : ''}`}
+            onMouseDown={() => { if (primaryEditorId) tabs.focusPrimary(primaryEditorId); }}>
+            {secondaryEditorId && <div className="editor-group-label">主编辑组</div>}
+            {primaryEditorId && <EditorDocument key={`primary-${primaryEditorId}`} registry={documents}
+              id={primaryEditorId} group="primary" autoFocus={autoFocus && tabState.focusedGroup === 'primary'} />}
+          </div>
+          {secondaryEditorId && <div className={`editor-group ${tabState.focusedGroup === 'secondary' ? 'editor-group-focused' : ''}`}
+            onMouseDown={() => tabs.focusSecondary(secondaryEditorId)}>
+            <div className="editor-group-label">第二编辑组<button type="button" className="plain-button"
+              onClick={() => tabs.closeSplit()}>关闭</button></div>
+            <EditorDocument key={`secondary-${secondaryEditorId}`} registry={documents}
+              id={secondaryEditorId} group="secondary" autoFocus={autoFocus && tabState.focusedGroup === 'secondary'} />
+          </div>}
+        </div>
       </> : <div className="welcome">
         <div className="welcome-content">
           <p className="welcome-eyebrow">轻羽 FEATHERPAD</p>
@@ -739,10 +1302,34 @@ export function App() {
             } else setError('文件候选已变化，请重新打开快速打开面板。');
           });
         }}
-        onBind={(id, value) => commands.setBinding(id, value)} onResetBindings={() => commands.resetBindings()} />}
+        onBind={(id, value) => commands.setBinding(id, value)} onResetBindings={() => commands.resetBindings()}
+        onImportBindings={text => commands.importBindings(text)} onExportBindings={() => commands.exportBindings()} />}
+      {goToOpen && current && (() => {
+        const managed = documents.getDocument(current.id);
+        if (!managed) return null;
+        return <GoToLineDialog current={lineColumnAt(managed.state, managed.state.selection.main.head)}
+          onGo={goToPosition} onClose={() => {
+            setGoToOpen(false);
+            requestAnimationFrame(() => documents.focus(current.id));
+          }} />;
+      })()}
+      {outlineOpen && current && <OutlineDialog items={currentOutline} onSelect={item => {
+        const managed = documents.getDocument(current.id);
+        if (managed) goToPosition(lineColumnAt(managed.state, item.offset));
+      }} onClose={() => {
+        setOutlineOpen(false);
+        requestAnimationFrame(() => documents.focus(current.id));
+      }} />}
       {closeTarget && <CloseDialog key={closeTarget.id} target={closeTarget} registry={documents} tabs={tabs}
-        onClosed={() => { setCloseTarget(null); focusAfterClose(); }}
+        onClosed={() => {
+          const queued = closeQueue;
+          setCloseQueue([]);
+          setCloseTarget(null);
+          if (queued.length > 0) void requestCloseBatch(queued);
+          else focusAfterClose();
+        }}
         onCancel={() => {
+          setCloseQueue([]);
           setCloseTarget(null);
           requestAnimationFrame(() => {
             if (closeOrigin.current?.isConnected) closeOrigin.current.focus();

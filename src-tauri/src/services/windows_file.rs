@@ -24,9 +24,10 @@ pub fn lock_parent_chain(path: &Path) -> Result<Vec<File>, AppError> {
             .open(parent)
             .map_err(io_error)?;
         let metadata = file.metadata().map_err(io_error)?;
+        let final_path = opened_file_path(&file)?;
         if !metadata.is_dir()
             || metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
-            || opened_file_path(&file)? != parent
+            || !same_path(&final_path, parent)
         {
             return Err(AppError::new(
                 ErrorCode::OutOfScope,
@@ -58,7 +59,7 @@ pub fn lock_directory(path: &Path) -> Result<File, AppError> {
     let metadata = file.metadata().map_err(io_error)?;
     if !metadata.is_dir()
         || metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
-        || opened_file_path(&file)? != path
+        || !same_path(&opened_file_path(&file)?, path)
     {
         return Err(AppError::new(
             ErrorCode::Conflict,
@@ -66,6 +67,25 @@ pub fn lock_directory(path: &Path) -> Result<File, AppError> {
         ));
     }
     Ok(file)
+}
+
+#[cfg(windows)]
+pub(crate) fn same_path(left: &Path, right: &Path) -> bool {
+    fn comparison_key(path: &Path) -> String {
+        let raw = path.to_string_lossy().replace('/', "\\");
+        let normalized = if let Some(unc) = raw.strip_prefix(r"\\?\UNC\") {
+            format!(r"\\{unc}")
+        } else {
+            raw.strip_prefix(r"\\?\").unwrap_or(&raw).to_owned()
+        };
+        normalized.to_lowercase()
+    }
+    comparison_key(left) == comparison_key(right)
+}
+
+#[cfg(not(windows))]
+pub(crate) fn same_path(left: &Path, right: &Path) -> bool {
+    left == right
 }
 
 #[cfg(windows)]

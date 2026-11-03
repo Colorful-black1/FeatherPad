@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import type {
   CreateEntryRequest, DirectoryEntry, DirectoryPage, DocumentId, FileRef, ListDirectoryRequest,
-  RenameEntryRequest, ResultEnvelope, TrashEntryRequest, TrashEntryResult,
+  RenameEntryRequest, ResultEnvelope, TransferEntryRequest, TrashEntryRequest, TrashEntryResult,
 } from '../../shared/contracts/files';
 import { WorkspaceStore } from './store';
 
@@ -15,6 +15,27 @@ function entry(name: string, relativePath: string, kind: DirectoryEntry['kind'] 
 }
 
 const flush = () => new Promise(resolve => setTimeout(resolve, 0));
+
+it('deduplicates physical roots, restores per-root tree state, reorders and removes without touching file contents', async () => {
+  const calls: string[] = [];
+  const store = new WorkspaceStore(async request => {
+    calls.push(request.ref.grantId);
+    return { ok: true, value: { items: [{ ...entry('root.txt', 'root.txt'), ref: { ...request.ref, relativePath: 'root.txt' } }], nextCursor: null } };
+  });
+  const first = { grant, displayName: 'same-name', canonicalIdentity: 'a'.repeat(64) };
+  const second = { grant: { ...grant, grantId: 'second' as FileRef['grantId'] }, displayName: 'same-name', canonicalIdentity: 'b'.repeat(64) };
+  store.addRoot(first); await flush(); store.select(store.getSnapshot().records['']!.items[0]!);
+  store.addRoot(second); await flush();
+  expect(store.getSnapshot().roots).toHaveLength(2);
+  store.addRoot({ ...first, grant: { ...grant, grantId: 'alias' as FileRef['grantId'] } });
+  expect(store.getSnapshot().roots).toHaveLength(2);
+  expect(store.getSnapshot().selectedPath).toBe('root.txt'); expect(calls).toHaveLength(2);
+  expect(store.reorderRoots([second.grant.grantId, first.grant.grantId])).toBe(true);
+  expect(store.reorderRoots([first.grant.grantId, first.grant.grantId])).toBe(false);
+  store.removeRoot(first.grant.grantId);
+  expect(store.getSnapshot().root?.grant.grantId).toBe(second.grant.grantId);
+  expect(store.getSnapshot().roots).toEqual([second]);
+});
 
 it('keeps failed or uncertain trash entries and removes them only after a matching receipt', async () => {
   const source = entry('source.txt', 'source.txt');
@@ -302,4 +323,63 @@ it('does not apply a completed create to a workspace root that replaced it', asy
   expect(store.getSnapshot().root?.grant).toEqual(newGrant);
   expect(store.getSnapshot().records['']?.items).toEqual([newRoot]);
   expect(store.getSnapshot().selectedPath).toBeNull();
+});
+
+it('applies a verified move across the tree and publishes document rebindings', async () => {
+  const folder = entry('folder', 'folder', 'directory');
+  const target = entry('target', 'target', 'directory');
+  const source = entry('source.txt', 'folder/source.txt');
+  let transferRequest: TransferEntryRequest | null = null;
+  const rootItems = [folder, target];
+  let moved = false;
+  const store = new WorkspaceStore(
+    async request => ({
+      ok: true,
+      value: {
+        items: request.ref.relativePath === '' ? rootItems
+          : request.ref.relativePath === 'folder' ? (moved ? [] : [source])
+            : request.ref.relativePath === 'target'
+              ? (moved ? [{ ...source, ref: { grantId: grant.grantId, relativePath: 'target/source.txt' } }] : [])
+              : [],
+        nextCursor: null,
+      },
+    }),
+    undefined,
+    undefined,
+    undefined,
+    async request => {
+      transferRequest = request;
+      moved = true;
+      return {
+        ok: true,
+        value: {
+          entry: { ...source, ref: { grantId: grant.grantId, relativePath: 'target/source.txt' } },
+          renamedDocuments: [{
+            documentId: 'document-1' as DocumentId,
+            ref: { grantId: grant.grantId, relativePath: 'target/source.txt' },
+            displayPath: 'E:\\fixture\\target\\source.txt',
+          }],
+          mode: 'move',
+          sourceRemoved: true,
+        },
+      };
+    },
+  );
+  store.setRoot({ grant, displayName: 'fixture-root' });
+  await flush();
+  store.toggleDirectory(folder);
+  store.toggleDirectory(target);
+  await flush();
+
+  const result = await store.transferEntry(source, target.ref, 'move');
+  expect(result.ok).toBe(true);
+  expect(transferRequest).toMatchObject({
+    source: source.ref,
+    targetParent: target.ref,
+    mode: 'move',
+    expectedRevision: source.revision,
+  });
+  expect(store.getSnapshot().records.folder?.items).toEqual([]);
+  expect(store.getSnapshot().records.target?.items[0]?.ref.relativePath).toBe('target/source.txt');
+  expect(store.getSnapshot().selectedPath).toBe('target/source.txt');
 });

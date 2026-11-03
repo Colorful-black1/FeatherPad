@@ -2,9 +2,20 @@ import { Compartment, EditorState, Facet, StateEffect, StateField, type Extensio
 import { defaultKeymap, history, historyKeymap, indentWithTab, redo } from '@codemirror/commands';
 import { bracketMatching, defaultHighlightStyle, indentUnit, syntaxHighlighting } from '@codemirror/language';
 import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete';
-import { Decoration, type DecorationSet, EditorView, highlightActiveLine, highlightActiveLineGutter, keymap, lineNumbers } from '@codemirror/view';
+import {
+  Decoration, type DecorationSet, EditorView, highlightActiveLine, highlightActiveLineGutter,
+  highlightTrailingWhitespace, highlightWhitespace, keymap, lineNumbers, rectangularSelection,
+} from '@codemirror/view';
 import { editorKeyboardFocus } from './keyboard-focus';
 import { documentFormatExtensions, type DocumentFormatState } from './line-endings';
+import {
+  defaultEditingCommandBindings,
+  editingKeymap,
+  editingLanguageExtensions,
+  languageIdFacet,
+  type EditingCommandBindings,
+} from './editing';
+import type { LanguageId } from './editor-language';
 
 const editability = new Compartment();
 const indentation = new Compartment();
@@ -12,15 +23,24 @@ const languageMode = new Compartment();
 const matching = new Compartment();
 const closing = new Compartment();
 const appearance = new Compartment();
+const editingLanguage = new Compartment();
+const editingKeys = new Compartment();
+const whitespace = new Compartment();
 export type IndentWidth = 2 | 4 | 8;
+export type WhitespaceMode = 'none' | 'current' | 'all';
 export interface EditorPreferences {
   indentWidth: IndentWidth; insertSpaces: boolean; wordWrap: boolean; lineNumbers: boolean; highlightActiveLine: boolean;
+  whitespaceMode: WhitespaceMode; folding: boolean;
 }
 export const defaultEditorPreferences: Readonly<EditorPreferences> = Object.freeze({
   indentWidth: 4, insertSpaces: true, wordWrap: true, lineNumbers: true, highlightActiveLine: true,
+  whitespaceMode: 'none', folding: true,
 });
 const appearanceSettings = Facet.define<EditorPreferences, EditorPreferences>({
   combine: values => values[0] ?? defaultEditorPreferences,
+});
+const whitespaceMode = Facet.define<WhitespaceMode, WhitespaceMode>({
+  combine: values => values[0] ?? 'none',
 });
 export interface SearchHighlight {
   from: number;
@@ -55,6 +75,10 @@ export interface EditorStateOptions {
   wordWrap?: boolean;
   lineNumbers?: boolean;
   highlightActiveLine?: boolean;
+  whitespaceMode?: WhitespaceMode;
+  folding?: boolean;
+  languageId?: LanguageId;
+  commandBindings?: EditingCommandBindings;
 }
 
 function accessExtensions(readOnly: boolean) {
@@ -73,9 +97,53 @@ function appearanceExtensions(settings: EditorPreferences) {
     settings.highlightActiveLine ? [highlightActiveLine(), highlightActiveLineGutter()] : []];
 }
 
+function currentLineWhitespaceDecoration(lineText: string, lineFrom: number) {
+  const ranges = [];
+  for (const match of lineText.matchAll(/[ \t]+/g)) {
+    const from = lineFrom + (match.index ?? 0);
+    ranges.push(Decoration.mark({ class: 'cm-whitespace cm-current-line-whitespace' })
+      .range(from, from + match[0].length));
+  }
+  return ranges;
+}
+
+function currentLineWhitespace(): Extension {
+  const decorations = StateField.define<DecorationSet>({
+    create(state) {
+      const line = state.doc.lineAt(state.selection.main.head);
+      return Decoration.set(currentLineWhitespaceDecoration(line.text, line.from), true);
+    },
+    update(value, transaction) {
+      if (!transaction.docChanged && !transaction.selection) return value;
+      const line = transaction.state.doc.lineAt(transaction.state.selection.main.head);
+      return Decoration.set(currentLineWhitespaceDecoration(line.text, line.from), true);
+    },
+    provide: field => EditorView.decorations.from(field),
+  });
+  return decorations;
+}
+
+function whitespaceExtensions(mode: WhitespaceMode): Extension {
+  return [
+    whitespaceMode.of(mode),
+    mode === 'all' ? [highlightWhitespace(), highlightTrailingWhitespace()]
+      : mode === 'current' ? currentLineWhitespace() : [],
+  ];
+}
+
 export function reconfigureEditorPreferences(state: EditorState, settings: EditorPreferences): EditorState {
   const current = state.facet(appearanceSettings);
-  const next = reconfigureIndentation(state, settings.indentWidth, settings.insertSpaces);
+  let next = reconfigureIndentation(state, settings.indentWidth, settings.insertSpaces);
+  if (state.facet(whitespaceMode) !== settings.whitespaceMode) {
+    next = next.update({ effects: whitespace.reconfigure(whitespaceExtensions(settings.whitespaceMode)) }).state;
+  }
+  const languageId = next.facet(languageIdFacet);
+  const foldingChanged = current.folding !== settings.folding;
+  if (foldingChanged) {
+    next = next.update({
+      effects: editingLanguage.reconfigure(editingLanguageExtensions(languageId, settings.folding)),
+    }).state;
+  }
   if (current.wordWrap === settings.wordWrap && current.lineNumbers === settings.lineNumbers
     && current.highlightActiveLine === settings.highlightActiveLine) return next;
   return next.update({ effects: appearance.reconfigure(appearanceExtensions(settings)) }).state;
@@ -91,8 +159,14 @@ export function reconfigureIndentation(state: EditorState, indentWidth: IndentWi
     : state.update({ effects: indentation.reconfigure(indentationExtensions(indentWidth, insertSpaces)) }).state;
 }
 
-export function reconfigureLanguage(state: EditorState, language: Extension): EditorState {
-  return state.update({ effects: languageMode.reconfigure(language) }).state;
+export function reconfigureLanguage(state: EditorState, language: Extension,
+  languageId = state.facet(languageIdFacet), folding = state.facet(appearanceSettings).folding): EditorState {
+  return state.update({
+    effects: [
+      languageMode.reconfigure(language),
+      editingLanguage.reconfigure(editingLanguageExtensions(languageId, folding)),
+    ],
+  }).state;
 }
 
 export function reconfigureBracketMatching(state: EditorState, enabled: boolean): EditorState {
@@ -105,13 +179,21 @@ export function reconfigureCloseBrackets(state: EditorState, enabled: boolean): 
   }).state;
 }
 
+export function reconfigureEditingBindings(state: EditorState, bindings: EditingCommandBindings): EditorState {
+  return state.update({ effects: editingKeys.reconfigure(editingKeymap(bindings)) }).state;
+}
+
 export function createEditorState(text: string, readOnly: boolean, options: EditorStateOptions = {}) {
   const indentWidth = options.indentWidth ?? 4;
   const preferences = { ...defaultEditorPreferences, ...options, indentWidth };
+  const languageId = options.languageId ?? 'plaintext';
   return EditorState.create({
     doc: text,
     extensions: [
       editorKeyboardFocus,
+      EditorState.allowMultipleSelections.of(true),
+      rectangularSelection(),
+      EditorView.clickAddsSelectionRange.of(event => event.altKey),
       documentFormatExtensions(options.documentFormat),
       history(), closing.of(options.closeBrackets === false ? [] : [closeBrackets(), keymap.of(closeBracketsKeymap)]),
       keymap.of([
@@ -120,9 +202,12 @@ export function createEditorState(text: string, readOnly: boolean, options: Edit
         ...defaultKeymap,
         ...historyKeymap,
       ]),
+      editingKeys.of(editingKeymap(options.commandBindings ?? defaultEditingCommandBindings)),
       indentation.of(indentationExtensions(indentWidth, preferences.insertSpaces)),
       appearance.of(appearanceExtensions(preferences)),
       languageMode.of(options.language ?? []),
+      editingLanguage.of(editingLanguageExtensions(languageId, preferences.folding)),
+      whitespace.of(whitespaceExtensions(preferences.whitespaceMode)),
       matching.of(options.bracketMatching === false ? [] : bracketMatching()),
       searchHighlightField,
       syntaxHighlighting(defaultHighlightStyle, { fallback: true }),

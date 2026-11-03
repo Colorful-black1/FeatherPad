@@ -167,7 +167,7 @@ pub fn write_new_verified(path: &Path, bytes: &[u8]) -> Result<(), AppError> {
         .open(path)
         .map_err(io_error)?;
     // Validate the opened object before writing any user bytes, including journal blobs.
-    if opened_file_path(&file)? != path {
+    if !super::windows_file::same_path(&opened_file_path(&file)?, path) {
         return Err(AppError::new(
             ErrorCode::OutOfScope,
             "保存目录已变化，已停止写入。",

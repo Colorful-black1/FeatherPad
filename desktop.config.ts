@@ -15,6 +15,8 @@ export default defineConfig({
     { name: 'encoding', testMatch: 'encoding.spec.ts' },
     { name: 'autosave', testMatch: 'autosave.spec.ts' },
     { name: 'recovery', testMatch: 'recovery.spec.ts' },
+    { name: 'reliability', testMatch: 'reliability.spec.ts' },
+    { name: 'g2-special', testMatch: 'g2-special.spec.ts' },
   ],
   workers: 1,
   forbidOnly: true,

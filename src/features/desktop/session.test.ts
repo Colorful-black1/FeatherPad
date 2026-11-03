@@ -7,7 +7,7 @@ import { DocumentRegistry } from '../editor/documents';
 import { TabController } from '../editor/tabs';
 import { SaveCoordinator } from '../editor/save';
 import { CloseCoordinator } from '../editor/close';
-import type { WorkspaceSnapshot } from '../workspace/store';
+import { WorkspaceStore, type WorkspaceSnapshot } from '../workspace/store';
 import { SessionCoordinator } from './session';
 
 function recovered(id: DocumentId, version: number, receiptId = crypto.randomUUID(),
@@ -60,11 +60,14 @@ function tabsFor(registry: DocumentRegistry) {
 function workspaceSnapshot(): WorkspaceSnapshot {
   return {
     root: null,
+    roots: [],
     records: {},
     expanded: {},
     selectedPath: null,
     showHidden: false,
     rootError: null,
+    filters: { include: [], exclude: [], respectGitignore: true, followDirectoryLinks: false },
+    syncStatus: { kind: 'ready', message: null },
   };
 }
 
@@ -77,8 +80,28 @@ function workspaceStore() {
     },
     getSnapshot: workspaceSnapshot,
     setRoot: vi.fn(),
+    addRoot: vi.fn(),
   };
 }
+
+it('restores and persists all roots while retaining unavailable root placeholders', async () => {
+  const registry = new DocumentRegistry(), tabs = tabsFor(registry);
+  const workspace = new WorkspaceStore(async () => ({ ok: true, value: { items: [], nextCursor: null } }));
+  const saved: SessionManifest[] = [];
+  const coordinator = new SessionCoordinator(registry, tabs, workspace,
+    async manifest => { saved.push(manifest); return { ok: true, value: { saved: true, persistedAt: manifest.persistedAt } }; });
+  const rootIds = [crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID()];
+  const manifest: SessionManifest = { schemaVersion: 1, sessionId: crypto.randomUUID(), recoverySnapshotRefs: [], persistedAt: '2026-11-03T00:00:00Z',
+    windows: [{ windowId: 'main', bounds: { x: 0, y: 0, width: 1200, height: 800 }, rootIds, rootLabels: ['first', 'second', 'missing'],
+      activeViewId: null, groups: [{ groupId: 'primary', viewIds: [] }], views: [] }] };
+  await coordinator.restoreSources(manifest, rootIds.slice(0, 2));
+  coordinator.apply(manifest);
+  expect(workspace.getSnapshot().roots.map(root => root.grant.grantId)).toEqual(rootIds.slice(0, 2));
+  expect(coordinator.getSnapshot().missingSources).toContainEqual({ id: rootIds[2], title: 'missing', kind: 'workspace' });
+  await coordinator.flush();
+  expect(saved[0]?.windows[0]?.rootIds).toEqual(rootIds);
+  coordinator.stop();
+});
 
 function fixture(options: {
   save?: (manifest: SessionManifest) => Promise<ResultEnvelope<SessionSaveResult>>;

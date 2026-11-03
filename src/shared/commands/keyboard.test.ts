@@ -5,7 +5,10 @@ it('normalizes modifier order and aliases without accepting duplicate or unmodif
   expect(normalizeShortcut('shift + control + p')).toBe('Ctrl+Shift+P');
   expect(normalizeShortcut('Alt+F4')).toBe('Alt+F4');
   expect(normalizeShortcut('F8')).toBe('F8');
-  for (const value of ['P', 'Shift+P', 'Ctrl+Ctrl+P', 'Meta+P', 'Ctrl++P', 'Ctrl+Enter', 'Ctrl+' + 'a'.repeat(65)]) {
+  expect(normalizeShortcut('Ctrl+Enter')).toBe('Ctrl+Enter');
+  expect(normalizeShortcut('Alt+ArrowLeft')).toBe('Alt+ArrowLeft');
+  expect(normalizeShortcut('Ctrl+Space')).toBe('Ctrl+Space');
+  for (const value of ['P', 'Shift+P', 'Ctrl+Ctrl+P', 'Meta+P', 'Ctrl++P', 'Ctrl+' + 'a'.repeat(65)]) {
     expect(normalizeShortcut(value)).toBeNull();
   }
 });

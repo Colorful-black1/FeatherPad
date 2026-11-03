@@ -22,14 +22,62 @@ use tauri_plugin_dialog::DialogExt;
 pub mod encoding;
 pub mod external;
 pub mod file_ops;
+pub mod replacement;
 pub mod save;
 pub mod save_as;
+pub mod search;
 pub mod settings;
 
 type SharedFiles = Arc<Mutex<FileService>>;
 
 fn internal_error() -> AppError {
     AppError::new(ErrorCode::Internal, "本地文件服务暂时不可用，请重试。")
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GlobalShortcutRequest {
+    enabled: bool,
+    shortcut: String,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GlobalShortcutResult {
+    enabled: bool,
+}
+
+#[tauri::command]
+pub async fn set_global_shortcut(
+    app: AppHandle,
+    state: tauri::State<'_, crate::global_shortcut::GlobalShortcutState>,
+    request: Request<'_>,
+) -> Result<ResultEnvelope<GlobalShortcutResult>, ()> {
+    let value = match request.body() {
+        InvokeBody::Json(value) => value.clone(),
+        _ => {
+            return Ok(Err(AppError::new(
+                ErrorCode::InvalidInput,
+                "全局快捷键请求必须为JSON对象。",
+            ))
+            .into())
+        }
+    };
+    let request: GlobalShortcutRequest =
+        match serde_json::from_value::<GlobalShortcutRequest>(value) {
+            Ok(request) if request.shortcut.len() <= 64 => request,
+            _ => {
+                return Ok(Err(AppError::new(
+                    ErrorCode::InvalidInput,
+                    "全局快捷键请求格式无效。",
+                ))
+                .into())
+            }
+        };
+    let result = state
+        .configure(app, request.enabled, &request.shortcut)
+        .map(|enabled| GlobalShortcutResult { enabled });
+    Ok(result.into())
 }
 
 #[tauri::command]
@@ -421,7 +469,7 @@ pub async fn load_session(
     let result = tauri::async_runtime::spawn_blocking(move || {
         let request: LoadSessionRequest = serde_json::from_value(value)
             .map_err(|_| AppError::new(ErrorCode::InvalidInput, "读取会话请求格式无效。"))?;
-        if request.restore_grant_ids.len() > 50
+        if request.restore_grant_ids.len() > 150
             || request.restore_grant_ids.iter().any(|id| {
                 uuid::Uuid::parse_str(id)
                     .ok()
@@ -432,7 +480,7 @@ pub async fn load_session(
         {
             return Err(AppError::new(
                 ErrorCode::InvalidInput,
-                "最近记录授权标识格式无效。",
+                "最近与收藏授权标识格式无效。",
             ));
         }
         let root = session_root(&app)?;

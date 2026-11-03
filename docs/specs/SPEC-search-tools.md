@@ -1,6 +1,6 @@
 # SPEC-search-tools：查找、受保护替换与格式工具
 
-> 轻羽 FeatherPad；模块 `search-tools`；业务依赖仅 `editor`、`workspace`、`file-core`。状态：M1 F-SEARCH-001–003已实现并验收，M2–M3待实现。拥有 F-SEARCH-001–012，详见 [矩阵](../FEATURE-MATRIX.md)。M1：001–003；M2：004–009；M3：010–012。
+> 轻羽 FeatherPad；模块 `search-tools`；业务依赖仅 `editor`、`workspace`、`file-core`。状态：M1 F-SEARCH-001–003与M2 F-SEARCH-004–009已实现并通过G1/G2统一验收；M3 F-SEARCH-010–012待实现。详见 [矩阵](../FEATURE-MATRIX.md)。
 
 ## Objective 与提供方契约
 
@@ -41,6 +41,8 @@ M2：F-SEARCH-004、F-SEARCH-005、F-SEARCH-006、F-SEARCH-007、F-SEARCH-008、
 M3：F-SEARCH-010、F-SEARCH-011、F-SEARCH-012。每项联合矩阵和下述交互/error-state/test strategy验收。
 
 M1实际实现（2026-11-01）：`FindBar`、`search-query`和本地module worker覆盖文件内查找替换；`tests/fixtures/search-semantics.json`由TS与Rust `regex`测试共同读取。当前交集包括字面/Unicode大小写、Unicode `\p`属性、捕获/命名/非捕获组、字符类、重复、多行和零长度前进。两端语义未证明一致的`\b`/`\B`、look-around及回溯引用明确拒绝；该夹具是代表性子集证据，不外推全部Rust regex语法。验收详情见 [M1](../acceptance/M1.md)。
+
+M2实际实现（2026-11-03，G2通过）：多根目录搜索按文件分组返回编码、revision、截断、跳过统计和进度/取消状态，前端按requestId丢弃迟到结果；纯读搜索可合并打开的dirty buffer，替换计划则显式排除dirty/只读/不支持文件。跨文件计划绑定匹配、revision、前后摘要和短期confirmation token，最终确认前零写入；提交先落盘恢复journal，逐文件复核revision，回滚再次校验提交后字节，文件已有后续修改时保留新内容并报告冲突。真实Release覆盖1,888ms扫描10,000文件/104,860,000 bytes、20ms取消及替换/回滚/冲突fence，证据见[M2验收](../acceptance/M2.md)。物理网络盘和大规模故障矩阵仍按后续综合验收执行。
 
 ## 文件内搜索（F-SEARCH-001/002/003）
 

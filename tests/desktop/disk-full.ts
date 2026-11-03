@@ -45,7 +45,7 @@ export async function verifyNativeDiskFull(page: Page, dataDir: string, evidence
 
     await runWsl(`set -eu; if dd if=/dev/zero of='${linuxRoot}/fill.bin' bs=64K count=256 status=none; then exit 2; else test $? -eq 1; fi`);
     await page.keyboard.press('Control+s');
-    const alert = page.getByRole('alert');
+    const alert = page.locator('.error-notice[role="alert"]');
     await expect(alert).toContainText('保存未能确认完成', { timeout: 20_000 });
     const alertText = await alert.innerText();
     expect(alertText).toContain('阶段：write-temporary');

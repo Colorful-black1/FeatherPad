@@ -58,4 +58,8 @@ it('accepts local font names and finite view ranges while rejecting CSS fragment
   expect(isSettingValue('fontSize', 14.5)).toBe(false);
   expect(isSettingValue('lineHeight', 1.85)).toBe(true);
   expect(isSettingValue('lineHeight', Infinity)).toBe(false);
+  expect(isSettingValue('globalLaunchShortcut', 'Ctrl+Shift+Space')).toBe(true);
+  expect(isSettingValue('globalLaunchShortcut', 'ctrl+shift+space')).toBe(false);
+  expect(isSettingValue('globalLaunchShortcut', 'Ctrl+Alt+S')).toBe(false);
+  expect(isSettingValue('globalLaunchShortcut', 'Shift+S')).toBe(false);
 });

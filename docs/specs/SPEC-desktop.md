@@ -1,6 +1,6 @@
 # SPEC-desktop：本地设置、Windows 集成与发布
 
-> 轻羽 FeatherPad；模块 `desktop`；业务依赖仅 `editor`、`workspace`、`file-core`。状态：T112的F-DESK-001/002及相关M1设置能力已通过真实Release；其余能力待实现、待验证。拥有 F-DESK-001–013，详见 [矩阵](../FEATURE-MATRIX.md)。M0：013；M1：001/002/010/011；M2：003/004；M4：005–009；M5：012。
+> 轻羽 FeatherPad；模块 `desktop`；业务依赖仅 `editor`、`workspace`、`file-core`。状态：M1设置/主题/无障碍/会话能力与M2快捷键/隐私能力已通过G1/G2统一验收；M4/M5能力待实现。拥有 F-DESK-001–013，详见 [矩阵](../FEATURE-MATRIX.md)。
 
 ## Objective 与提供方契约
 
@@ -41,6 +41,8 @@ M0：F-DESK-013。M1：F-DESK-001、F-DESK-002、F-DESK-010、F-DESK-011。
 M2：F-DESK-003、F-DESK-004。M4：F-DESK-005、F-DESK-006、F-DESK-007、F-DESK-008、F-DESK-009。M5：F-DESK-012。
 
 每项联合矩阵和下述交互/error-state/test strategy验收，安装/便携与完整发布均是v1范围。
+
+M2实施状态（2026-11-03，G2通过）：应用命令映射继续复用稳定commandId、冲突检测和设置持久化；全局唤起默认关闭，开启时由Rust注册Windows `RegisterHotKey`，UI显示系统占用/失败，停用和应用退出释放。真实桌面Playwright配合Win32/PowerShell助手验证外部占用冲突、启用、最小化后热键恢复并聚焦窗口、停用后组合键可被外部重新注册。隐私页将最近、收藏和恢复清理分开说明并二次确认；活动dirty恢复副本受保护，非活动恢复记录可清理，损坏记录保留证据，设置/历史存储不包含正文、搜索词或遥测。详细证据见[M2验收](../acceptance/M2.md)。
 
 ## 设置、主题、快捷键与隐私
 

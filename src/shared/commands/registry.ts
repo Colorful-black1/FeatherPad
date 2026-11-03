@@ -72,6 +72,10 @@ export class CommandRegistry<Context, Actions = void> {
     return this.overrides.has(id) ? this.overrides.get(id)! : this.definitions.get(id)?.defaultBinding ?? null;
   }
 
+  bindings(): Readonly<Record<string, string | null>> {
+    return Object.freeze(Object.fromEntries([...this.definitions.keys()].map(id => [id, this.binding(id)])));
+  }
+
   disabledReason(id: string, context: Context): string | null {
     const definition = this.definitions.get(id);
     return !definition ? '命令不可用。' : this.running.has(id) ? '此命令正在执行。' : definition.disabledReason(context);
@@ -116,6 +120,43 @@ export class CommandRegistry<Context, Actions = void> {
   }
 
   resetBindings() { this.overrides.clear(); this.persist(); }
+
+  exportBindings(): string {
+    return `${JSON.stringify({ schemaVersion: 1, bindings: [...this.definitions.keys()].map(id => [id, this.binding(id)]) }, null, 2)}\n`;
+  }
+
+  importBindings(text: string): CommandResult {
+    if (new TextEncoder().encode(text).byteLength > 65_536) return { ok: false, reason: '快捷键文件超过64KiB。' };
+    let entries: unknown;
+    try {
+      const value: unknown = JSON.parse(text);
+      if (!value || typeof value !== 'object' || Reflect.get(value, 'schemaVersion') !== 1
+        || !Array.isArray(entries = Reflect.get(value, 'bindings')) || entries.length !== this.definitions.size
+        || entries.length > 256) throw new Error('Invalid shortcut document');
+    } catch {
+      return { ok: false, reason: '快捷键文件必须是schemaVersion为1、含完整bindings列表的有效JSON。' };
+    }
+    const imported = new Map<string, string | null>();
+    for (const entry of entries as unknown[]) {
+      if (!Array.isArray(entry) || entry.length !== 2 || typeof entry[0] !== 'string'
+        || !this.definitions.has(entry[0]) || imported.has(entry[0])
+        || (entry[1] !== null && (typeof entry[1] !== 'string' || normalizeShortcut(entry[1]) !== entry[1]
+          || shortcutRestriction(entry[1])))) {
+        return { ok: false, reason: '快捷键文件包含未知、重复、保留或格式无效的组合。' };
+      }
+      imported.set(entry[0], entry[1]);
+    }
+    const effective = [...imported.values()].filter((value): value is string => value !== null);
+    if (new Set(effective).size !== effective.length) return { ok: false, reason: '快捷键文件包含相互冲突的组合。' };
+    const overrides = new Map<string, string | null>();
+    for (const [id, binding] of imported) {
+      if (binding !== this.definitions.get(id)?.defaultBinding) overrides.set(id, binding);
+    }
+    this.overrides.clear();
+    for (const [id, binding] of overrides) this.overrides.set(id, binding);
+    this.persist();
+    return { ok: true };
+  }
 
   private persist() {
     try {

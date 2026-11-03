@@ -65,11 +65,11 @@ export async function verifyNativeCommands(page: Page, dataDir: string, evidence
     await binding.fill('Ctrl+Shift+K');
     await commandDialog(page).getByRole('button', { name: '应用快捷键', exact: true }).click();
     await expect(commandDialog(page).getByRole('alert')).toContainText('保留给原生文本编辑');
-    await binding.press('Control+Shift+l');
+    await binding.press('Shift+Alt+O');
     await commandDialog(page).getByRole('button', { name: '应用快捷键', exact: true }).click();
     await page.keyboard.press('Escape');
     await expect(editor(page)).toBeFocused();
-    await page.keyboard.press('Control+Shift+l'); // Must work from CodeMirror, not only a welcome-page button.
+    await page.keyboard.press('Shift+Alt+O'); // Must work from CodeMirror, not only a welcome-page button.
     await expect(commandQuery(page)).toBeFocused();
     const tabCount = await page.getByRole('tab', { includeHidden: true }).count();
     await page.keyboard.press('Control+n');
@@ -85,7 +85,7 @@ export async function verifyNativeCommands(page: Page, dataDir: string, evidence
     await expect(editor(page)).toHaveText(expected);
     await expect(page.getByRole('status')).toContainText('未修改');
 
-    await page.keyboard.press('Control+Shift+l');
+    await page.keyboard.press('Shift+Alt+O');
     await commandQuery(page).fill('quick open');
     await commandDialog(page).getByRole('button', { name: '修改快捷键', exact: true }).click();
     await binding.press('F8');
@@ -115,7 +115,7 @@ export async function verifyNativeCommands(page: Page, dataDir: string, evidence
     await quickQuery(page).press('Enter');
     await expect(editor(page)).toHaveAttribute('contenteditable', 'false');
     await editor(page).focus();
-    await page.keyboard.press('Control+Shift+l');
+    await page.keyboard.press('Shift+Alt+O');
     await commandQuery(page).fill('save write');
     await expect(commandDialog(page).getByRole('option')).toHaveAttribute('aria-disabled', 'true');
     await commandQuery(page).press('Enter');
@@ -124,8 +124,9 @@ export async function verifyNativeCommands(page: Page, dataDir: string, evidence
     await page.screenshot({ path: path.join(evidence, 'native-command-disabled.png') });
     await page.keyboard.press('Escape');
     await page.reload(); // Every retained buffer is clean; only shortcut metadata is under test.
-    await expect(page.getByRole('heading', { name: '快开文件，专心编辑。' })).toBeVisible();
-    await page.keyboard.press('Control+Shift+l');
+    await expect(page.locator('.app-shell')).toBeVisible();
+    await expect(page.locator('.startup-screen')).toHaveCount(0);
+    await page.keyboard.press('Shift+Alt+O');
     await expect(commandQuery(page)).toBeFocused();
     await commandQuery(page).fill('quick open');
     await expect(commandDialog(page).getByRole('option')).toContainText('F8');

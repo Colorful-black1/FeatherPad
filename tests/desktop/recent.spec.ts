@@ -202,9 +202,8 @@ test('real Release persists recent files, repairs missing grants, and honors pri
       ]);
       expect(Object.keys(entry.ref).sort()).toEqual(['grantId', 'relativePath']);
     }
-    const grants = await readFile(grantsFile, 'utf8');
-    expect(grants).toContain(fileEntry!.ref.grantId);
-    expect(grants).toContain(workspaceEntry!.ref.grantId);
+    await expect.poll(async () => readFile(grantsFile, 'utf8')).toContain(fileEntry!.ref.grantId);
+    await expect.poll(async () => readFile(grantsFile, 'utf8')).toContain(workspaceEntry!.ref.grantId);
     await app.page.screenshot({ path: path.join(evidence, 'recent-recorded.png') });
     await stop(app);
 

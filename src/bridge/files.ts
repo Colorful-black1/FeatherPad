@@ -1,4 +1,4 @@
-import type { ChosenFiles, ChosenFolder, CreateEntryRequest, DirectoryEntry, DirectoryPage, DiscardRecoveryRequest, DiscardRecoveryResult, DocumentId, FileRef, ListDirectoryRequest, LoadedRecoveryEntry, LoadRecoveryEntryRequest, LoadSessionRequest, OpenDocument, ReadChunkRequest, RecoveryEntry, RecoveryInventory, RecoverySnapshotAck, ReleaseDocumentResult, RenameEntryRequest, RenameEntryResult, SaveAck, SaveAsAck, SaveAsRequest, SaveRequest, SessionClearResult, SessionLoadResult, SessionManifest, SessionSaveResult, TextChunk, TextFormat, TrashEntryRequest, TrashEntryResult, TrashImpact, TrashImpactRequest, WriteRecoverySnapshotRequest } from '../shared/contracts/files';
+import type { ChosenFiles, ChosenFolder, CreateEntryRequest, DirectoryEntry, DirectoryPage, DiscardRecoveryRequest, DiscardRecoveryResult, DocumentId, FileRef, ListDirectoryRequest, LoadedRecoveryEntry, LoadRecoveryEntryRequest, LoadSessionRequest, OpenDocument, ReadChunkRequest, RecoveryEntry, RecoveryInventory, RecoverySnapshotAck, ReleaseDocumentResult, RenameEntryRequest, RenameEntryResult, SaveAck, SaveAsAck, SaveAsRequest, SaveRequest, SessionClearResult, SessionLoadResult, SessionManifest, SessionSaveResult, TextChunk, TextFormat, TransferEntryRequest, TransferEntryResult, TrashEntryRequest, TrashEntryResult, TrashImpact, TrashImpactRequest, WriteRecoverySnapshotRequest } from '../shared/contracts/files';
 import { callCommand, isAppError, isRecord } from './invoke';
 import type { LoadedSaveTransaction, SaveTransactionCandidate } from '../shared/contracts/files';
 import type { OpenMode } from '../shared/contracts/files';
@@ -87,6 +87,18 @@ export function isRenameEntryResult(value: unknown): value is RenameEntryResult 
       && nonemptyString(document.documentId) && document.documentId.length <= 128
       && isFileRef(document.ref) && nonemptyString(document.displayPath)
       && document.displayPath.length <= 32_767);
+}
+
+export function isTransferEntryResult(value: unknown): value is TransferEntryResult {
+  return isRecord(value) && isDirectoryEntry(value.entry)
+    && Array.isArray(value.renamedDocuments) && value.renamedDocuments.length <= 1000
+    && value.renamedDocuments.every(document => isRecord(document)
+      && nonemptyString(document.documentId) && document.documentId.length <= 128
+      && isFileRef(document.ref) && nonemptyString(document.displayPath)
+      && document.displayPath.length <= 32_767)
+    && (value.mode === 'move' || value.mode === 'copy')
+    && typeof value.sourceRemoved === 'boolean'
+    && value.sourceRemoved === (value.mode === 'move');
 }
 
 export function isTrashImpact(value: unknown): value is TrashImpact {
@@ -320,6 +332,10 @@ export const files = {
   listDirectory: (request: ListDirectoryRequest) => callCommand('list_directory', { ...request }, isDirectoryPage),
   createEntry: (request: CreateEntryRequest) => callCommand('create_entry', { ...request }, isDirectoryEntry),
   renameEntry: (request: RenameEntryRequest) => callCommand('rename_entry', { ...request }, isRenameEntryResult),
+  transferEntry: (request: TransferEntryRequest) =>
+    callCommand('transfer_entry', { ...request }, (value): value is TransferEntryResult =>
+      isTransferEntryResult(value) && value.entry.ref.relativePath
+        .split('/').at(-1) === request.source.relativePath.split('/').at(-1)),
   trashImpact: (request: TrashImpactRequest) => callCommand('get_trash_impact', { ...request }, isTrashImpact),
   trashEntry: (request: TrashEntryRequest) => callCommand('trash_entry', { ...request }, isTrashEntryResult),
   open: (ref: FileRef, mode?: Exclude<OpenMode, 'normal'>, documentId?: DocumentId, encodingOverride?: string) => callCommand(

@@ -1,5 +1,5 @@
 use super::files::FileService;
-use crate::models::{AppError, ErrorCode, FileRef, RenamedDocument};
+use crate::models::{AppError, ErrorCode, FileRef, NativeDropEntry, RenamedDocument};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
@@ -14,6 +14,45 @@ pub struct WorkspaceRoot {
 }
 
 impl FileService {
+    pub fn register_native_drop(
+        &mut self,
+        paths: impl IntoIterator<Item = std::path::PathBuf>,
+    ) -> Result<Vec<NativeDropEntry>, AppError> {
+        let mut entries = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        for path in paths.into_iter().take(32) {
+            let canonical = path.canonicalize().map_err(crate::models::io_error)?;
+            let metadata = std::fs::symlink_metadata(&path).map_err(crate::models::io_error)?;
+            if metadata.file_type().is_symlink()
+                || !(metadata.is_file() || metadata.is_dir())
+                || !seen.insert(canonical.to_string_lossy().to_lowercase())
+            {
+                continue;
+            }
+            let kind = if metadata.is_dir() {
+                super::grants::GrantKind::Directory
+            } else {
+                super::grants::GrantKind::File
+            };
+            let reference = self.grants.register_selection(&path, kind)?;
+            entries.push(NativeDropEntry {
+                reference,
+                display_name: canonical
+                    .file_name()
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| canonical.to_string_lossy().into_owned()),
+                is_directory: metadata.is_dir(),
+            });
+        }
+        if entries.is_empty() {
+            return Err(AppError::new(
+                ErrorCode::Unsupported,
+                "拖入的项目中没有可打开的文件或目录。",
+            ));
+        }
+        Ok(entries)
+    }
+
     pub fn inspect_workspace_root(&self, reference: &FileRef) -> Result<WorkspaceRoot, AppError> {
         if !reference.relative_path.is_empty() {
             return Err(AppError::new(

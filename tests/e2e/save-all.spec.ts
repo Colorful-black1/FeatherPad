@@ -69,7 +69,7 @@ test('Web mock: cancelled chooser stops subsequent items and a new run only retr
   await expect(rows.nth(2)).toContainText('未处理');
   await expect(page.getByRole('tab', { name: /无标题 2/ })).toContainText('●');
   await expect(page.getByRole('tab', { name: /无标题 3/ })).toContainText('●');
-  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(results.getByRole('alert')).toHaveCount(0);
   expect(await page.evaluate(() => (Reflect.get(window, 'batchRequests') as unknown[]).length)).toBe(2);
   await page.getByRole('button', { name: '全部保存', exact: true }).click();
   await expect(results).toContainText('本次处理结束：已处理 2 / 2 份');

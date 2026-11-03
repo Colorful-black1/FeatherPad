@@ -140,6 +140,10 @@ T201恢复边界（2026-11-03）：恢复正文始终是UTF8逻辑文本，目�
 
 T204授权持久化：schema1授权文件增加可选`revokedGrantIds`（最多4096个UUID，旧文件缺省为空）；撤销与独立文件grant同一次受保护写入，成功后才更新内存根/lease。合并旧会话授权时过滤撤销ID，不能因迟到会话或最近/收藏引用恢复原目录权限。用户重新选择会产生新的grant ID。
 
+T204收藏：`workspaceFavorites`使用schema1、最多100项/32KiB，独立于最近记录与其开关；损坏或超额不覆盖/截断原记录。`load_session.restoreGrantIds`合并最近50项与收藏100项，上限从50调整为150个规范UUID，仅恢复既有身份匹配的持久grant，撤销ID始终被过滤。
+
+M2工作区补充（2026-11-03，G2通过）：`transfer_entry {source,targetParent,mode:'move'|'copy',expectedRevision,requestId}`只接受两个已授权目录树中的非链接项，目标碰撞返回CONFLICT，源revision不符不写入；成功返回新`DirectoryEntry`、受影响打开文档的DocumentId重绑和`sourceRemoved`。跨卷移动先完成并校验目标复制，再仅回收源，不宣称两卷原子；任一步失败都按可见的部分结果报告。`walk_workspace`接受最多16个root grant、include/exclude、respectGitignore、followDirectoryLinks、includeHidden和maxFiles，返回受授权ref、跳过原因/数量、cancelled/truncated；默认不跟随链接，深度64/文件量500,000有界，按canonical identity去重。`cancel_workspace_walk {requestId}`幂等。工作区文件`.featherpad-workspace`仅由已授权file-core读写，schema1存储相对/绝对根、exclude、respectGitignore和followDirectoryLinks，不存正文或新增授权。
+
 T201会话补充：schema1的`SessionView`增加可选`encodingOverride`（限8个受支持canonical label），旧清单缺省仍按BOM/严格UTF8读取。记录来源磁盘的编码而非尚未保存的转换意图；恢复正文的目标格式继续来自校验过的恢复manifest。编码字段不授予文件权限，仍使用既有FileRef/identity/revision恢复流程。
 | `release_document` | `{documentId}` | `{released:boolean}` | 仅释放资源，不删除文件/恢复快照 |
 | `discard_recovery` | `{documentId,throughVersion}` | `{documentId,throughVersion,discarded:true}` | 显式放弃授权；先持久化标记、再清理对应版本快照，失败不关闭；同文档保存/回收互斥 |
@@ -249,6 +253,8 @@ export type SearchHit = SearchHitBase & (
 
 正则产品语法统一采用 Rust regex 子集：不支持 look-around/backreference。替换支持 `$0`/`$1` 等捕获和 `$$` 字面量，细节在测试固定。文件内匹配可调用同规范 Worker 或兼容实现；不允许文件内JS正则“成功”而文件夹搜索同式无提示失败。结果默认忽略二进制、隐藏/ignore排除、大于阈值文件，显示跳过统计和范围入口。
 
+M2搜索与替换实现契约（2026-11-03，G2通过）：`search_workspace {requestId,roots,pattern,isRegex,isCaseSensitive,isWholeWord,include,exclude,respectGitignore,followDirectoryLinks,includeHidden,maxMatches?}`直接返回`{files,skipped,totalMatches,scannedFiles,truncated,cancelled,elapsedMs}`并发送带requestId/sequence的进度事件；`cancel_workspace_search {requestId}`幂等，前端必须以requestId/sequence丢弃迟到结果。最多10,000匹配、1,000匹配/文件、64类跳过原因，单文件>20MiB和二进制默认跳过。`create_replace_plan`不写盘，返回schema1 plan/confirmationToken及逐文件before/after revision、summary、encoding和ready/dirtySkipped/readOnly/conflict/unsupported状态；ready文件必须有短期私有before/after快照引用。`commit_replace_plan {planId,confirmationToken,selected}`再次核对token/revision/授权，逐文件写入并报告succeeded/failed/remaining；journal先持久化。`rollback_replace_batch {batchId}`只在当前revision仍等于该提交结果时恢复，后续编辑冲突进入conflicts并保留新字节。confirmation/batch ID运行内去重，不能把selected路径当授权或宣称跨进程全局原子。
+
 ## 5. 格式化、对比和 Markdown
 
 这些能力优先在 Web Worker 中处理文本，不获得任意文件授权。
@@ -302,6 +308,8 @@ T110存储扩展决策（2026-11-02，按切片实施）：复用schema1、UUID 
 T110会话与扫描（2026-11-02，已通过相关真实Release）：会话view使用bufferVersion、成对存在或同时为空的fileRef/diskRevision及normal/head-preview模式；文件/根授权仅由原生既有grant持久化，重启核对文件identity后才恢复授权，load_session返回restoredGrantIds，缺少当前及历史有效授权记录时返回SESSION_INCOMPLETE。重新打开可携带会话DocumentId，仍遵守单文件身份规则。list_recovery_entries返回entries、failures、startupWarnings、storageBytes和saveTransactions；只读扫描保存事务并核对摘要/阶段/同一discard tombstone，坏标记不列候选，歧义临时/备份保留且不静默删除。超过30天仅提示。统一256MiB配额及显式事务读取已实现，完整隐私管理继续由T215实现。
 
 T113最近记录契约（2026-11-02，已通过相关真实Release）：`OpenDocument.canonicalIdentity`为Windows `FileIdentity`的SHA256字符串，用于前端按稳定文件身份去重；它不替代grant、documentId或磁盘revision，也不能作为写盘授权。`load_session`请求可带最多50个规范UUID `restoreGrantIds`，原生只尝试重新打开持久化记录中仍存在且文件身份/根路径仍匹配的grant，返回本次实际恢复的`restoredGrantIds`；未知、越权、格式错误或当前不可用的记录不恢复。最近记录本身存于版本化设置，最多50项/48KiB，不存正文、搜索词或剪贴板；关闭历史只停止新增，既有记录需显式移除/清空。写入成功后前端刷新会话，使对应grant持久化。
+
+M2桌面可靠性契约（2026-11-03，G2通过）：`set_global_shortcut {enabled,shortcut}`仅接受规范、无歧义且未保留的加速键，默认enabled=false；成功返回`{enabled:true}`，系统占用/格式错误显式失败且不改变当前注册，停用或应用退出必须释放。全局动作只显示并聚焦既有主窗口，不执行文件操作。隐私清理沿用版本化设置和恢复存储：最近、收藏和恢复分别请求，不能把关闭最近记录等同清空已有项，也不能删除活动dirty文档唯一恢复副本；损坏/无法校验的恢复证据保留并报告。设置中的最近/收藏只保存稳定标识、显示名和排序元数据，不保存正文、搜索词、剪贴板或遥测。T204把`restoreGrantIds`上限扩至150，T113原文的50只指最近项自身上限。
 
 打开外链只允许 http/https/mailto，必须来自明确用户动作；未知 protocol/file/command 拒绝。不注册可任意执行命令的链接协议。文件关联由操作系统支持方式处理，不能绕过 Windows 默认应用限制，不能修改与本项目无关关联。
 

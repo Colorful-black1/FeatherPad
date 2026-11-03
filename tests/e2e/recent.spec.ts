@@ -60,6 +60,7 @@ test('Web mock records successful opens, repairs missing entries, persists remov
             return ok({ grants: [file.ref], failures: [] });
           }
           case 'choose_folder': return ok({ grant: workspaceRef, displayName: 'controlled-workspace' });
+          case 'inspect_workspace_root': return ok({ ref: workspaceRef, displayName: 'controlled-workspace', displayPath: 'E:/controlled-workspace', canonicalIdentity: 'c'.repeat(64) });
           case 'list_directory': return ok({ items: [], nextCursor: null });
           case 'open_document': {
             if (failNextOpen) {

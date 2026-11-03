@@ -127,6 +127,7 @@ test('Web mock: selecting an already open tree file closes the narrow overlay wi
         case 'list_font_families': return ok({ families: ['Cascadia Mono'], truncated: false });
         case 'load_workspace_settings': return ok({ settings: {}, revision: null, warning: null });
         case 'choose_folder': return ok({ grant: root, displayName: 'focus-root' });
+        case 'inspect_workspace_root': return ok({ ref: root, displayName: 'focus-root', displayPath: 'E:/focus-root', canonicalIdentity: 'c'.repeat(64) });
         case 'list_directory': return ok({ items: [{ id: 'one.txt', ref: { ...root, relativePath: 'one.txt' },
           name: 'one.txt', kind: 'file', isHidden: false, isReadOnly: false, revision: 'a'.repeat(64) }], nextCursor: null });
         case 'open_document': return ok({ documentId: '22222222-2222-4222-8222-222222222222',

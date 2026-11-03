@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-create-replace-plan"
+description = "Enables the create_replace_plan command without any pre-configured scope."
+commands.allow = ["create_replace_plan"]
+
+[[permission]]
+identifier = "deny-create-replace-plan"
+description = "Denies the create_replace_plan command without any pre-configured scope."
+commands.deny = ["create_replace_plan"]

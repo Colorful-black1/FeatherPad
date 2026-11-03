@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-walk-workspace"
+description = "Enables the walk_workspace command without any pre-configured scope."
+commands.allow = ["walk_workspace"]
+
+[[permission]]
+identifier = "deny-walk-workspace"
+description = "Denies the walk_workspace command without any pre-configured scope."
+commands.deny = ["walk_workspace"]

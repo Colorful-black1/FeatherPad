@@ -14,6 +14,7 @@ import { verifyNativeTabs } from './tabs';
 import { verifyNativeCommands } from './commands';
 import { verifyNativeExternal } from './external';
 import { verifyNativeMvp } from './mvp';
+import { verifyNativeWorkspaceTransfer } from './workspace-transfer';
 
 const runFile = promisify(execFile);
 type ChooserAction = 'open' | 'open-folder' | 'open-degraded' | 'open-large-chunk' | 'open-head-preview' | 'open-fault' | 'save' | 'cancel' | 'inspect-external' | 'confirm-external' | 'reject-external';
@@ -64,6 +65,8 @@ export async function runFocusedNativeScenario(scenario: string, context: Native
     case 'workspace':
       return verifyNativeWorkspace(page, dataDir, target => chooser.select('open-folder', target), evidence,
         (action, target) => chooser.select(action, target), 'workspace');
+    case 'workspace-transfer':
+      return verifyNativeWorkspaceTransfer(page, dataDir, target => chooser.select('open-folder', target), evidence);
     case 'search':
       return verifyNativeSearch(page, dataDir, target => chooser.select('open', target), evidence);
     case 'large-files': {

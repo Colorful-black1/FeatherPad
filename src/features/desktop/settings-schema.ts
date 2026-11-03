@@ -1,7 +1,9 @@
 import { isRawSettings, type JsonValue, type RawSettings } from '../../shared/contracts/settings';
 export { isRawSettings } from '../../shared/contracts/settings';
 import type { ResultEnvelope } from '../../shared/contracts/files';
+import { normalizeShortcut, shortcutRestriction } from '../../shared/commands/keyboard';
 import { recentHistoryItemsSetting } from '../workspace/recent';
+import { favoritesSetting } from '../workspace/favorites';
 
 export const languagePreferencesSetting = 'documentLanguagePreferences';
 
@@ -15,15 +17,19 @@ export interface Settings {
   wordWrap: boolean;
   lineNumbers: boolean;
   highlightActiveLine: boolean;
+  whitespaceMode: 'none' | 'current' | 'all';
+  folding: boolean;
   autoSave: boolean;
   recentHistoryEnabled: boolean;
+  globalLaunchEnabled: boolean;
+  globalLaunchShortcut: string;
 }
 export type SettingKey = keyof Settings;
 export type SettingSource = 'default' | 'user' | 'workspace' | 'session';
 export type SettingGroup = 'appearance' | 'editor' | 'privacy';
 export interface SettingDefinition {
   key: SettingKey; label: string; keywords: string; group: SettingGroup;
-  kind: 'theme' | 'font' | 'number' | 'tab' | 'boolean';
+  kind: 'theme' | 'font' | 'number' | 'tab' | 'whitespace' | 'boolean' | 'shortcut';
   description?: string;
 }
 export interface SettingsDiagnostic { key: string; source: SettingSource; message: string }
@@ -31,7 +37,8 @@ export interface SettingsDiagnostic { key: string; source: SettingSource; messag
 export const defaultSettings: Readonly<Settings> = Object.freeze({
   theme: 'system', fontFamily: 'Cascadia Mono', fontSize: 14, lineHeight: 1.85,
   tabSize: 4, insertSpaces: true, wordWrap: true, lineNumbers: true, highlightActiveLine: true,
-  recentHistoryEnabled: true, autoSave: false,
+  whitespaceMode: 'none', folding: true,
+  recentHistoryEnabled: true, autoSave: false, globalLaunchEnabled: false, globalLaunchShortcut: 'Ctrl+Shift+Space',
 });
 export const settingDefinitions: readonly SettingDefinition[] = [
   { key: 'theme', label: '主题', keywords: 'theme light dark system 亮 暗 跟随系统', group: 'appearance', kind: 'theme' },
@@ -43,11 +50,19 @@ export const settingDefinitions: readonly SettingDefinition[] = [
   { key: 'wordWrap', label: '自动换行', keywords: 'word wrap 长行 折行', group: 'editor', kind: 'boolean' },
   { key: 'lineNumbers', label: '显示行号', keywords: 'line numbers 行号', group: 'editor', kind: 'boolean' },
   { key: 'highlightActiveLine', label: '突出当前行', keywords: 'highlight active line 高亮 光标 当前行', group: 'editor', kind: 'boolean' },
+  { key: 'whitespaceMode', label: '空白字符显示', keywords: 'whitespace spaces tabs 空白 空格 制表符', group: 'editor', kind: 'whitespace' },
+  { key: 'folding', label: '代码折叠', keywords: 'fold folding gutter 折叠 代码块', group: 'editor', kind: 'boolean',
+    description: '纯文本模式没有可折叠语法，不显示折叠栏。' },
   { key: 'autoSave', label: '自动保存已命名文件', keywords: 'auto save 自动 保存 空闲', group: 'editor', kind: 'boolean',
     description: '默认关闭。空闲1500ms后保存；冲突或失败时暂停。无标题仅写恢复快照，设置预览期间不自动保存。' },
   { key: 'recentHistoryEnabled', label: '记录最近打开', keywords: 'privacy recent history 最近 文件 工作区 隐私', group: 'privacy', kind: 'boolean' },
+  { key: 'globalLaunchEnabled', label: '启用系统全局唤起', keywords: 'privacy shortcut global activation show focus 全局 快捷键 唤起 窗口', group: 'privacy', kind: 'boolean',
+    description: '默认关闭。仅用于显示并聚焦轻羽窗口，不把普通应用快捷键注册为全局键；保存后生效。' },
+  { key: 'globalLaunchShortcut', label: '全局唤起快捷键', keywords: 'privacy shortcut global activation show focus 全局 快捷键 唤起 窗口', group: 'privacy', kind: 'shortcut',
+    description: '例如 Ctrl+Shift+Space。注册失败或与其他应用冲突时会在应用内显示原因。' },
 ];
-export const workspaceSettingKeys = new Set<SettingKey>(['tabSize', 'insertSpaces', 'wordWrap', 'lineNumbers', 'highlightActiveLine']);
+export const workspaceSettingKeys = new Set<SettingKey>(['tabSize', 'insertSpaces', 'wordWrap', 'lineNumbers',
+  'highlightActiveLine', 'whitespaceMode', 'folding']);
 export const isSettingKey = (key: string): key is SettingKey => Object.hasOwn(defaultSettings, key);
 
 export function isSettingValue<K extends SettingKey>(key: K, value: unknown): value is Settings[K] {
@@ -59,6 +74,9 @@ export function isSettingValue<K extends SettingKey>(key: K, value: unknown): va
     case 'fontSize': return typeof value === 'number' && Number.isInteger(value) && value >= 8 && value <= 40;
     case 'lineHeight': return typeof value === 'number' && Number.isFinite(value) && value >= 1.2 && value <= 2.5;
     case 'tabSize': return value === 2 || value === 4 || value === 8;
+    case 'whitespaceMode': return value === 'none' || value === 'current' || value === 'all';
+    case 'globalLaunchShortcut': return typeof value === 'string' && normalizeShortcut(value) === value
+      && shortcutRestriction(value) === null;
     default: return typeof value === 'boolean';
   }
 }
@@ -73,7 +91,7 @@ export function mergeSettings(user: RawSettings = {}, workspace: RawSettings = {
   }
   for (const [source, values] of [['user', user], ['workspace', workspace], ['session', session]] as const) {
     for (const [key, value] of Object.entries(values)) {
-      if (key === recentHistoryItemsSetting || key === languagePreferencesSetting) continue;
+      if (key === recentHistoryItemsSetting || key === languagePreferencesSetting || key === favoritesSetting) continue;
       if (!isSettingKey(key)) {
         diagnostics.push({ key, source, message: '未识别的设置已保留，当前版本不应用此项。' }); continue;
       }

@@ -1,6 +1,6 @@
 # 开发任务清单
 
-当前阶段：**M0/G0、M1/G1 已通过；用户已确认开始M2，当前T204多根/收藏/工作区文件，G2待验**。完整 v1 需要 M0–M5 全部 86 项必需功能，M1 只是可试用 MVP，不是成品。
+当前阶段：**M0/G0、M1/G1、M2/G2 已通过（2026-11-03）；下一项 T301/M3，等待用户确认后开始**。完整 v1 需要 M0–M5 全部 86 项必需功能，M1 只是可试用 MVP，不是成品。
 
 2026-11-03 用户修订验收粒度：**以 M 为验收单元**。M 内各 T 只做实现和最小自检，不再每个 T 跑一遍大量测试；整个 M 的 T 全部完成后，统一执行一次全量回归、真实 Release 验收和矩阵证据汇总，通过后打勾并停止，等待用户确认后再推进下一阶段。M0 与 M1 的已完成任务产生于旧的逐任务策略，其逐项证据仍然有效，保存在 [PROGRESS](PROGRESS.md) 和 [M0验收](../docs/acceptance/M0.md)、[M1验收](../docs/acceptance/M1.md)（按 `T1xx` 检索即可定位）。
 
@@ -10,7 +10,7 @@
 - `[~]` 实现中。
 - `[x]` 实现完成并通过该任务的最小自检，**不代表功能已验收**。
 
-功能验收只在所属 M 的统一验收通过后记录。M0/M1 已完成任务保留 `[x]` 并有旧策略下的逐项证据；M2–M5 的任务在 M 关卡通过前，一律不得写成"已验收"。
+功能验收只在所属 M 的统一验收通过后记录。M0/M1 已完成任务保留 `[x]` 和有旧策略下的逐项证据；M2 已通过 G2 并记录整阶段证据；M3–M5 的任务在各自关卡通过前，一律不得写成“已验收”。
 
 ## 验收策略（M 为验收单元）
 
@@ -92,8 +92,8 @@ pnpm test:desktop:all
 |---|---|---|---|
 | M0 | G0 | 已通过（2026-11-01） | 真实 Tauri 与 Release 启动、测试通路建立，见 [M0验收](../docs/acceptance/M0.md) |
 | M1 | G1 | 已通过（2026-11-03） | T101–T115 完成；34项feature ID统一验收通过，见 [M1验收](../docs/acceptance/M1.md) |
-| M2 | G2 | 进行中 | 用户已确认开始；完成M2后停止等待确认 |
-| M3 | G3 | 未开始 | 依赖 G2 |
+| M2 | G2 | 已通过（2026-11-03） | T201–T216 完成；29项feature ID统一验收通过，见 [M2验收](../docs/acceptance/M2.md) |
+| M3 | G3 | 未开始 | 依赖 G2；下一项 T301，等待用户确认 |
 | M4 | G4 | 未开始 | 依赖 G3 |
 | M5 | G5 | 未开始 | 依赖 G4 |
 
@@ -132,28 +132,28 @@ pnpm test:desktop:all
 | [x] T114 视图与无障碍 | T106,T112 | F-EDIT-012,F-DESK-010 | a 编辑器 Tab 焦点；b 字号缩放/区域导航；c 读屏/媒体/设置分类；d 相关 Release 与平台验收 | src/features/editor/view-settings.ts、src/shared/ui/focus-navigation.ts、src/styles/accessibility.css |
 | [x] T115 G1 MVP验收 | T103,T105,T108..114 | M1全部 | 原生打开到保存恢复闭环；34项矩阵证据统一验收；Release与可试用包已保留 | tasks/PROGRESS.md、docs/acceptance/M1.md、.artifacts/T115/FeatherPad-M1-portable-935A3E54.zip |
 
-## M2 效率与可靠性补齐（依赖：G1，已获确认开始）
+## M2 效率与可靠性补齐（依赖：G1，2026-11-03 已通过）
 
-验收：本表全部 `[x]` 后，一次性执行 [M 统一验收清单](#m-统一验收清单) 的 G2 项，通过则 G2 打勾。
+验收：T201–T216 已全部完成，G2 于 2026-11-03 通过；29项feature ID、最终Release和专项证据见 [M2验收](../docs/acceptance/M2.md)。
 
 | 状态/任务 | 依赖 | 功能追踪 | 交付内容与验收点 | 主要规划文件（非穷举） |
 |---|---|---|---|---|
 | [x] T201 编码与逐行换行 | T115 | F-FILE-006..007 | 所列编码 round-trip、原混合换行保留、转换 undo 与有损确认；定向及一条真实Release路径已自检，G2统一验收待阶段末 | src-tauri/src/services/encoding.rs、src/features/editor/line-endings.ts、src/features/editor/EncodingMenu.tsx |
 | [x] T202 可选自动保存 | T201 | F-FILE-012 | 默认 off、1500ms 空闲保存；冲突暂停、无标题仅快照 | src/features/editor/autosave.ts、src/features/desktop/SettingsDialog.tsx |
 | [x] T203 冲突对比 | T111,T201 | F-FILE-016 | 返回磁盘快照与 revision，对比后变动再次阻止旧授权覆盖 | src/features/editor/ConflictDiff.tsx、src-tauri/src/services/files.rs |
-| [~] T204 多根/收藏/工作区文件 | T115 | F-WORK-002,F-WORK-008..009 | 根重排/移除不删 buffer，收藏独立，迁移相对路径/坏配置保护 | src/features/workspace/roots.ts、src/features/workspace/Favorites.tsx、src/features/workspace/workspace-file.ts |
-| [ ] T205 排除/监听/链接遍历 | T204 | F-WORK-010..012 | ignore 规则可见，默认不跟链接，启用后 visited/越界授权；watch 溢出重扫 | src-tauri/src/services/walker.rs、src-tauri/src/services/watch.rs、src/features/workspace/filters.ts |
-| [ ] T206 拖放与移动 | T105,T204 | F-WORK-006 | 外部拖入打开；内部移动确认/碰撞/跨卷结果不伪原子 | src/features/workspace/drag-drop.ts、src-tauri/src/services/file_ops.rs |
-| [ ] T207 标签/双分栏 | T115 | F-EDIT-014..015 | 拖排重开批量关闭，最多两组同文档共 buffer/undo 独立视图 | src/features/editor/groups.ts、src/features/editor/TabStrip.tsx、src/features/editor/EditorGroup.tsx |
-| [ ] T208 常用编辑操作 | T115 | F-EDIT-004,F-EDIT-007,F-EDIT-009..011 | 注释/行移动复制/词补全/空白/折叠，未知语言禁用解释 | src/features/editor/commands.ts、src/features/editor/extensions.ts、src/features/editor/completion.ts |
-| [ ] T209 多光标与列选择 | T208 | F-EDIT-005..006 | AltClick/下个相同词、矩形选择和 IME/Tab 宽字符规则 | src/features/editor/multicursor.ts、src/features/editor/keymap.ts |
-| [ ] T210 导航与大纲接口 | T207 | F-EDIT-016 | 文件/行列/前后导航/面包屑；无 LSP 的大纲扩展槽 | src/features/editor/navigation.ts、src/shared/ui/QuickOpen.tsx、src/features/editor/Breadcrumbs.tsx |
-| [ ] T211 增量目录搜索 | T108,T205 | F-SEARCH-004..006 | 多根过滤/进度/取消/结果限额，dirty 语义明确，旧结果丢弃 | src-tauri/src/services/search.rs、src/features/search-tools/SearchPanel.tsx、src/bridge/search.ts |
-| [ ] T212 跨文件替换计划 | T203,T211 | F-SEARCH-007 | 逐文件不可变预览、版本与风险、dirty 排除可见，未确认零写入 | src-tauri/src/services/replace_plan.rs、src/features/search-tools/ReplacePreview.tsx |
-| [ ] T213 提交/恢复记录 | T212 | F-SEARCH-008..009 | 二次确认、写前备份、冲突停止并列部分结果，回滚不覆盖新修改 | src-tauri/src/services/replace_apply.rs、src-tauri/src/services/replace_recovery.rs、src/features/search-tools/ReplaceResult.tsx |
-| [ ] T214 快捷键定制与全局唤起 | T109,T112 | F-DESK-003 | 应用内映射可编辑冲突检测；全局默认 off、失败反馈和释放 | src/features/desktop/keybindings.ts、src-tauri/src/services/shortcuts.rs |
-| [ ] T215 隐私管理 | T110,T113 | F-DESK-004 | 最近/恢复/收藏独立清理，唯一未保存副本保护，无遥测 | src/features/desktop/PrivacySettings.tsx、src-tauri/src/services/recovery.rs |
-| [ ] T216 G2效率验收 | T201..215 | M2全部 | G2 专项通过，效率操作与数据安全无回归，输入/大目录开始基准 | tasks/PROGRESS.md、docs/acceptance/M2.md |
+| [x] T204 多根/收藏/工作区文件 | T115 | F-WORK-002,F-WORK-008..009 | 根重排/移除不删 buffer，收藏独立，迁移相对路径/坏配置保护 | src/features/workspace/roots.ts、src/features/workspace/FavoriteList.tsx、src/features/workspace/workspace-file.ts |
+| [x] T205 排除/监听/链接遍历 | T204 | F-WORK-010..012 | ignore 规则可见，默认不跟链接，启用后 visited/越界授权；watch 溢出重扫 | src-tauri/src/services/walker.rs、src-tauri/src/services/search.rs、src/features/workspace/sync.ts、src/features/workspace/filters.ts |
+| [x] T206 拖放与移动 | T105,T204 | F-WORK-006 | 外部拖入打开；内部移动确认/碰撞/跨卷结果不伪原子 | src/features/workspace/drag-drop.ts、src-tauri/src/services/file_ops.rs |
+| [x] T207 标签/双分栏 | T115 | F-EDIT-014..015 | 拖排重开批量关闭，最多两组同文档共 buffer/undo 独立视图 | src/features/editor/tabs.ts、src/features/editor/TabStrip.tsx、src/features/editor/editor-state.ts |
+| [x] T208 常用编辑操作 | T115 | F-EDIT-004,F-EDIT-007,F-EDIT-009..011 | 注释/行移动复制/词补全/空白/折叠，未知语言禁用解释 | src/features/editor/editing.ts、src/features/editor/EditorDocument.tsx |
+| [x] T209 多光标与列选择 | T208 | F-EDIT-005..006 | AltClick/下个相同词、矩形选择和 IME/Tab 宽字符规则 | src/features/editor/editing.ts、src/features/editor/EditorDocument.tsx |
+| [x] T210 导航与大纲接口 | T207 | F-EDIT-016 | 文件/行列/前后导航/面包屑；无 LSP 的大纲扩展槽 | src/features/editor/navigation.ts、src/features/editor/GoToLineDialog.tsx、src/features/editor/OutlineDialog.tsx、src/features/editor/Breadcrumbs.tsx |
+| [x] T211 增量目录搜索 | T108,T205 | F-SEARCH-004..006 | 多根过滤/进度/取消/结果限额，dirty 语义明确，旧结果丢弃 | src-tauri/src/services/search.rs、src/features/search-tools/WorkspaceSearchPanel.tsx、src/bridge/search.ts |
+| [x] T212 跨文件替换计划 | T203,T211 | F-SEARCH-007 | 逐文件不可变预览、版本与风险、dirty 排除可见，未确认零写入 | src-tauri/src/services/replace_plan.rs、src/features/search-tools/ReplacePreviewDialog.tsx |
+| [x] T213 提交/恢复记录 | T212 | F-SEARCH-008..009 | 二次确认、写前备份、冲突停止并列部分结果，回滚不覆盖新修改 | src-tauri/src/services/replace_plan.rs、src/features/search-tools/ReplaceResult.tsx、tests/desktop/reliability.spec.ts |
+| [x] T214 快捷键定制与全局唤起 | T109,T112 | F-DESK-003 | 应用内映射可编辑冲突检测；全局默认 off、失败反馈和释放 | src/shared/commands/keyboard.ts、src-tauri/src/global_shortcut.rs、scripts/Test-GlobalShortcut.ps1 |
+| [x] T215 隐私管理 | T110,T113 | F-DESK-004 | 最近/恢复/收藏独立清理，唯一未保存副本保护，无遥测 | src/features/desktop/privacy.ts、src/features/desktop/SettingsDialog.tsx、src-tauri/src/services/recovery.rs |
+| [x] T216 G2效率验收 | T201..215 | M2全部 | G2 专项通过，效率操作与数据安全无回归，输入/大目录开始基准 | tasks/PROGRESS.md、docs/acceptance/M2.md |
 
 ## M3 Markdown与工具（依赖：G2）
 

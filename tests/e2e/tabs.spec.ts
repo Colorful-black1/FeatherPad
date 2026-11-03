@@ -16,6 +16,7 @@ async function installFiles(page: Page) {
       const metadata = (name: string, revision = 'a'.repeat(64)) => ({ displayPath: `E:/controlled/${name}`,
         sizeBytes: new TextEncoder().encode(texts.get(name) ?? '').length, modifiedAt: '2026-11-02T00:00:00Z', isReadOnly: false, diskRevision: revision });
       if (command === 'choose_folder') return { ok: true, value: { grant: { grantId: grant, relativePath: '' }, displayName: 'controlled-tabs' } };
+      if (command === 'inspect_workspace_root') return { ok: true, value: { ref: { grantId: grant, relativePath: '' }, displayName: 'controlled-tabs', displayPath: 'E:/controlled-tabs', canonicalIdentity: 'c'.repeat(64) } };
       if (command === 'choose_files') return { ok: true, value: { grants: [{ grantId: grant, relativePath: 'a.txt' }], failures: [] } };
       if (command === 'list_directory') {
         const parent = ref?.relativePath ?? '';
@@ -211,7 +212,7 @@ test('Web mock: a late chunk cannot replace the retained page after an uncertain
   await page.getByRole('button', { name: '下一块', exact: true }).click();
   await fault(page, 'release-uncertain');
   await page.getByRole('button', { name: '关闭 large.txt，只读', exact: true }).click();
-  await expect(page.getByRole('alert')).toContainText('受控关闭回执丢失');
+  await expect(page.locator('.notice.error-notice[role="alert"]')).toContainText('受控关闭回执丢失');
   await page.evaluate(() => { (Reflect.get(window, 'completeTabChunk') as () => void)(); });
   await expect(page.getByRole('button', { name: '下一块', exact: true })).toBeDisabled();
   await expect(page.locator('.large-file-text')).toHaveText('chunk head');

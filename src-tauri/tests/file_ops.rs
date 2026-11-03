@@ -1,6 +1,7 @@
 use featherpad_lib::{
     models::{
-        CreateEntryRequest, EntryKind, ErrorCode, FileRef, ListDirectoryRequest, RenameEntryRequest,
+        CreateEntryRequest, EntryKind, ErrorCode, FileRef, ListDirectoryRequest,
+        RenameEntryRequest, TransferEntryRequest, TransferMode,
     },
     services::{files::FileService, grants::GrantKind},
 };
@@ -41,6 +42,22 @@ fn rename_request(
     RenameEntryRequest {
         reference: reference.clone(),
         new_name: new_name.to_owned(),
+        expected_revision,
+        request_id,
+    }
+}
+
+fn transfer_request(
+    source: &FileRef,
+    target_parent: &FileRef,
+    mode: TransferMode,
+    expected_revision: String,
+    request_id: String,
+) -> TransferEntryRequest {
+    TransferEntryRequest {
+        source: source.clone(),
+        target_parent: target_parent.clone(),
+        mode,
         expected_revision,
         request_id,
     }
@@ -391,4 +408,197 @@ fn rename_rejects_a_real_junction_without_moving_the_link_or_target() {
     drop(service);
     fs::remove_dir(&junction).unwrap();
     fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn copies_verified_files_without_overwrite_and_replays_the_receipt() {
+    let source_root = owned_root("copy-source");
+    let target_root = owned_root("copy-target");
+    fs::create_dir_all(&source_root).unwrap();
+    fs::create_dir_all(&target_root).unwrap();
+    fs::write(source_root.join("Report.txt"), b"verified source bytes").unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    let mut service = FileService::default();
+    let source_grant = root_reference(&mut service, &source_root);
+    let target_grant = root_reference(&mut service, &target_root);
+    let source = FileRef {
+        grant_id: source_grant.grant_id.clone(),
+        relative_path: "Report.txt".to_owned(),
+    };
+    let source_entry = list_entry(&mut service, &source_grant, "Report.txt");
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let request = transfer_request(
+        &source,
+        &target_grant,
+        TransferMode::Copy,
+        source_entry.revision.clone(),
+        request_id.clone(),
+    );
+
+    let copied = service.transfer_entry(request.clone()).unwrap();
+    assert_eq!(copied.mode, TransferMode::Copy);
+    assert!(!copied.source_removed);
+    assert_eq!(copied.entry.name, "Report.txt");
+    assert_eq!(
+        fs::read(source_root.join("Report.txt")).unwrap(),
+        b"verified source bytes"
+    );
+    assert_eq!(
+        fs::read(target_root.join("Report.txt")).unwrap(),
+        b"verified source bytes"
+    );
+    let replay = service.transfer_entry(request.clone()).unwrap();
+    assert_eq!(replay.entry.id, copied.entry.id);
+
+    let collision = service
+        .transfer_entry(transfer_request(
+            &source,
+            &target_grant,
+            TransferMode::Copy,
+            source_entry.revision,
+            uuid::Uuid::new_v4().to_string(),
+        ))
+        .unwrap_err();
+    assert_eq!(collision.code, ErrorCode::Conflict);
+    assert_eq!(
+        fs::read(target_root.join("Report.txt")).unwrap(),
+        b"verified source bytes"
+    );
+
+    let changed_after_receipt = transfer_request(
+        &source,
+        &target_grant,
+        TransferMode::Copy,
+        "0".repeat(64),
+        request_id,
+    );
+    assert_eq!(
+        service
+            .transfer_entry(changed_after_receipt)
+            .unwrap_err()
+            .code,
+        ErrorCode::InvalidInput
+    );
+
+    drop(service);
+    fs::remove_dir_all(source_root).unwrap();
+    fs::remove_dir_all(target_root).unwrap();
+}
+
+#[test]
+fn moves_directories_and_rebinds_open_descendants_without_losing_document_ids() {
+    let source_root = owned_root("move-source");
+    let target_root = owned_root("move-target");
+    let source_directory = source_root.join("Draft");
+    fs::create_dir_all(&source_directory).unwrap();
+    fs::create_dir_all(&target_root).unwrap();
+    fs::write(source_directory.join("Child.txt"), b"child survives").unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    let mut service = FileService::default();
+    let source_grant = root_reference(&mut service, &source_root);
+    let target_grant = root_reference(&mut service, &target_root);
+    let child = FileRef {
+        grant_id: source_grant.grant_id.clone(),
+        relative_path: "Draft/Child.txt".to_owned(),
+    };
+    let opened = service.open_document(child).unwrap();
+    let directory = list_entry(&mut service, &source_grant, "Draft");
+    let moved = service
+        .transfer_entry(transfer_request(
+            &directory.reference,
+            &target_grant,
+            TransferMode::Move,
+            directory.revision,
+            uuid::Uuid::new_v4().to_string(),
+        ))
+        .unwrap();
+    assert_eq!(moved.mode, TransferMode::Move);
+    assert!(moved.source_removed);
+    assert_eq!(moved.renamed_documents.len(), 1);
+    assert_eq!(moved.renamed_documents[0].document_id, opened.document_id);
+    assert_eq!(
+        moved.renamed_documents[0].reference.relative_path,
+        "Draft/Child.txt"
+    );
+    assert_eq!(
+        moved.renamed_documents[0].reference.grant_id,
+        target_grant.grant_id
+    );
+    assert!(!source_directory.exists());
+    assert_eq!(
+        fs::read(target_root.join("Draft").join("Child.txt")).unwrap(),
+        b"child survives"
+    );
+    let reopened = service
+        .open_document(moved.renamed_documents[0].reference.clone())
+        .unwrap();
+    assert_eq!(reopened.document_id, opened.document_id);
+
+    drop(service);
+    fs::remove_dir_all(source_root).unwrap();
+    fs::remove_dir_all(target_root).unwrap();
+}
+
+#[test]
+fn transfer_rejects_stale_sources_self_nesting_and_entries_inside_roots() {
+    let source_root = owned_root("transfer-guard");
+    fs::create_dir_all(source_root.join("Folder/Inside")).unwrap();
+    fs::write(source_root.join("File.txt"), b"unchanged").unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    let mut service = FileService::default();
+    let root = root_reference(&mut service, &source_root);
+    let folder_entry = list_entry(&mut service, &root, "Folder");
+    let file_entry = list_entry(&mut service, &root, "File.txt");
+    let inside = FileRef {
+        grant_id: root.grant_id.clone(),
+        relative_path: "Folder/Inside".to_owned(),
+    };
+
+    let self_nested = service
+        .transfer_entry(transfer_request(
+            &folder_entry.reference,
+            &inside,
+            TransferMode::Move,
+            folder_entry.revision.clone(),
+            uuid::Uuid::new_v4().to_string(),
+        ))
+        .unwrap_err();
+    assert_eq!(self_nested.code, ErrorCode::InvalidInput);
+
+    let stale = service
+        .transfer_entry(transfer_request(
+            &file_entry.reference,
+            &root,
+            TransferMode::Copy,
+            "0".repeat(64),
+            uuid::Uuid::new_v4().to_string(),
+        ))
+        .unwrap_err();
+    assert_eq!(stale.code, ErrorCode::Conflict);
+    assert_eq!(
+        fs::read(source_root.join("File.txt")).unwrap(),
+        b"unchanged"
+    );
+
+    let root_entry = list_entry(&mut service, &root, "Folder");
+    let root_as_source = FileRef {
+        grant_id: root_entry.reference.grant_id.clone(),
+        relative_path: String::new(),
+    };
+    assert_eq!(
+        service
+            .transfer_entry(transfer_request(
+                &root_as_source,
+                &root,
+                TransferMode::Move,
+                root_entry.revision,
+                uuid::Uuid::new_v4().to_string(),
+            ))
+            .unwrap_err()
+            .code,
+        ErrorCode::OutOfScope
+    );
+
+    drop(service);
+    fs::remove_dir_all(source_root).unwrap();
 }

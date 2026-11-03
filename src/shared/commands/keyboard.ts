@@ -8,7 +8,7 @@ export interface ShortcutEvent {
 }
 
 const editorBindings = new Set(['Ctrl+A', 'Ctrl+C', 'Ctrl+V', 'Ctrl+X', 'Ctrl+Z', 'Ctrl+Y', 'Ctrl+Shift+Z',
-  'Ctrl+I', 'Ctrl+Shift+K', 'Ctrl+U', 'Alt+U', 'Alt+L', 'Alt+A', 'Shift+Alt+A', 'Ctrl+M']);
+  'Ctrl+I', 'Ctrl+Shift+K', 'Ctrl+U', 'Alt+U', 'Alt+L', 'Alt+A', 'Ctrl+M']);
 const systemBindings = new Set(['Alt+F4', 'Shift+Alt+F4', 'Alt+Tab', 'Shift+Alt+Tab', 'Alt+Escape', 'Shift+Alt+Escape',
   'Ctrl+Escape', 'Ctrl+Shift+Escape', 'F10', 'Shift+F10']);
 
@@ -17,8 +17,16 @@ export function normalizeShortcut(value: string): string | null {
   const parts = value.trim().split('+').map(part => part.trim().toLowerCase());
   let last = parts.pop();
   if (last === '' && parts.at(-1) === '') { parts.pop(); last = '='; }
-  const key = last && [',', '=', '-'].includes(last) ? last : last && /^(?:[a-z0-9]|f(?:[1-9]|1[0-2])|tab|escape)$/.test(last)
-    ? last.length === 1 ? last.toUpperCase() : last === 'tab' ? 'Tab' : last === 'escape' ? 'Escape' : last.toUpperCase() : null;
+  const namedKeys: Readonly<Record<string, string>> = {
+    tab: 'Tab', escape: 'Escape', space: 'Space',
+    arrowup: 'ArrowUp', arrowdown: 'ArrowDown', arrowleft: 'ArrowLeft', arrowright: 'ArrowRight',
+    home: 'Home', end: 'End', pageup: 'PageUp', pagedown: 'PageDown',
+    backspace: 'Backspace', delete: 'Delete', enter: 'Enter',
+  };
+  const key = last && [',', '=', '-', '/', '.'].includes(last) ? last
+    : last && namedKeys[last] ? namedKeys[last]
+      : last && /^(?:[a-z0-9]|f(?:[1-9]|1[0-2]))$/.test(last)
+        ? last.length === 1 ? last.toUpperCase() : last.toUpperCase() : null;
   if (!key) return null;
   let modifiers = parts.map(part => part === 'control' ? 'ctrl' : part);
   if (new Set(modifiers).size !== modifiers.length || modifiers.some(part => !['ctrl', 'shift', 'alt'].includes(part))) return null;
@@ -39,7 +47,8 @@ export function shortcutRestriction(binding: string): string | null {
 
 export function shortcutForEvent(event: ShortcutEvent): string | null {
   if (event.metaKey || event.isComposing || event.key === 'Process' || event.key === 'Dead') return null;
-  return normalizeShortcut(`${event.ctrlKey ? 'Ctrl+' : ''}${event.shiftKey ? 'Shift+' : ''}${event.altKey ? 'Alt+' : ''}${event.key}`);
+  const key = event.key === ' ' ? 'Space' : event.key;
+  return normalizeShortcut(`${event.ctrlKey ? 'Ctrl+' : ''}${event.shiftKey ? 'Shift+' : ''}${event.altKey ? 'Alt+' : ''}${key}`);
 }
 
 export const ariaShortcut = (binding: string | null) => binding?.replace('Ctrl+', 'Control+') ?? undefined;

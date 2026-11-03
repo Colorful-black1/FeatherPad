@@ -1,5 +1,53 @@
 import { expect, test } from './test-fixture';
 
+test('multiple roots keep dirty buffers while reordering, switching trees and revoking a root', async ({ page }) => {
+  await page.addInitScript(() => {
+    let selection = 0;
+    const roots = ['11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222'];
+    const documentId = '33333333-3333-4333-8333-333333333333';
+    const independent = '44444444-4444-4444-8444-444444444444';
+    const meta = { displayPath: 'E:/one/notes/a.txt', sizeBytes: 8, modifiedAt: '2026-11-03T00:00:00Z', isReadOnly: false, diskRevision: 'a'.repeat(64) };
+    Reflect.set(window, '__TAURI_INTERNALS__', { invoke: async (command: string, args: Record<string, unknown>) => {
+      const ok = (value: unknown) => ({ ok: true, value });
+      const root = args.root as { grantId: string } | undefined;
+      switch (command) {
+        case 'choose_folder': return ok({ grant: { grantId: roots[selection++ % 2], relativePath: '' }, displayName: 'notes' });
+        case 'inspect_workspace_root': return ok({ ref: root, displayName: 'notes', displayPath: root?.grantId === roots[0] ? 'E:/one/notes' : 'E:/two/notes',
+          canonicalIdentity: (root?.grantId === roots[0] ? 'a' : 'b').repeat(64) });
+        case 'list_directory': {
+          const ref = args.ref as { grantId: string }; const name = ref.grantId === roots[0] ? 'a.txt' : 'b.txt';
+          return ok({ items: [{ id: name, ref: { ...ref, relativePath: name }, name, kind: 'file', isHidden: false, isReadOnly: false, revision: 'a'.repeat(64) }], nextCursor: null });
+        }
+        case 'open_document': return ok({ documentId, ref: { grantId: roots[0], relativePath: 'a.txt' }, metadata: meta,
+          format: { encoding: 'utf-8', bom: 'none', lineEnding: 'lf' }, mode: 'normal', warnings: [],
+          content: { kind: 'text', text: 'original', newlineMap: { documentVersion: 0, endings: [] } } });
+        case 'release_workspace_root': return ok({ renamedDocuments: [{ documentId, ref: { grantId: independent, relativePath: '' }, displayPath: meta.displayPath }] });
+        case 'stat_document': return ok(meta);
+        case 'start_watch': return ok({ watchId: 'multi-root' });
+        case 'stop_watch': return ok({ stopped: true });
+        default: throw new Error(`Unexpected business command ${command}`);
+      }
+    } });
+  });
+  await page.goto('/'); await page.getByRole('button', { name: '打开文件夹', exact: true }).click();
+  await page.getByRole('treeitem', { name: 'a.txt', exact: true }).dblclick();
+  const editor = page.locator('.document-view .cm-content');
+  await editor.focus(); await page.keyboard.press('Control+End'); await page.keyboard.insertText(' draft');
+  await page.getByRole('button', { name: '添加根…', exact: true }).click();
+  const list = page.getByRole('region', { name: '工作区根', exact: true });
+  await expect(list.getByRole('listitem')).toHaveCount(2);
+  await expect(page.getByRole('treeitem', { name: 'b.txt', exact: true })).toBeVisible();
+  const first = list.getByRole('listitem').filter({ hasText: 'E:/one/notes' });
+  await first.getByRole('button', { name: '下移根 notes', exact: true }).click();
+  await expect(list.getByRole('listitem').last()).toContainText('E:/one/notes');
+  await first.getByRole('button', { pressed: false }).first().click();
+  await expect(page.getByRole('treeitem', { name: 'a.txt', exact: true })).toBeVisible();
+  await first.getByRole('button', { name: '移除根 notes', exact: true }).click();
+  await expect(list.getByRole('listitem')).toHaveCount(1);
+  await expect(editor).toHaveText('original draft');
+  await expect(page.getByRole('tab', { selected: true })).toHaveAttribute('aria-description', /有未保存修改/);
+});
+
 test('Web mock lazily pages one root and keeps empty, denied, hidden and current-file states visible', async ({ page }) => {
   await page.addInitScript(() => {
     const calls: { command: string; request: Record<string, unknown> }[] = [];
@@ -17,6 +65,7 @@ test('Web mock lazily pages one root and keeps empty, denied, hidden and current
           ok: true,
           value: { grant, displayName: 'controlled-project' },
         };
+        if (command === 'inspect_workspace_root') return { ok: true, value: { ref: grant, displayName: 'controlled-project', displayPath: 'E:/controlled-project', canonicalIdentity: 'b'.repeat(64) } };
         if (command === 'list_directory') {
           const ref = request.ref as { relativePath: string };
           const showHidden = request.showHidden === true;
@@ -170,7 +219,7 @@ test('Web mock lazily pages one root and keeps empty, denied, hidden and current
   const createInput = page.getByRole('textbox', { name: '新建文件名称' });
   await createInput.fill('CON');
   await createInput.press('Enter');
-  await expect(page.getByRole('alert')).toContainText('保留设备名');
+  await expect(page.locator('.tree-input-error')).toContainText('保留设备名');
   await createInput.fill('树内新建.txt');
   await createInput.press('Enter');
   await expect(tree.getByRole('treeitem', { name: '树内新建.txt', exact: true })).toBeVisible();

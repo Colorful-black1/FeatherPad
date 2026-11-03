@@ -9,12 +9,14 @@ use super::{
 };
 use crate::models::{
     io_error, AppError, CreateEntryRequest, DirectoryEntry, EntryKind, ErrorCode, FileRef,
-    RenameEntryRequest, RenameEntryResult, RenamedDocument, TrashEntryResult,
+    RenameEntryRequest, RenameEntryResult, RenamedDocument, TransferEntryRequest,
+    TransferEntryResult, TransferMode, TrashEntryResult,
 };
 use sha2::{Digest, Sha256};
 use std::{
     collections::{HashMap, VecDeque},
     fs::{self, OpenOptions},
+    io::Read,
     path::{Component, Path, PathBuf},
 };
 
@@ -25,6 +27,7 @@ const MAX_TRASH_REQUESTS: usize = 10_000;
 pub(super) enum CompletedEntryOperation {
     Created(DirectoryEntry),
     Renamed(RenameEntryResult),
+    Transferred(TransferEntryResult),
     Trashed(Result<TrashEntryResult, AppError>),
 }
 
@@ -32,6 +35,7 @@ pub(super) enum CompletedEntryOperation {
 pub(super) enum EntryOperationKind {
     Create,
     Rename,
+    Transfer,
     Trash,
 }
 
@@ -389,6 +393,198 @@ impl FileService {
         );
         Ok(result)
     }
+
+    pub fn transfer_entry(
+        &mut self,
+        request: TransferEntryRequest,
+    ) -> Result<TransferEntryResult, AppError> {
+        validate_request_id(&request.request_id)?;
+        validate_revision(&request.expected_revision)?;
+        if request.source.relative_path.is_empty() {
+            return Err(AppError::new(
+                ErrorCode::OutOfScope,
+                "不能在文件树中移动或复制已授权根目录。",
+            ));
+        }
+        let fingerprint = transfer_fingerprint(&request);
+        if let Some(CompletedEntryOperation::Transferred(result)) = self.entry_operations.replay(
+            &request.request_id,
+            EntryOperationKind::Transfer,
+            &fingerprint,
+        )? {
+            return Ok(result);
+        }
+        let source = self.grants.resolve_entry(&request.source)?;
+        ensure_not_reparse_entry(&source.metadata)?;
+        let kind = if source.metadata.is_dir() {
+            "directory"
+        } else if source.metadata.is_file() {
+            "file"
+        } else {
+            return Err(AppError::new(
+                ErrorCode::Unsupported,
+                "当前项目不是可移动或复制的文件/目录。",
+            ));
+        };
+        let source_name = source
+            .path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| AppError::new(ErrorCode::Unsupported, "项目名称无法无损显示。"))?;
+        if revision_from_metadata(source_name, kind, &source.metadata)? != request.expected_revision
+        {
+            return Err(AppError::new(
+                ErrorCode::Conflict,
+                "源项目已变化，请刷新后重新拖放。",
+            ));
+        }
+        let target_parent = self.grants.resolve_directory(&request.target_parent)?;
+        if kind == "directory" && target_parent.starts_with(&source.path) {
+            return Err(AppError::new(
+                ErrorCode::InvalidInput,
+                "不能把目录移动到自身内部。",
+            ));
+        }
+        let target = target_parent.join(source_name);
+        validate_target_path(&target)?;
+        let _parents = windows_file::lock_parent_chain(&target)?;
+        let _source_parent = windows_file::lock_directory(
+            source
+                .path
+                .parent()
+                .ok_or_else(|| AppError::new(ErrorCode::InvalidInput, "不能移动卷根目录。"))?,
+        )?;
+        let _target_parent = windows_file::lock_directory(&target_parent)?;
+        ensure_missing(&target)?;
+        let target_reference = FileRef {
+            grant_id: request.target_parent.grant_id.clone(),
+            relative_path: join_relative(&request.target_parent.relative_path, source_name),
+        };
+
+        if request.mode == TransferMode::Copy {
+            if kind == "directory" {
+                copy_tree_verified(&source.path, &target)?;
+            } else {
+                copy_file_verified(&source.path, &target)?;
+            }
+            let entry = entry_from_path(&target_reference, &target, kind)?;
+            let result = TransferEntryResult {
+                entry,
+                renamed_documents: Vec::new(),
+                mode: request.mode,
+                source_removed: false,
+            };
+            self.entry_operations.record(
+                request.request_id,
+                EntryOperationKind::Transfer,
+                fingerprint,
+                CompletedEntryOperation::Transferred(result.clone()),
+            );
+            return Ok(result);
+        }
+
+        let detached = self.documents.detach_under(&source.path);
+        let same_volume = same_volume(&source.path, &target_parent)?;
+        let operation = if same_volume {
+            windows_file::move_no_replace(&source.path, &target, "目标位置已存在，未覆盖。")
+        } else {
+            let copied = if kind == "directory" {
+                copy_tree_verified(&source.path, &target)
+            } else {
+                copy_file_verified(&source.path, &target)
+            };
+            if let Err(error) = copied {
+                return Err(recover_directory_not_moved(
+                    self,
+                    detached,
+                    &source.path,
+                    &request.source,
+                    error,
+                ));
+            }
+            let removed = if kind == "directory" {
+                fs::remove_dir_all(&source.path)
+            } else {
+                fs::remove_file(&source.path)
+            };
+            match removed {
+                Ok(()) => Ok(()),
+                Err(error) => {
+                    let restore = reopen_detached_documents(
+                        self,
+                        &detached,
+                        &source.path,
+                        &source.path,
+                        &request.source,
+                    )
+                    .and_then(|(_, leases)| self.documents.restore_all(leases));
+                    return Err(AppError::new(
+                        ErrorCode::PartialFailure,
+                        &format!(
+                            "目标已完整复制并校验，但源项目删除失败：{}；{}",
+                            io_error(error).message,
+                            match restore {
+                                Ok(()) => "原文件仍保留，可在刷新后重试。",
+                                Err(_) =>
+                                    "原文件仍保留，但重新绑定已打开文档失败，请刷新后重新打开。",
+                            }
+                        ),
+                    ));
+                }
+            }
+        };
+        if let Err(error) = operation {
+            return Err(recover_directory_not_moved(
+                self,
+                detached,
+                &source.path,
+                &request.source,
+                error,
+            ));
+        }
+
+        let (renamed_documents, leases) = match reopen_detached_documents(
+            self,
+            &detached,
+            &source.path,
+            &target,
+            &target_reference,
+        ) {
+            Ok(reopened) => reopened,
+            Err(error) => {
+                return Err(AppError::new(
+                    ErrorCode::Internal,
+                    &format!(
+                        "项目已移动到目标，但更新已打开文档失败：{}。请刷新目录并重新打开。",
+                        error.message
+                    ),
+                ));
+            }
+        };
+        if let Err(error) = self.documents.restore_all(leases) {
+            return Err(AppError::new(
+                ErrorCode::Internal,
+                &format!(
+                    "项目已移动到目标，但恢复文档句柄失败：{}。请刷新目录并重新打开。",
+                    error.message
+                ),
+            ));
+        }
+        let entry = entry_from_path(&target_reference, &target, kind)?;
+        let result = TransferEntryResult {
+            entry,
+            renamed_documents,
+            mode: request.mode,
+            source_removed: true,
+        };
+        self.entry_operations.record(
+            request.request_id,
+            EntryOperationKind::Transfer,
+            fingerprint,
+            CompletedEntryOperation::Transferred(result.clone()),
+        );
+        Ok(result)
+    }
 }
 
 fn create_fingerprint(request: &CreateEntryRequest) -> String {
@@ -414,6 +610,170 @@ fn rename_fingerprint(request: &RenameEntryRequest) -> String {
     hash.update([0]);
     hash.update(request.expected_revision.as_deref().unwrap_or(""));
     format!("{:x}", hash.finalize())
+}
+
+fn transfer_fingerprint(request: &TransferEntryRequest) -> String {
+    let mut hash = Sha256::new();
+    hash.update(b"transfer\0");
+    hash.update(request.source.grant_id.as_bytes());
+    hash.update([0]);
+    hash.update(request.source.relative_path.as_bytes());
+    hash.update([0]);
+    hash.update(request.target_parent.grant_id.as_bytes());
+    hash.update([0]);
+    hash.update(request.target_parent.relative_path.as_bytes());
+    hash.update([0]);
+    hash.update(match request.mode {
+        TransferMode::Move => b"move".as_slice(),
+        TransferMode::Copy => b"copy".as_slice(),
+    });
+    hash.update([0]);
+    hash.update(request.expected_revision.as_bytes());
+    format!("{:x}", hash.finalize())
+}
+
+fn same_volume(source: &Path, target_parent: &Path) -> Result<bool, AppError> {
+    let source_metadata = fs::symlink_metadata(source).map_err(io_error)?;
+    let source_file = if source_metadata.is_dir() {
+        windows_file::lock_directory(source)?
+    } else {
+        fs::File::open(source).map_err(io_error)?
+    };
+    let target_parent_file = windows_file::lock_directory(target_parent)?;
+    let source_identity = identify(&source_file, source);
+    let target_identity = identify(&target_parent_file, target_parent);
+    Ok(match (source_identity, target_identity) {
+        (
+            super::identity::FileIdentity::Windows { volume: left, .. },
+            super::identity::FileIdentity::Windows { volume: right, .. },
+        ) => left == right,
+        (
+            super::identity::FileIdentity::Canonical(left),
+            super::identity::FileIdentity::Canonical(right),
+        ) => left.components().next() == right.components().next(),
+        _ => false,
+    })
+}
+
+fn copy_file_verified(source: &Path, target: &Path) -> Result<(), AppError> {
+    let source_hash = digest_file(source)?;
+    let mut reader = fs::File::open(source).map_err(io_error)?;
+    let mut writer = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(target)
+        .map_err(existing_target)?;
+    if let Err(error) = std::io::copy(&mut reader, &mut writer)
+        .map_err(io_error)
+        .and_then(|_| writer.sync_all().map_err(io_error))
+    {
+        drop(writer);
+        let _ = fs::remove_file(target);
+        return Err(error);
+    }
+    drop(writer);
+    let source_metadata = source.metadata().map_err(io_error)?;
+    let target_metadata = target.metadata().map_err(io_error)?;
+    if source_metadata.len() != target_metadata.len()
+        || digest_file(source)? != source_hash
+        || digest_file(target)? != source_hash
+    {
+        let _ = fs::remove_file(target);
+        return Err(AppError::new(
+            ErrorCode::Conflict,
+            "源文件在复制期间变化，目标已清理，请重试。",
+        ));
+    }
+    Ok(())
+}
+
+fn copy_tree_verified(source: &Path, target: &Path) -> Result<(), AppError> {
+    let source_hash = digest_tree(source)?;
+    fs::create_dir(target).map_err(existing_target)?;
+    let result = (|| {
+        let mut entries = fs::read_dir(source)
+            .map_err(io_error)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(io_error)?;
+        entries.sort_by_key(|entry| entry.file_name());
+        for entry in entries {
+            let metadata = fs::symlink_metadata(entry.path()).map_err(io_error)?;
+            ensure_not_reparse_entry(&metadata)?;
+            let destination = target.join(entry.file_name());
+            if metadata.is_dir() {
+                copy_tree_verified(&entry.path(), &destination)?;
+            } else if metadata.is_file() {
+                copy_file_verified(&entry.path(), &destination)?;
+            } else {
+                return Err(AppError::new(
+                    ErrorCode::Unsupported,
+                    "目录中含不支持的链接或特殊项目。",
+                ));
+            }
+        }
+        if digest_tree(source)? != source_hash {
+            return Err(AppError::new(
+                ErrorCode::Conflict,
+                "源目录在复制期间变化，请重试。",
+            ));
+        }
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = fs::remove_dir_all(target);
+    }
+    result
+}
+
+fn digest_file(path: &Path) -> Result<String, AppError> {
+    let mut file = fs::File::open(path).map_err(io_error)?;
+    let mut digest = Sha256::new();
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let read = file.read(&mut buffer).map_err(io_error)?;
+        if read == 0 {
+            break;
+        }
+        digest.update(&buffer[..read]);
+    }
+    Ok(format!("{:x}", digest.finalize()))
+}
+
+fn digest_tree(path: &Path) -> Result<String, AppError> {
+    fn visit(root: &Path, current: &Path, digest: &mut Sha256) -> Result<(), AppError> {
+        let mut entries = fs::read_dir(current)
+            .map_err(io_error)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(io_error)?;
+        entries.sort_by_key(|entry| entry.file_name());
+        for entry in entries {
+            let entry_path = entry.path();
+            let relative = entry_path
+                .strip_prefix(root)
+                .map_err(|_| AppError::new(ErrorCode::OutOfScope, "目录复制路径越出授权根。"))?;
+            let metadata = fs::symlink_metadata(&entry_path).map_err(io_error)?;
+            ensure_not_reparse_entry(&metadata)?;
+            let key = relative.to_string_lossy().replace('\\', "/");
+            digest.update(key.as_bytes());
+            digest.update([0]);
+            if metadata.is_dir() {
+                digest.update(b"d");
+                visit(root, &entry_path, digest)?;
+            } else if metadata.is_file() {
+                digest.update(b"f");
+                digest.update(digest_file(&entry_path)?.as_bytes());
+            } else {
+                return Err(AppError::new(
+                    ErrorCode::Unsupported,
+                    "目录中含不支持的链接或特殊项目。",
+                ));
+            }
+        }
+        Ok(())
+    }
+    let mut digest = Sha256::new();
+    visit(path, path, &mut digest)?;
+    Ok(format!("{:x}", digest.finalize()))
 }
 
 pub(super) fn validate_request_id(request_id: &str) -> Result<(), AppError> {

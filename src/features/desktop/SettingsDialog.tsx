@@ -24,6 +24,10 @@ function SettingField({ definition, value, onChange }: {
     onChange={event => onChange(Number(event.currentTarget.value))}>
     <option value="2">2 列</option><option value="4">4 列</option><option value="8">8 列</option>
   </select>;
+  if (definition.kind === 'whitespace') return <select id={id} aria-label={definition.label} value={String(value)}
+    onChange={event => onChange(event.currentTarget.value as Settings['whitespaceMode'])}>
+    <option value="none">关闭</option><option value="current">仅当前行</option><option value="all">全部可见</option>
+  </select>;
   const numeric = definition.kind === 'number';
   return <input ref={input} id={id} aria-label={definition.label} defaultValue={String(value)} type={numeric ? 'number' : 'text'}
     list={definition.kind === 'font' ? 'local-editor-fonts' : undefined}

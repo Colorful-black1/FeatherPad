@@ -4,7 +4,9 @@ import type { DocumentId } from '../../shared/contracts/files';
 import type { DocumentRegistry } from './documents';
 import { LargeFileView } from './LargeFileView';
 
-export function EditorDocument({ registry, id, autoFocus }: { registry: DocumentRegistry; id: DocumentId; autoFocus: boolean }) {
+export function EditorDocument({ registry, id, autoFocus, group }: {
+  registry: DocumentRegistry; id: DocumentId; autoFocus: boolean; group: 'primary' | 'secondary';
+}) {
   const parent = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
   const document = registry.getDocument(id);
@@ -23,7 +25,7 @@ export function EditorDocument({ registry, id, autoFocus }: { registry: Document
       parent: parent.current,
       state: record.state,
       dispatchTransactions(transactions, editor) {
-        const result = registry.commit(id, transactions);
+        const result = registry.commit(id, transactions, editor);
         if (result.ok) editor.update(transactions);
         else {
           setError(result.error.message);
@@ -33,12 +35,12 @@ export function EditorDocument({ registry, id, autoFocus }: { registry: Document
       },
     });
     const detachView = registry.attachView(id, view);
-    const onScroll = () => registry.setScroll(id, view.scrollDOM.scrollTop, view.scrollDOM.scrollLeft);
+    const onScroll = () => registry.setScroll(id, view, view.scrollDOM.scrollTop, view.scrollDOM.scrollLeft);
     view.scrollDOM.addEventListener('scroll', onScroll, { passive: true });
     if (autoFocus) view.focus();
     return () => {
       view.scrollDOM.removeEventListener('scroll', onScroll);
-      registry.setScroll(id, view.scrollDOM.scrollTop, view.scrollDOM.scrollLeft);
+      registry.setScroll(id, view, view.scrollDOM.scrollTop, view.scrollDOM.scrollLeft);
       detachView();
       view.destroy();
     };
@@ -47,7 +49,9 @@ export function EditorDocument({ registry, id, autoFocus }: { registry: Document
   if (!document) return null;
   const textPreview = document.source?.mode === 'text-preview' && document.fragment?.kind === 'head'
     ? document.fragment : null;
-  return <section className="document-view" role="tabpanel" id={`panel-${id}`} aria-labelledby={`tab-${id}`} tabIndex={-1}>
+  return <section className="document-view" role="tabpanel" id={`panel-${group}-${id}`}
+    data-editor-group={group} aria-label={`${group === 'primary' ? '主编辑组' : '第二编辑组'}：${document.summary.title}`}
+    tabIndex={-1}>
     <header className="document-heading"><span>{document.summary.displayPath ?? document.summary.title}</span><span>{document.source?.mode === 'text-preview' ? '只读试开' : document.source?.mode === 'large-readonly' ? '只读分块' : document.source?.mode === 'head-preview' ? '限量预览' : document.summary.readOnlyReason ? '只读' : document.source?.mode === 'degraded' ? '纯文本 · 降级' : '文本'}</span></header>
     {document.summary.missing && <p className="notice" role="note">原文件当前不可用，当前内容仍保留。
       {document.fragment ? '预览不能继续分页或保存，请从系统回收站恢复原文件。'
