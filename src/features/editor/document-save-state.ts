@@ -3,6 +3,7 @@ import type { DiskRevision, FileRef, ResultEnvelope, SaveAck, SaveAsAck, SaveAsR
 import type { ManagedDocument } from './documents';
 import { reconfigureReadOnly } from './editor-state';
 import { documentFormat, sameDocumentFormat, type DocumentFormatState } from './line-endings';
+import { encodingIds, type EncodingId } from '../../shared/contracts/encoding';
 
 export interface CapturedSave { readonly request: SaveRequest; readonly savedText: Text; readonly savedFormat: DocumentFormatState }
 export interface CapturedSaveAs {
@@ -17,8 +18,7 @@ function failure(code: 'NOT_FOUND' | 'CONFLICT' | 'READ_ONLY' | 'UNSUPPORTED' | 
 }
 
 export function readOnlyReason(metadata: { isReadOnly: boolean }, format: TextFormat): string | null {
-  return metadata.isReadOnly ? '文件为只读' : format.lineEnding === 'mixed' ? '混合换行暂以只读方式打开'
-    : format.encoding !== 'utf-8' ? '此编码暂以只读方式打开' : null;
+  return metadata.isReadOnly ? '文件为只读' : !encodingIds.includes(format.encoding as EncodingId) ? '此编码暂不支持编辑' : null;
 }
 
 function snapshot(document: ManagedDocument): ResultEnvelope<{ request: Omit<SaveAsRequest, 'intent'>; savedText: Text; savedFormat: DocumentFormatState }> {

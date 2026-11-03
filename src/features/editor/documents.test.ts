@@ -104,7 +104,7 @@ it('opens transaction text as an independent dirty copy without claiming a recov
   } });
 });
 
-it('keeps an empty transaction draft dirty and preserves read-only mixed UTF16 intent', () => {
+it('keeps an empty transaction draft dirty and preserves editable mixed UTF16 intent', () => {
   const registry = new DocumentRegistry();
   const id = registry.openTransactionDraft({
     receiptId: crypto.randomUUID(), displayName: 'empty.txt', text: '',
@@ -113,7 +113,7 @@ it('keeps an empty transaction draft dirty and preserves read-only mixed UTF16 i
   });
   expect(registry.getDocument(id)?.summary).toMatchObject({ dirty: true, canSaveAs: true,
     recoveryProtected: false, format: { encoding: 'utf-16be', bom: 'utf16be', lineEnding: 'mixed' } });
-  expect(registry.getDocument(id)?.state.facet(EditorState.readOnly)).toBe(true);
+  expect(registry.getDocument(id)?.state.facet(EditorState.readOnly)).toBe(false);
   expect(registry.captureSaveAs(id, 'save-as')).toMatchObject({ ok: true, value: { request: {
     text: '', newlineMap: { documentVersion: 1, endings: [] },
   } } });
@@ -187,7 +187,7 @@ it('preserves the canonical identity through open and disk reload', () => {
 });
 
 it('rejects read-only edits even when a caller bypasses CM input handling', () => {
-  for (const options of [{ readOnly: true }, { encoding: 'utf-16le' }, { lineEnding: 'mixed' }]) {
+  for (const options of [{ readOnly: true }, { encoding: 'unsupported-encoding' }]) {
     const registry = new DocumentRegistry();
     const id = registry.openDocument(fixture(options));
     const initial = registry.getDocument(id)!.state;
@@ -304,7 +304,7 @@ it('rejects mismatched and replayed save acknowledgements without changing the b
 it('refuses to fabricate a save destination for untitled and read-only documents', () => {
   const registry = new DocumentRegistry();
   expect(registry.captureSave(registry.createUntitled())).toMatchObject({ ok: false, error: { code: 'UNSUPPORTED' } });
-  for (const options of [{ id: 'readonly', readOnly: true }, { id: 'mixed', lineEnding: 'mixed' }, { id: 'utf16', encoding: 'utf-16le' }]) {
+  for (const options of [{ id: 'readonly', readOnly: true }, { id: 'unknown', encoding: 'unsupported-encoding' }]) {
     expect(registry.captureSave(registry.openDocument(fixture(options)))).toMatchObject({ ok: false, error: { code: 'READ_ONLY' } });
   }
 });
@@ -381,12 +381,17 @@ it('saving a complete read-only UTF8 document to a writable destination enables 
   expect(registry.commit(id, [state.update({ changes: { from: 0, insert: 'editable ' } })]).ok).toBe(true);
 });
 
-it('captures each original mixed newline for lossless save-as while keeping the view read-only', () => {
+it('captures each original mixed newline for lossless save-as and allows protected mixed editing', () => {
   const registry = new DocumentRegistry();
   const id = registry.openDocument({ ...fixture({ lineEnding: 'mixed' }), content: { kind: 'text', text: 'a\nb\nc\n', newlineMap: { documentVersion: 0, endings: ['crlf', 'lf', 'cr'] } } });
   const captured = registry.captureSaveAs(id);
   expect(captured).toMatchObject({ ok: true, value: { request: { newlineMap: { documentVersion: 0, endings: ['crlf', 'lf', 'cr'] } } } });
-  expect(registry.getDocument(id)!.state.facet(EditorState.readOnly)).toBe(true);
+  expect(registry.getDocument(id)!.state.facet(EditorState.readOnly)).toBe(false);
+  const state = registry.getDocument(id)!.state;
+  expect(registry.commit(id, [state.update({ changes: { from: 2, insert: 'new\n' } })])).toMatchObject({ ok: true });
+  expect(registry.captureSave(id)).toMatchObject({ ok: true, value: { request: {
+    text: 'a\nnew\nb\nc\n', newlineMap: { documentVersion: 1, endings: ['crlf', 'crlf', 'lf', 'cr'] },
+  } } });
 });
 
 it('changing editability preserves the existing undo history and selection', () => {

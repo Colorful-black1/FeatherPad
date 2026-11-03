@@ -1,6 +1,7 @@
 import { EditorSelection, type EditorState, type Text, type Transaction } from '@codemirror/state';
 import { isolateHistory } from '@codemirror/commands';
 import { documentFormat, formatState, sameDocumentFormat, setDocumentFormat, type DocumentFormatState } from './line-endings';
+import { encodingIds, type EncodingId } from '../../shared/contracts/encoding';
 import type { EditorView } from '@codemirror/view';
 import type { DocumentId, LoadedRecoveryEntry, OpenDocument, RenamedDocument, ResultEnvelope, SaveAck, SaveAsAck, SaveRequest, TextFormat, TrashEntryResult, WriteRecoverySnapshotRequest } from '../../shared/contracts/files';
 import { createEditorState, reconfigureBracketMatching, reconfigureCloseBrackets, reconfigureIndentation,
@@ -348,14 +349,16 @@ export class DocumentRegistry {
     this.publish(this.snapshot.activeId);
   }
 
-  retainUncertainRelease(id: DocumentId) {
+  retainUncertainRelease(id: DocumentId, message?: string) {
     const document = this.documents.get(id);
     if (!document) return;
     document.releaseUncertain = true;
     if (!document.fragment) document.source = null;
-    document.summary = { ...document.summary, readOnlyReason: document.fragment
+    document.summary = { ...document.summary, readOnlyReason: message ?? (document.fragment
       ? '关闭结果尚未确认，已暂停分页；请重试关闭后重新打开。'
-      : '关闭结果尚未确认，内容仍保留；请重试关闭或另存为。' };
+      : '关闭结果尚未确认，内容仍保留；请重试关闭或另存为。') };
+    document.state = reconfigureReadOnly(document.state, true);
+    this.publish(this.snapshot.activeId);
   }
 
   removeClosed(id: DocumentId, version: number): ResultEnvelope<{ closed: true }> {
@@ -462,21 +465,38 @@ export class DocumentRegistry {
     return latest ? { ok: true, value: { version: latest.summary.version } } : failure('NOT_FOUND', '文档已关闭。');
   }
 
-  changeFormat(id: DocumentId, expectedVersion: number, format: TextFormat): ResultEnvelope<{ version: number }> {
+  changeFormat(id: DocumentId, expectedVersion: number, format: TextFormat,
+    replacements: readonly BufferChange[] = []): ResultEnvelope<{ version: number }> {
     const document = this.documents.get(id);
     if (!document) return failure('NOT_FOUND', '文档已关闭。');
     if (document.summary.version !== expectedVersion) return failure('CONFLICT', '文档已变化，请重新确认转换。');
     if (document.fragment || document.summary.readOnlyReason) return failure('READ_ONLY', document.summary.readOnlyReason ?? '只读预览不能转换。');
+    if (!encodingIds.includes(format.encoding as EncodingId)
+      || !['lf', 'crlf', 'mixed'].includes(format.lineEnding)
+      || (format.bom !== 'none' && format.bom !== ({ 'utf-8': 'utf8', 'utf-16le': 'utf16le', 'utf-16be': 'utf16be' } as Record<string, string>)[format.encoding])) {
+      return failure('INVALID_INPUT', '编码、BOM或换行格式无效。');
+    }
+    let end = 0;
+    for (const replacement of replacements) {
+      if (!Number.isSafeInteger(replacement.from) || !Number.isSafeInteger(replacement.to)
+        || replacement.from < end || replacement.to <= replacement.from || replacement.to > document.state.doc.length
+        || replacement.insert !== '?' || document.state.sliceDoc(replacement.from, replacement.to).includes('\n')) {
+        return failure('INVALID_INPUT', '有损替代范围无效，正文未修改。');
+      }
+      end = replacement.to;
+    }
     const current = document.state.field(documentFormat);
     const endings = format.lineEnding === 'mixed' ? current.endings
       : current.endings.map(() => format.lineEnding as 'lf' | 'crlf');
     const next = formatState(format, endings);
-    if (sameDocumentFormat(current, next)) return { ok: true, value: { version: expectedVersion } };
-    const transaction = document.state.update({ effects: setDocumentFormat.of(next), annotations: isolateHistory.of('full') });
+    if (sameDocumentFormat(current, next) && replacements.length === 0) return { ok: true, value: { version: expectedVersion } };
+    const transaction = document.state.update({ effects: setDocumentFormat.of(next),
+      changes: replacements.map(change => ({ ...change })), annotations: isolateHistory.of('full') });
     const view = this.views.get(id);
     if (view) {
       view.dispatch(transaction);
-      return { ok: true, value: { version: document.summary.version } };
+      return document.state === transaction.state ? { ok: true, value: { version: document.summary.version } }
+        : failure('CONFLICT', '转换未接受，原正文仍保留。');
     }
     return this.commit(id, [transaction]);
   }
