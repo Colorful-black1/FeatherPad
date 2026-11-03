@@ -2,6 +2,18 @@ use crate::models::{
     AppError, ErrorCode, Newline, NewlineMap, SaveAsRequest, SaveIntent, TextFormat,
 };
 
+impl super::files::FileService {
+    pub fn require_complete_export(&self, document_id: &str) -> Result<(), AppError> {
+        if self.documents.is_fragment(document_id) {
+            return Err(AppError::new(
+                ErrorCode::ReadOnly,
+                "限量预览不能导出假完整文档。",
+            ));
+        }
+        Ok(())
+    }
+}
+
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HtmlExportRequest {

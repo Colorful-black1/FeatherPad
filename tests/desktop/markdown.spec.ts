@@ -10,7 +10,7 @@ import { NativeChooser } from './scenarios';
 const sha = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 
 test('real Release reads a shared Markdown buffer offline in an isolated preview without changing source bytes', async () => {
-  test.setTimeout(90_000);
+  test.setTimeout(120_000);
   const project = process.cwd();
   const executable = path.join(project, 'src-tauri/target/release/featherpad.exe');
   const executableSha256 = sha(await readFile(executable));
@@ -149,6 +149,26 @@ test('real Release reads a shared Markdown buffer offline in an isolated preview
       expect(await portable.locator('script').count()).toBe(0);
     } finally { await portableContext.close(); }
     await page.locator('.cm-content').focus();
+    await page.keyboard.press('Control+End');
+    await page.keyboard.insertText('\n\n## PDF中文分页验证\n\n' +
+      '| 序号 | 中文与长表格 |\n| --- | --- |\n' + Array.from({ length: 70 }, (_, index) => `| ${index + 1} | 离线打印与中文字体，不截断正文。 |\n`).join('') +
+      '\n```js\n' + Array.from({ length: 40 }, (_, index) => `const line${index + 1} = "分页代码内容";\n`).join('') + '```\n\nPDF末尾文字完整。');
+    await page.getByRole('button', { name: '导出…', exact: true }).click();
+    await exporter.getByRole('combobox', { name: '导出格式', exact: true }).selectOption('pdf');
+    await exporter.getByRole('combobox', { name: 'PDF纸张', exact: true }).selectOption('letter');
+    await exporter.getByRole('checkbox', { name: '横向', exact: true }).check();
+    const pdfTarget = path.join(dataDir, '真实分页.pdf');
+    await exporter.getByRole('button', { name: '带占位继续导出…', exact: true }).click();
+    await chooser.select('save', pdfTarget);
+    await expect(exporter).toBeHidden({ timeout: 65_000 });
+    const pdfBytes = await readFile(pdfTarget);
+    expect(pdfBytes.subarray(0, 5).toString()).toBe('%PDF-');
+    expect(pdfBytes.toString('latin1')).toMatch(/\/Type\s*\/Page\b/);
+    expect(pdfBytes.subarray(-1024).toString()).toContain('%%EOF');
+    expect(sha(await readFile(source))).toBe(originalHash);
+    await page.locator('.cm-content').focus();
+    await page.keyboard.press('Control+z');
+    await page.locator('.cm-content').focus();
     await page.keyboard.press('Control+z');
     await expect(page.locator('.cm-line')).toHaveText(lines);
     await modes.getByRole('button', { name: '分屏', exact: true }).click();
@@ -161,7 +181,8 @@ test('real Release reads a shared Markdown buffer offline in an isolated preview
       originalHash, afterHash: sha(await readFile(source)), isolation, remoteRequests: requests.length,
       realChooser: true, sharedBufferAndUndo: true, browserOffline: true, sourceBytesUnchanged: true,
       localImages: true, svgSanitized: true, directoryAuthorization: true, restrictedHtml: true, localLinkOpened: true,
-      htmlTarget, htmlSha256: sha(await readFile(htmlTarget)), htmlOfflineReopened: true, dirtySnapshotExported: true }, null, 2));
+      htmlTarget, htmlSha256: sha(await readFile(htmlTarget)), htmlOfflineReopened: true, dirtySnapshotExported: true,
+      pdfTarget, pdfSha256: sha(pdfBytes), realPrintToPdfStream: true, pdfPaper: 'letter', pdfLandscape: true }, null, 2));
   } finally {
     await writeFile(path.join(evidence, 'diagnostics.json'), JSON.stringify(diagnostics, null, 2));
     if (child.exitCode === null) child.kill();

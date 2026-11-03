@@ -10,6 +10,7 @@ pub mod services {
     pub mod encode;
     pub mod encoding;
     pub mod export;
+    pub mod export_target;
     pub mod external;
     pub mod file_ops;
     pub mod files;
@@ -45,6 +46,11 @@ pub mod services {
     pub mod workspace_settings;
 }
 
+pub mod platform {
+    #[cfg(windows)]
+    pub mod pdf;
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -64,6 +70,7 @@ pub fn run() {
             services::search::SearchCoordinator::default(),
         ))
         .manage(global_shortcut::GlobalShortcutState::default())
+        .manage(commands::export::PdfCoordinator::default())
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
                 commands::workspace::handle_native_drop(window.app_handle(), paths.clone());
@@ -72,6 +79,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::assets::read_preview_resource,
             commands::export::export_html,
+            commands::export::export_pdf,
+            commands::export::cancel_pdf_export,
             commands::assets::authorize_preview_link,
             commands::assets::open_external_preview,
             commands::choose_files,

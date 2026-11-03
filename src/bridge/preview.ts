@@ -16,6 +16,15 @@ export interface ResourceImage {
   height: number | null;
 }
 
+export interface PdfOptions { paper: 'a4' | 'letter'; landscape: boolean;
+  marginsMm: { top: number; right: number; bottom: number; left: number } }
+interface PdfAck { displayPath: string; sizeBytes: number; sha256: string }
+function isPdfAck(value: unknown): value is PdfAck {
+  return isRecord(value) && typeof value.displayPath === 'string' && value.displayPath.length > 0 && value.displayPath.length <= 32767
+    && typeof value.sizeBytes === 'number' && Number.isSafeInteger(value.sizeBytes) && value.sizeBytes > 0 && value.sizeBytes <= 100 * 1024 * 1024
+    && typeof value.sha256 === 'string' && /^[a-f\d]{64}$/i.test(value.sha256);
+}
+
 export function isResourceImage(value: unknown): value is ResourceImage {
   if (!isRecord(value) || typeof value.mime !== 'string'
     || !['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml'].includes(value.mime)
@@ -32,6 +41,9 @@ export function isResourceImage(value: unknown): value is ResourceImage {
 }
 
 export const previewBridge = {
+  exportPdf: (request: { documentId: DocumentId; requestId: string; documentVersion: number; html: string; options: PdfOptions }) =>
+    callCommand('export_pdf', { ...request }, isPdfAck),
+  cancelPdf: (requestId: string) => callCommand('cancel_pdf_export', { requestId }, (value): value is boolean => typeof value === 'boolean'),
   exportHtml: (request: { documentId: DocumentId; requestId: string; documentVersion: number; html: string }) =>
     callCommand('export_html', { ...request }, isSaveAsAck),
   read: (request: ResourceRequest) => callCommand('read_preview_resource', { ...request }, isResourceImage),

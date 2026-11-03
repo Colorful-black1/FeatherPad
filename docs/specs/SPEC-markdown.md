@@ -1,6 +1,6 @@
 # SPEC-markdown：安全 Markdown 阅读与导出
 
-> 模块 `markdown`；业务依赖仅 `editor`、`file-core`。状态：2026-11-03用户确认开始M3，T301–T305实现完成，T306进行中，G3待验。拥有 F-MD-001–011，全部首次在M3验收；完整索引见 [矩阵](../FEATURE-MATRIX.md)。
+> 模块 `markdown`；业务依赖仅 `editor`、`file-core`。状态：2026-11-03用户确认开始M3，T301–T306实现完成，G3待验；当前T307，G3待验。拥有 F-MD-001–011，全部首次在M3验收；完整索引见 [矩阵](../FEATURE-MATRIX.md)。
 
 实施决策（T301）：锁定Marked18.1.3（MIT）和DOMPurify3.4.17（Apache-2.0或MPL-2.0），已核对包元数据、首次禁脚本安装。150ms合并后才从CodeMirror复制快照到专用Worker，2秒超时终止Worker；结果绑定documentId/bufferVersion/requestId。宿主执行显式标签白名单清洗后，放入无任何sandbox权限的srcdoc iframe，内层CSP禁脚本/联网/表单/插件，绝不授予same-origin、Tauri IPC或顶层导航。T301中的URL和图片只显示安全占位，真实授权资源与用户点击动作留T303。三模式在应用组合层连接editor，editor不反向导入markdown。
 
@@ -78,6 +78,8 @@ HTML：生成独立UTF8 HTML，内置受控CSS、目录anchor、可嵌入本地�
 T305实现决策：单独冻结CodeMirror Text/version，不要求先保存；独立Worker和资源序列可取消。复用预览清洗生成便携HTML后去除运行时/应用动作，任务只读、代码保留离线高亮，本地文档链接转为无路径文本。最终HTML≤64MiB，与现有安全保存事务预算一致；超限明确拒绝且不截断。原生专用命令强制Copy/UTF8，通过原生选择器及既有save_as核心写入，源文档不接受导出Ack，保存状态/路径/undo不变。
 
 PDF：必须实现真正本地生成PDF到所选路径，不能仅调用浏览器打印对话框并要求用户自行选打印机。Windows优先验证WebView2 PrintToPdf/PrintToPdfStream的Tauri可调用适配器；清理内容在无IPC、无网络的专用渲染面板加载，等本地图像/字体就绪后输出。接口/运行时不支持则返回PDF_BACKEND_UNAVAILABLE和离线修复指引，不能假报成功；M3/M5需把能力验证完成，否则v1未完成。
+
+T306实施决策：复用已锁定Wry/WebView2 COM依赖，创建没有Tauri初始化脚本的隐藏原生子WebView；禁用文档脚本/宿主对象/Web消息，原生请求过滤只允许本作业单一内存页面及data图片。固定就绪探针核对图片/本地字体后调用ICoreWebView2_16.PrintToPdfStream，不弹打印框。单作业、60秒/100MiB预算、取消销毁子视图；流校验后交file-core字节事务，原生选定目标/覆盖前后revision与打开文档所有权重验、同目录临时文件落盘再原子提交，失败保留原目标。PDF运行时缺失返回UNSUPPORTED与修复指引，不降级为伪成功。实际可用性仍待T306真实冒烟。
 
 提供A4/Letter、横纵、毫米页边距（默认15mm，0–50合法），主题默认纸面浅色、中文本地字体回退、链接可点击；避免标题孤行、代码块/表格横向裁切，超宽内容缩放或换行，分页允许跨页长表/代码块但须可读。成功校验PDF头/非零页数与写入结果，覆盖目标前仍核对revision；不能保证跨机字体像素完全一致。
 

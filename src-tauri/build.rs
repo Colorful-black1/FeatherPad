@@ -4,6 +4,8 @@ fn main() {
             "choose_files",
             "read_preview_resource",
             "export_html",
+            "export_pdf",
+            "cancel_pdf_export",
             "authorize_preview_link",
             "open_external_preview",
             "choose_folder",

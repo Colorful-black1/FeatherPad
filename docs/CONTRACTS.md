@@ -259,6 +259,8 @@ M2搜索与替换实现契约（2026-11-03，G2通过）：`search_workspace {re
 
 T305导出契约：`export_html {documentId,requestId,documentVersion,html}`不接受目标路径或编码，返回SaveAsAck但宿主不得把此回执当源文档保存回执。HTML为≤64MiB、LF、完整独立快照；Rust强制UTF8/no-BOM/Copy，原生路径选择及覆盖确认后复用既有save_as事务、身份/版本重验和临时写/替换。不能覆盖活动源文档或其他打开文档。前端冻结导出版本，经同一Worker、HTML清洗、资源授权/预算构建独立文件，剥离固定运行时与应用data动作、相对文件链接；仅保留安全外链/锚点和内嵌图片。缺图显式占位继续或取消，不猜cwd。T305只完成HTML，PDF留T306。
 
+T306：`export_pdf {documentId,requestId,documentVersion,html,options:{paper:'a4'|'letter',landscape,marginsMm:{top,right,bottom,left}}}`返回`{displayPath,sizeBytes,sha256}`，不改变源绑定或清dirty；每边0–50mm、默认15mm，HTML沿用64MiB快照预算。原生只允许一个PDF作业，`cancel_pdf_export {requestId}`只取消匹配活动作业。无IPC的raw Wry子视图禁文档脚本/宿主对象/Web消息及外部请求；原生内存页面与data图片例外，固定探针等待图片/本地字体，ICoreWebView2_16.PrintToPdfStream生成≤100MiB，60秒终止。校验PDF头/EOF/非零页面后交不接受路径IPC的ExportTarget事务；原生选择/覆盖确认、打开文档所有权和revision重验、同目录临时写/sync/校验/原子提交。私有pdf-exports事务记录与失败侧文件保留；不把PDF交文本编码器或文本恢复入口。后端缺失返回UNSUPPORTED，取消/错误不谎报成功。T306真实7页Letter横向已验证，完整故障矩阵待G3。
+
 T303资源读取契约：`read_preview_resource { documentId: string|null, directory: FileRef|null, url: string, maxBytes: number }`返回`{ mime, dataBase64, sizeBytes, width: number|null, height: number|null }`。URL只解码一次，拒绝控制字符、绝对/网络/设备/ADS及重复编码控制字符。命名文档以其已打开原生lease的父目录为基准，可用原文档目录grant的根或显式提供的既有目录grant扩展允许范围；无标题必须显式目录grant。所有候选在读取前和打开句柄后重验canonical范围，并持有目录链guard；不返回裸路径或通用文件grant。单图≤20MiB、PNG/JPEG/GIF/WebP解码前≤40MP，总嵌入由宿主约束≤50MiB；SVG只以待清洗UTF8图像数据返回，宿主清洗并验证尺寸后才能嵌入。远程图片不发起请求；data图片也走同一MIME/字节/尺寸校验。此接口待T303实现及真实冒烟，不计G3通过。
 
 链接契约：`authorize_preview_link {documentId, directory, url}`仅在用户点击后复用同一资源范围及句柄校验，为精确目标返回独立文件FileRef，再由应用已有打开编排处理；不执行文件内容。`open_external_preview {url, confirmed:true}`仅在显示目标的取消优先确认框后调用；原生重新解析HTTP/HTTPS/mailto白名单，拒绝凭据、控制字符、网络/文件/设备/脚本协议，然后将完整URL作为ShellExecuteW单独参数交系统，不能拼接程序或命令参数。未确认直接返回取消；原生不抓取链接内容。
