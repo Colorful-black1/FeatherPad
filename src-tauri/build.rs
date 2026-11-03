@@ -2,6 +2,9 @@ fn main() {
     let attributes =
         tauri_build::Attributes::new().app_manifest(tauri_build::AppManifest::new().commands(&[
             "choose_files",
+            "read_preview_resource",
+            "authorize_preview_link",
+            "open_external_preview",
             "choose_folder",
             "inspect_workspace_root",
             "release_workspace_root",

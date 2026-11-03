@@ -1,16 +1,24 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import type { DocumentId } from '../../shared/contracts/files';
+import type { DocumentId, FileRef } from '../../shared/contracts/files';
 import type { DocumentRegistry } from '../editor/documents';
 import { EditorDocument } from '../editor/EditorDocument';
 import { markdownFrame } from './frame';
 import { useMarkdownRender } from './use-markdown-render';
 import { toggleMarkdownTask } from './task-mapping';
 import { redo, undo } from '@codemirror/commands';
+import { files } from '../../bridge/files';
+import { useMarkdownResources } from './use-markdown-resources';
+import { ResourcePanel } from './ResourcePanel';
+import { usePreviewLinks } from './use-preview-links';
+import { ExternalLinkDialog } from './ExternalLinkDialog';
+import { prepareRawHtml } from './raw-html';
 
 interface DocumentContentProps {
   registry: DocumentRegistry; id: DocumentId; autoFocus: boolean;
   group: 'primary' | 'secondary'; dark: boolean;
+  allowHtml: boolean;
   onActivate?: () => void;
+  onOpenFile?: (reference: FileRef) => void;
 }
 type MarkdownMode = 'source' | 'read' | 'split';
 
@@ -22,24 +30,30 @@ export function DocumentContent(props: DocumentContentProps) {
     ? <MarkdownView {...props} /> : <EditorDocument {...props} />;
 }
 
-function MarkdownView({ registry, id, autoFocus, group, dark, onActivate }: DocumentContentProps) {
+function MarkdownView({ registry, id, autoFocus, group, dark, allowHtml, onActivate, onOpenFile }: DocumentContentProps) {
   const root = useRef<HTMLDivElement>(null);
   const [mode, setMode] = useState<MarkdownMode>('source');
   const [ratio, setRatio] = useState(50);
   const [compact, setCompact] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [directory, setDirectory] = useState<FileRef | null>(null);
   const previewFrame = useRef<HTMLIFrameElement>(null);
   const restorePreviewFocus = useRef(false);
   const record = registry.getDocument(id)!;
   const version = record.summary.version;
-  const channel = useMemo(() => `${crypto.randomUUID().replaceAll('-', '')}${version.toString(36)}${id.replaceAll('-', '')}`, [id, version]);
+  const channel = useMemo(() => `${crypto.randomUUID().replaceAll('-', '')}${version.toString(36)}${id.length.toString(36)}`, [id, version]);
   const effectiveMode = mode === 'split' && compact ? 'read' : mode;
-  const render = useMarkdownRender(registry, id, version, effectiveMode !== 'source');
+  const render = useMarkdownRender(registry, id, version, effectiveMode !== 'source', allowHtml);
+  const rawReply = render.state?.reply;
+  const reply = useMemo(() => rawReply ? prepareRawHtml(rawReply) : undefined, [rawReply]);
+  const resources = useMarkdownResources(registry, id, reply, directory);
+  const links = usePreviewLinks({ registry, id, directory, reply,
+    frame: previewFrame, channel, onNotice: setNotice, onOpenFile });
+  const openPreviewLink = links.openIndex;
   const readOnly = !!record.summary.readOnlyReason || record.summary.closing || record.summary.hotExitFrozen;
-  const frame = useMemo(() => render.state?.reply ? markdownFrame(render.state.reply.html, dark, channel, readOnly) : '',
-    [render.state, dark, channel, readOnly]);
+  const frame = useMemo(() => reply ? markdownFrame(reply.html, dark, channel, readOnly,
+    resources.images, reply.images) : '', [reply, dark, channel, readOnly, resources.images]);
   useEffect(() => {
-    const reply = render.state?.reply;
     if (!reply) return;
     const receive = (event: MessageEvent<unknown>) => {
       if (!previewFrame.current || event.source !== previewFrame.current.contentWindow || event.origin !== 'null'
@@ -66,11 +80,14 @@ function MarkdownView({ registry, id, autoFocus, group, dark, onActivate }: Docu
         onActivate?.();
         restorePreviewFocus.current = true;
         registry.runEditorCommand(id, index === 0 ? undo : redo);
+      } else if (kind === 'link') {
+        onActivate?.();
+        openPreviewLink(index);
       }
     };
     window.addEventListener('message', receive);
     return () => window.removeEventListener('message', receive);
-  }, [render.state, channel, id, registry, readOnly, onActivate]);
+  }, [reply, channel, id, registry, readOnly, onActivate, openPreviewLink]);
   useEffect(() => {
     if (!root.current) return;
     const observer = new ResizeObserver(entries => setCompact((entries[0]?.contentRect.width ?? 0) < 650));
@@ -84,6 +101,12 @@ function MarkdownView({ registry, id, autoFocus, group, dark, onActivate }: Docu
       root.current?.querySelector<HTMLElement>('.cm-content')?.focus();
     });
   }
+  function chooseDirectory() {
+    void files.chooseFolder().then(result => {
+      if (!result.ok) setNotice(result.error.message);
+      else if (result.value.grant) setDirectory(result.value.grant);
+    });
+  }
 
   return <div className="markdown-view" ref={root} data-markdown-mode={effectiveMode}>
     <header className="markdown-toolbar">
@@ -95,6 +118,9 @@ function MarkdownView({ registry, id, autoFocus, group, dark, onActivate }: Docu
       <span>{effectiveMode === 'source' ? 'Markdown · 同一正文缓冲' : `阅读快照 · v${version}`}</span>
     </header>
     {notice && <p className="notice" role="status">{notice}</p>}
+    {reply?.htmlWarning && <p className="notice" role="alert">{reply.htmlWarning}</p>}
+    {links.pending && <ExternalLinkDialog url={links.pending.url} busy={links.busy}
+      onCancel={links.close} onConfirm={() => void links.confirm()} />}
     {mode === 'split' && compact && <p className="notice" role="note">空间不足，分屏暂以阅读显示；可切换源码或扩大编辑区域。</p>}
     <div className={`markdown-panes markdown-${effectiveMode}`} style={{ '--markdown-ratio': `${ratio}%` } as CSSProperties}>
       <div className="markdown-source" hidden={effectiveMode === 'read'}>
@@ -127,8 +153,8 @@ function MarkdownView({ registry, id, autoFocus, group, dark, onActivate }: Docu
                 previewFrame.current?.focus();
                 previewFrame.current?.contentWindow?.focus();
               }} />
-              {Boolean(render.state.reply?.blockedResources) && <p className="notice" role="note">
-                {render.state.reply?.blockedResources}张图片未加载；预览不会自动访问网络或本地路径。</p>}</>
+              <ResourcePanel busy={resources.busy} failures={resources.failures}
+                labels={reply?.images ?? []} onChooseDirectory={chooseDirectory} onOpenUrl={links.openUrl} /></>
             : <div className="markdown-render-status"><p role={render.state.status === 'error' ? 'alert' : 'status'}>{render.state.message}</p>
               <button type="button" className="plain-button" onClick={render.retry}>生成一次预览</button></div>}
       </section>}

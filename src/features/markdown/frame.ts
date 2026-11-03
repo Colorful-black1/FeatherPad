@@ -1,13 +1,28 @@
 import DOMPurify from 'dompurify';
 import runtimeSource from './preview-runtime.js?raw';
+import { escapeHtml } from './parser';
+import type { PreviewImage } from './use-markdown-resources';
 
 const tags = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'br', 'hr', 'blockquote',
   'ul', 'ol', 'li', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'pre', 'code',
-  'strong', 'em', 'del', 'a', 'span', 'input', 'button', 'div'];
+  'strong', 'em', 'del', 'a', 'span', 'input', 'button', 'div', 'img', 'b', 'i', 's', 'sub', 'sup', 'kbd',
+  'details', 'summary', 'dl', 'dt', 'dd', 'tfoot'];
 
-export function markdownFrame(html: string, dark: boolean, channel: string, readOnly: boolean): string {
-  const safe = DOMPurify.sanitize(html, { ALLOWED_TAGS: tags,
-    ALLOWED_ATTR: ['class', 'start', 'align', 'type', 'checked', 'disabled', 'data-task-id', 'data-code-id', 'data-copy-id'],
+export function markdownFrame(html: string, dark: boolean, channel: string, readOnly: boolean,
+  images: ReadonlyMap<number, PreviewImage>, imageLabels: readonly { alt: string }[]): string {
+  const accepted = new Set<string>();
+  for (const [index, image] of images) {
+    accepted.add(image.dataUrl);
+    const alt = escapeHtml(imageLabels[index]?.alt ?? '');
+    html = html.replace(`<span class="blocked-resource" data-image-id="${index}">[图片未加载：${alt}]</span>`,
+      `<img src="${image.dataUrl}" alt="${alt}" width="${image.width}" height="${image.height}">`);
+  }
+  const purifier = DOMPurify(window);
+  purifier.addHook('uponSanitizeAttribute', (_node, data) => {
+    if (data.attrName === 'src' && !accepted.has(data.attrValue)) data.keepAttr = false;
+  });
+  const safe = purifier.sanitize(html, { ALLOWED_TAGS: tags,
+    ALLOWED_ATTR: ['class', 'title', 'open', 'colspan', 'rowspan', 'aria-label', 'start', 'align', 'type', 'checked', 'disabled', 'data-task-id', 'data-code-id', 'data-copy-id', 'data-image-id', 'data-link-id', 'src', 'alt', 'width', 'height'],
     ALLOW_DATA_ATTR: false, ALLOW_ARIA_ATTR: false });
   const runtime = runtimeSource.replace(/\r\n/g, '\n').trim();
   return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
@@ -20,6 +35,7 @@ pre{padding:16px;overflow:auto;background:${dark ? '#20251f' : '#eeefe8'};border
 code{font:13px/1.7 'Cascadia Mono',Consolas,monospace}blockquote{margin-left:0;padding-left:16px;border-left:3px solid ${dark ? '#b0ca98' : '#45643b'}}
 table{border-collapse:collapse;display:block;overflow:auto}th,td{border:1px solid ${dark ? '#78886d' : '#a3aa99'};padding:4px 12px;text-align:start}
 .blocked-resource{display:inline-block;padding:4px 8px;border:1px dashed currentColor;font-size:12px}.pending-link{text-decoration:underline}
+img{max-width:100%;height:auto}.pending-link{border:0;background:transparent;color:inherit;cursor:pointer;font:inherit;padding:0}
 input{accent-color:#45643b}@media(max-width:400px){body{padding:16px}}@media(forced-colors:active){blockquote,th,td{border-color:CanvasText}}
 .code-caption{display:flex;justify-content:space-between;align-items:center;font-size:12px;gap:8px}.code-caption button{font:inherit;cursor:pointer;padding:4px 8px}
 .tok-keyword,.tok-bool,.tok-null{color:${dark ? '#d9b78b' : '#8a592e'}}.tok-string,.tok-propertyName{color:${dark ? '#b0ca98' : '#45643b'}}.tok-number,.tok-typeName{color:${dark ? '#a4c8d6' : '#346477'}}.tok-comment{opacity:.75}

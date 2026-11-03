@@ -20,6 +20,7 @@ export interface Settings {
   whitespaceMode: 'none' | 'current' | 'all';
   folding: boolean;
   autoSave: boolean;
+  markdownAllowHtml: boolean;
   recentHistoryEnabled: boolean;
   globalLaunchEnabled: boolean;
   globalLaunchShortcut: string;
@@ -37,10 +38,12 @@ export interface SettingsDiagnostic { key: string; source: SettingSource; messag
 export const defaultSettings: Readonly<Settings> = Object.freeze({
   theme: 'system', fontFamily: 'Cascadia Mono', fontSize: 14, lineHeight: 1.85,
   tabSize: 4, insertSpaces: true, wordWrap: true, lineNumbers: true, highlightActiveLine: true,
-  whitespaceMode: 'none', folding: true,
+  whitespaceMode: 'none', folding: true, markdownAllowHtml: false,
   recentHistoryEnabled: true, autoSave: false, globalLaunchEnabled: false, globalLaunchShortcut: 'Ctrl+Shift+Space',
 });
 export const settingDefinitions: readonly SettingDefinition[] = [
+  { key: 'markdownAllowHtml', label: '允许受限 Markdown HTML', keywords: 'markdown html preview 清洗 安全 阅读', group: 'editor', kind: 'boolean',
+    description: '默认关闭。启用后仅显示清洗后的结构标签；脚本、事件、表单、任意样式和自动远程资源始终禁用。' },
   { key: 'theme', label: '主题', keywords: 'theme light dark system 亮 暗 跟随系统', group: 'appearance', kind: 'theme' },
   { key: 'fontFamily', label: '编辑器字体', keywords: 'font family 本机 等宽 Cascadia Consolas', group: 'appearance', kind: 'font' },
   { key: 'fontSize', label: '编辑字号', keywords: 'font size 字体 大小', group: 'appearance', kind: 'number' },

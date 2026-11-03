@@ -6,9 +6,12 @@ export interface RenderRequest {
   documentId: string;
   bufferVersion: number;
   source: string;
+  allowHtml?: boolean;
 }
 export type RenderReply = Pick<RenderRequest, 'requestId' | 'documentId' | 'bufferVersion'> &
   ({ ok: true; html: string; blockedResources: number; tasks: MarkdownTask[];
+    images: { url: string; alt: string }[]; links: { url: string }[];
+    rawHtml: string[]; htmlWarning?: string;
     codeBlocks: { text: string; language: string }[] } | { ok: false; message: string });
 
 export const MAX_RENDER_BYTES = 20 * 1024 * 1024;
@@ -33,6 +36,9 @@ export function renderMarkdown(request: RenderRequest): RenderReply {
   const tasks = markdownTasks(request.source);
   const taskTokens = new WeakMap<object, number>();
   const codeBlocks: { text: string; language: string }[] = [];
+  const images: { url: string; alt: string }[] = [];
+  const links: { url: string }[] = [];
+  const rawHtml: string[] = [];
   let taskIndex = 0;
   const parser = new Marked({ gfm: true, async: false, silent: false,
     walkTokens(token) {
@@ -47,12 +53,23 @@ export function renderMarkdown(request: RenderRequest): RenderReply {
       }
     },
     renderer: {
-      html: ({ text }) => escapeHtml(text),
-      image: ({ text }) => {
-        blockedResources++;
-        return `<span class="blocked-resource">[图片未加载：${escapeHtml(text)}]</span>`;
+      html: ({ text }) => {
+        if (!request.allowHtml) return escapeHtml(text);
+        const index = rawHtml.length;
+        rawHtml.push(text);
+        return `<span data-raw-html-id="${index}"></span>`;
       },
-      link({ tokens }) { return `<span class="pending-link">${this.parser.parseInline(tokens)}</span>`; },
+      image: ({ text, href }) => {
+        blockedResources++;
+        const index = images.length;
+        images.push({ url: href, alt: text });
+        return `<span class="blocked-resource" data-image-id="${index}">[图片未加载：${escapeHtml(text)}]</span>`;
+      },
+      link({ tokens, href }) {
+        const index = links.length;
+        links.push({ url: href });
+        return `<button type="button" class="pending-link" data-link-id="${index}">${this.parser.parseInline(tokens)}</button>`;
+      },
       checkbox(token) {
         const index = taskTokens.get(token);
         return `<input type="checkbox" disabled ${token.checked ? 'checked ' : ''}${index === undefined ? '' : `data-task-id="${index}"`}> `;
@@ -68,7 +85,7 @@ export function renderMarkdown(request: RenderRequest): RenderReply {
   try {
     const html = parser.parse(request.source, { async: false });
     if (html.length > 16 * 1024 * 1024) throw new Error('OUTPUT_BUDGET');
-    return { ...identity, ok: true, html, blockedResources, tasks, codeBlocks };
+    return { ...identity, ok: true, html, blockedResources, tasks, codeBlocks, images, links, rawHtml };
   } catch {
     return { ...identity, ok: false, message: '内容超过阅读渲染预算或无法解析，请缩小内容后重试。' };
   }

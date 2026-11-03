@@ -19,6 +19,7 @@ use tauri::{
     AppHandle, Manager,
 };
 use tauri_plugin_dialog::DialogExt;
+pub mod assets;
 pub mod encoding;
 pub mod external;
 pub mod file_ops;

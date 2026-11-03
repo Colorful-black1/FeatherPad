@@ -11,6 +11,14 @@ it('applies default, user, allowed workspace and temporary session precedence', 
   expect(defaultSettings.theme).toBe('system');
 });
 
+it('keeps restricted Markdown HTML off by default and disallows workspace opt-in', () => {
+  expect(defaultSettings.markdownAllowHtml).toBe(false);
+  const workspace = mergeSettings({}, { markdownAllowHtml: true });
+  expect(workspace.settings.markdownAllowHtml).toBe(false);
+  expect(workspace.diagnostics).toContainEqual(expect.objectContaining({ key: 'markdownAllowHtml', source: 'workspace' }));
+  expect(mergeSettings({ markdownAllowHtml: true }).settings.markdownAllowHtml).toBe(true);
+});
+
 it('invalid values fall back by layer while unknown and invalid fields remain exportable', () => {
   const raw = { fontSize: -4, theme: 'future', tabSize: 2, future: { a: true } };
   const result = mergeSettings(raw, { tabSize: 3 }, { lineHeight: 999 });

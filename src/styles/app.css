@@ -137,6 +137,13 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round
 .markdown-reading { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; background: var(--bg-surface); }
 .markdown-reading iframe { flex: 1; width: 100%; min-height: 0; border: 0; }
 .markdown-render-status { padding: var(--space-6); color: var(--text-secondary); }
+.markdown-resource-panel { flex: 0 0 auto; max-height: 10rem; overflow: auto; color: var(--text-secondary); font-size: 12px; border-top: 1px solid var(--border); }
+.markdown-resource-panel:empty { display: none; }
+.markdown-resource-details { padding: var(--space-2) var(--space-3); }
+.markdown-resource-details summary { cursor: pointer; }
+.markdown-resource-details ul { padding-inline-start: var(--space-5); }
+.markdown-resource-panel > button { margin: var(--space-1) var(--space-3) var(--space-2); }
+.external-link-target { overflow-wrap: anywhere; font-family: var(--font-mono); }
 .editor-keyboard-panel { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); padding: var(--space-1) var(--space-2); color: var(--text-secondary); background: var(--bg-sidebar); font: 11px/1.5 var(--font-ui); }
 .editor-keyboard-panel button { border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 0 var(--space-2); min-height: 24px; background: var(--bg-surface); }
 .editor-keyboard-panel button[aria-pressed="true"] { background: var(--bg-selected); color: var(--accent); border-color: var(--accent); }

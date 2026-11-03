@@ -27,10 +27,14 @@ sha2 = "=0.10.9"
 serde_json = "=1.0.154"
 tauri-plugin-dialog = "=2.8.4"
 regex = "=1.13.1"
+base64 = "=0.23.1"
+percent-encoding = "=2.3.2"
+url = "=2.5.8"
+imagesize = { version = "=0.15.0", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "=0.61.2", features = ["Win32_Storage_FileSystem", "Win32_Foundation", "Win32_System_IO", "Win32_System_Threading", "Win32_Security", "Win32_Graphics_Gdi", "Win32_Globalization", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }
-windows = { version = "=0.62.2", features = ["Win32_System_Com", "Win32_UI_Shell"] }
+windows = { version = "=0.62.2", features = ["Win32_System_Com", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 windows-core = "=0.62.2"
 
 [dev-dependencies]

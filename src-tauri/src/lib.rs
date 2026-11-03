@@ -3,6 +3,7 @@ mod global_shortcut;
 pub mod models;
 use tauri::Manager;
 pub mod services {
+    pub mod assets;
     pub mod create_file;
     pub mod directories;
     pub mod documents;
@@ -15,6 +16,7 @@ pub mod services {
     pub mod grants;
     pub mod identity;
     pub mod open_policy;
+    pub mod preview_links;
     pub mod recovery;
     pub mod replace_plan;
     pub mod save;
@@ -67,6 +69,9 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            commands::assets::read_preview_resource,
+            commands::assets::authorize_preview_link,
+            commands::assets::open_external_preview,
             commands::choose_files,
             commands::choose_folder,
             commands::workspace::inspect_workspace_root,

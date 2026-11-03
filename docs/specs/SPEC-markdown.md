@@ -1,6 +1,6 @@
 # SPEC-markdown：安全 Markdown 阅读与导出
 
-> 模块 `markdown`；业务依赖仅 `editor`、`file-core`。状态：2026-11-03用户确认开始M3，T301实现中，G3待验。拥有 F-MD-001–011，全部首次在M3验收；完整索引见 [矩阵](../FEATURE-MATRIX.md)。
+> 模块 `markdown`；业务依赖仅 `editor`、`file-core`。状态：2026-11-03用户确认开始M3，T301–T302实现完成，T303进行中，G3待验。拥有 F-MD-001–011，全部首次在M3验收；完整索引见 [矩阵](../FEATURE-MATRIX.md)。
 
 实施决策（T301）：锁定Marked18.1.3（MIT）和DOMPurify3.4.17（Apache-2.0或MPL-2.0），已核对包元数据、首次禁脚本安装。150ms合并后才从CodeMirror复制快照到专用Worker，2秒超时终止Worker；结果绑定documentId/bufferVersion/requestId。宿主执行显式标签白名单清洗后，放入无任何sandbox权限的srcdoc iframe，内层CSP禁脚本/联网/表单/插件，绝不授予same-origin、Tauri IPC或顶层导航。T301中的URL和图片只显示安全占位，真实授权资源与用户点击动作留T303。三模式在应用组合层连接editor，editor不反向导入markdown。
 
@@ -9,6 +9,8 @@
 T302交互边界：任务与代码复制需要固定的应用预览运行时。frame仅增加`allow-scripts`，继续禁止same-origin/导航/弹窗/表单；用户HTML脚本仍全部转义/清除。运行时规范化字节内嵌入快照，父CSP以SHA256精确锁定、内层以每快照nonce再次限制，构建前校验哈希，避免离线时额外加载脚本。文档不能提供脚本或nonce。运行时没有IPC，不能联网，只向父页面提交`task`/`copy`及整数索引或受限undo/redo索引；父页面同时校验精确source Window、opaque origin、通道nonce、documentId/current bufferVersion和对应任务/代码表，不能由消息传入正文/路径/命令，模态期间拒绝操作。任务通过Lezer GFM实际TaskMarker源区间与Marked列表首行交叉匹配，只改一个标记字符；过期、只读、关闭或映射不一致均拒绝。每个编辑隔离为一次undo，阅读模式键盘undo/redo也操作同一缓冲；编辑后恢复预览焦点并激活正确编辑组。Lezer/highlight复用现有锁定MIT版本，代码块只使用本地CodeMirror解析器。
 
 ## Objective 与技术边界
+
+T303实施决策：`markdownAllowHtml`为默认关闭的用户设置，工作区不能启用。HTML原片段单独交DOMPurify结构标签白名单清洗，禁止文档提供应用任务/复制等保留data属性、交互表单和脚本；随后才与生成控件合并并执行最终清洗。未闭合或跨Markdown块的HTML不承诺排版保真，过多片段或清洗失败显示原文。原生图片读取固定imagesize0.15.0（MIT、无构建脚本/运行时依赖，仅开启PNG/JPEG/GIF/WebP尺寸探测），复用已锁定base64/percent-encoding/url；SVG独立清洗、移除外部引用与动画/foreignObject，再验证40MP和复杂度预算。经验证图片只以内嵌data URL进入frame；外链仅用户确认后交系统，本地链接复用原生资源授权与已有文档打开编排。
 
 让用户在一个正文模型上进行源码编辑、舒适阅读和双视图预览，并离线导出可分享的HTML/PDF。Markdown是editor扩展，editor不反向依赖本模块；使用editor快照/版本化applyEdits和file-core资源/导出写入。采用本地GFM解析器、代码高亮器、HTML sanitizer和隔离渲染；具体库实施前验证许可证/大小/安全维护，禁止依赖CDN。
 

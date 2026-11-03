@@ -308,6 +308,24 @@ impl GrantRegistry {
         {
             return Err(out_of_scope());
         }
+        self.pin_validated_file(file, path)
+    }
+
+    // Only the native resource resolver may call this after retaining canonical
+    // parent guards. The IPC carries a document/grant and URI, never this root.
+    pub(crate) fn pin_resource_file(
+        &mut self,
+        file: &File,
+        path: &Path,
+        root: &Path,
+    ) -> Result<FileRef, AppError> {
+        if !path.starts_with(root) || opened_file_path(file)? != path {
+            return Err(out_of_scope());
+        }
+        self.pin_validated_file(file, path)
+    }
+
+    fn pin_validated_file(&mut self, file: &File, path: &Path) -> Result<FileRef, AppError> {
         let identity_sha256 = format!(
             "{:x}",
             Sha256::digest(super::identity::identify(file, path).revision_tag())

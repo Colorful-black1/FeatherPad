@@ -17,6 +17,8 @@
     if (!(target instanceof Element)) return;
     const button = target.closest('button[data-copy-id]');
     if (button) send('copy', Number(button.getAttribute('data-copy-id')));
+    const link = target.closest('button[data-link-id]');
+    if (link) send('link', Number(link.getAttribute('data-link-id')));
   });
   document.addEventListener('keydown', event => {
     if (!readOnly && (event.ctrlKey || event.metaKey) && !event.altKey
@@ -24,5 +26,11 @@
       event.preventDefault();
       send('history', event.key.toLowerCase() === 'y' || event.shiftKey ? 1 : 0);
     }
+  });
+  addEventListener('message', event => {
+    const data = event.data;
+    if (event.source !== parent || !data || data.channel !== channel || data.kind !== 'anchor'
+      || typeof data.fragment !== 'string' || data.fragment.length > 512) return;
+    document.getElementById(data.fragment)?.scrollIntoView({ block: 'start' });
   });
 })();

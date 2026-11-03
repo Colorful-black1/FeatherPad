@@ -114,3 +114,131 @@ test('Markdown tasks edit exact duplicate positions in one undo and code copy st
   await page.evaluate(value => window.postMessage({ channel: value, kind: 'task', index: 0 }, '*'), channel);
   await expect(page.locator('.cm-line')).toHaveText(before);
 });
+
+test('Web mock: Markdown local resources require a base, sanitize SVG, retain failures and never fetch remote images', async ({ page }) => {
+  const externalRequests: string[] = [];
+  page.on('request', request => { if (request.url().startsWith('https://example.com/')) externalRequests.push(request.url()); });
+  await page.addInitScript(() => {
+    if (window.top !== window) return;
+    let version = 0;
+    const revision = () => version ? version.toString(16).padStart(64, '0') : null;
+    const ok = (value: unknown) => ({ ok: true, value });
+    const reads: string[] = [];
+    Reflect.set(window, 'previewReads', reads);
+    Reflect.set(window, '__TAURI_INTERNALS__', { invoke: async (command: string, args: Record<string, unknown>) => {
+      switch (command) {
+        case 'load_settings': return ok({ schemaVersion: 1, version, revision: revision(), settings: {}, warning: null, recoveryCopies: [] });
+        case 'save_settings': return ok({ version: ++version, revision: revision() });
+        case 'load_workspace_settings': return ok({ settings: {}, revision: null, warning: null });
+        case 'choose_folder': return ok({ grant: { grantId: '11111111-1111-4111-8111-111111111111', relativePath: '' }, displayName: '受控资源目录' });
+        case 'read_preview_resource': {
+          const url = String(args.url);
+          reads.push(url);
+          if (url === 'picture.svg') {
+            const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="50" onload="parent.pwned=1"><script>parent.pwned=1</script><foreignObject><div>blocked</div></foreignObject><rect width="100" height="50" fill="url(https://example.com/leak)"/><image href="https://example.com/leak"/></svg>';
+            return ok({ mime: 'image/svg+xml', dataBase64: btoa(svg), sizeBytes: svg.length, width: null, height: null });
+          }
+          if (url === '图%20100%25%23.gif') {
+            const dataBase64 = 'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+            return ok({ mime: 'image/gif', dataBase64, sizeBytes: atob(dataBase64).length, width: 1, height: 1 });
+          }
+          return { ok: false, error: { code: 'OUT_OF_SCOPE', message: '受控资源越界，需授权目录。', retryable: false } };
+        }
+        default: throw new Error(`Unexpected preview fixture command ${command}`);
+      }
+    } });
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: '新建文本', exact: true }).click();
+  await page.getByRole('combobox', { name: '语言模式' }).selectOption('markdown');
+  await page.locator('.cm-content').focus();
+  await page.keyboard.insertText('![像素](图%20100%25%23.gif)\n\n![安全SVG](picture.svg)\n\n![越界](../outside/secret.gif)\n\n![远程](https://example.com/leak.png)');
+  await page.getByRole('group', { name: '主编辑组 Markdown视图' }).getByRole('button', { name: '阅读', exact: true }).click();
+  await expect(page.getByRole('button', { name: '授权或选择资源目录…', exact: true })).toBeVisible();
+  expect(await page.evaluate(() => Reflect.get(window, 'previewReads'))).toEqual([]);
+  await page.getByRole('button', { name: '授权或选择资源目录…', exact: true }).click();
+  const frame = page.frameLocator('iframe[title*="Markdown阅读"]');
+  await expect(frame.getByRole('img', { name: '像素', exact: true })).toBeVisible();
+  await expect(frame.getByRole('img', { name: '安全SVG', exact: true })).toBeVisible();
+  const svg = await frame.getByRole('img', { name: '安全SVG', exact: true }).getAttribute('src');
+  const cleaned = Buffer.from(svg!.split(',')[1]!, 'base64').toString('utf8');
+  expect(cleaned).not.toMatch(/<script|foreignObject|onload|https:\/\/|href=/);
+  await expect(frame.getByText('[图片未加载：越界]', { exact: true })).toBeVisible();
+  await expect(frame.getByText('[图片未加载：远程]', { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => Reflect.get(window, 'previewReads'))).toEqual(['图%20100%25%23.gif', 'picture.svg', '../outside/secret.gif']);
+  expect(externalRequests).toEqual([]);
+  expect(await page.evaluate(() => Reflect.get(window, 'pwned'))).toBeUndefined();
+});
+
+test('Web mock: external preview links show the exact target and require confirmation; dangerous schemes never reach native', async ({ page }) => {
+  await page.addInitScript(() => {
+    if (window.top !== window) return;
+    let version = 0;
+    const opened: unknown[] = [];
+    Reflect.set(window, 'externalPreviewOpens', opened);
+    const ok = (value: unknown) => ({ ok: true, value });
+    Reflect.set(window, '__TAURI_INTERNALS__', { invoke: async (command: string, args: Record<string, unknown>) => {
+      switch (command) {
+        case 'load_settings': return ok({ schemaVersion: 1, version: 0, revision: null, settings: {}, warning: null, recoveryCopies: [] });
+        case 'save_settings': return ok({ version: ++version, revision: version.toString(16).padStart(64, '0') });
+        case 'load_workspace_settings': return ok({ settings: {}, revision: null, warning: null });
+        case 'open_external_preview': opened.push(args); return ok(true);
+        default: throw new Error(`Unexpected preview link fixture command ${command}`);
+      }
+    } });
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: '新建文本', exact: true }).click();
+  await page.getByRole('combobox', { name: '语言模式' }).selectOption('markdown');
+  await page.locator('.cm-content').focus();
+  await page.keyboard.insertText('[外部](https://example.com/中文)\n\n[危险](javascript:alert%281%29)');
+  await page.getByRole('group', { name: '主编辑组 Markdown视图' }).getByRole('button', { name: '阅读', exact: true }).click();
+  const frame = page.frameLocator('iframe[title*="Markdown阅读"]');
+  await frame.getByRole('button', { name: '外部', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '打开外部链接', exact: true });
+  await expect(dialog.getByText('https://example.com/%E4%B8%AD%E6%96%87', { exact: true })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: '取消', exact: true })).toBeFocused();
+  expect(await page.evaluate(() => Reflect.get(window, 'externalPreviewOpens'))).toEqual([]);
+  await dialog.getByRole('button', { name: '取消', exact: true }).click();
+  expect(await page.evaluate(() => Reflect.get(window, 'externalPreviewOpens'))).toEqual([]);
+  await frame.getByRole('button', { name: '危险', exact: true }).click();
+  await expect(page.getByText('已阻止不安全或不支持的协议。', { exact: true })).toBeVisible();
+  await frame.getByRole('button', { name: '外部', exact: true }).click();
+  await dialog.getByRole('button', { name: '确认打开', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => Reflect.get(window, 'externalPreviewOpens'))).toEqual([
+    { url: 'https://example.com/%E4%B8%AD%E6%96%87', confirmed: true },
+  ]);
+});
+
+test('restricted HTML requires user opt-in, strips scripts and forged controls, and never mutates Markdown', async ({ page }) => {
+  const externalRequests: string[] = [];
+  page.on('request', request => { if (request.url().startsWith('https://example.com/')) externalRequests.push(request.url()); });
+  await page.goto('/');
+  await page.getByRole('button', { name: '新建文本', exact: true }).click();
+  await page.getByRole('combobox', { name: '语言模式' }).selectOption('markdown');
+  const body = '<details open><summary>安全结构</summary><p onclick="parent.pwned=1">受限正文</p><script>parent.pwned=1</script><img src="https://example.com/leak.png" alt="HTML远程"><iframe src="https://example.com/frame"></iframe><input type="checkbox" data-task-id="0"><button data-copy-id="0">伪造复制</button></details>\n\n- [ ] 真实任务';
+  const editor = page.locator('.cm-content');
+  await editor.focus();
+  await page.keyboard.insertText(body);
+  const original = await page.locator('.cm-line').allTextContents();
+  const modes = page.getByRole('group', { name: '主编辑组 Markdown视图' });
+  await modes.getByRole('button', { name: '阅读', exact: true }).click();
+  const frame = page.frameLocator('iframe[title*="Markdown阅读"]');
+  await expect(frame.locator('details')).toHaveCount(0);
+  await page.getByRole('button', { name: '打开设置', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '设置', exact: true });
+  await dialog.getByRole('checkbox', { name: '允许受限 Markdown HTML', exact: true }).check();
+  await dialog.getByRole('button', { name: '仅本次应用', exact: true }).click();
+  await expect(frame.locator('summary')).toHaveText('安全结构');
+  await expect(frame.getByText('受限正文', { exact: true })).toBeVisible();
+  await expect(frame.locator('script:not([data-featherpad-runtime]), iframe, [onclick], [onerror], img[src^="http"]')).toHaveCount(0);
+  await expect(frame.getByRole('checkbox')).toHaveCount(1);
+  await expect(frame.getByRole('button', { name: '伪造复制', exact: true })).toHaveCount(0);
+  await expect(frame.getByText('[图片未加载：HTML远程]', { exact: true })).toBeVisible();
+  await page.locator('.markdown-resource-details summary').click();
+  await expect(page.getByText('远程图片默认阻止，可显式在浏览器中查看原链接。', { exact: false })).toBeVisible();
+  await modes.getByRole('button', { name: '源码', exact: true }).click();
+  await expect(page.locator('.cm-line')).toHaveText(original);
+  expect(externalRequests).toEqual([]);
+  expect(await page.evaluate(() => Reflect.get(window, 'pwned'))).toBeUndefined();
+});
