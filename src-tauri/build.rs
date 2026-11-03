@@ -9,6 +9,8 @@ fn main() {
             "get_trash_impact",
             "trash_entry",
             "open_document",
+            "check_encoding",
+            "reopen_with_encoding",
             "load_settings",
             "save_settings",
             "restore_settings",

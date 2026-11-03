@@ -130,7 +130,8 @@ export interface SaveAck {
 | `read_document_chunk` | `{documentId,handleId,expectedDiskRevision,byteOffset,maxBytes}` | `TextChunk` | maxBytes默认64KiB最大1MiB；编码边界对齐、行位置正确，磁盘变化返回CONFLICT，绝不把片段作为可保存全文 |
 | `save_document_as` | `{documentId,requestId,documentVersion,text,format,newlineMap?,intent?:'save-as'|'copy'}` | `{documentId,ref,metadata:FileMetadata,ack:SaveAck}` | 原生保存选择器；取消CANCELLED；覆盖确认绑定目标revision；copy不改源绑定 |
 | `stat_document` | `{documentId}` | `FileMetadata` | 核对未知保存结果或磁盘变化 |
-| `reopen_with_encoding` | `{documentId,encoding,discardVersion?}` | `OpenDocument` | dirty先由UI明确保存/放弃；不得隐式丢弃 |
+| `reopen_with_encoding` | `{documentId,encoding,expectedDiskRevision}` | `OpenDocument` | 按已有grant读取并重验revision；dirty先由UI保存/明确保护后重开，缓冲版本再核对，不隐式丢弃 |
+| `check_encoding` | `{text,encoding,documentVersion}` | `{encoding,documentVersion,lossCount,samples:{offset,length}[],replacementText:string|null}` | 无磁盘写入；64MiB上限；位置为UTF16偏移，最多32例；有损时仅生成问号替代候选，须版本绑定确认后形成可撤销变更 |
 | `release_document` | `{documentId}` | `{released:boolean}` | 仅释放资源，不删除文件/恢复快照 |
 | `discard_recovery` | `{documentId,throughVersion}` | `{documentId,throughVersion,discarded:true}` | 显式放弃授权；先持久化标记、再清理对应版本快照，失败不关闭；同文档保存/回收互斥 |
 

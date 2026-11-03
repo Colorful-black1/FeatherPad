@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-check-encoding"
+description = "Enables the check_encoding command without any pre-configured scope."
+commands.allow = ["check_encoding"]
+
+[[permission]]
+identifier = "deny-check-encoding"
+description = "Denies the check_encoding command without any pre-configured scope."
+commands.deny = ["check_encoding"]

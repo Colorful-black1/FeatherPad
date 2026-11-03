@@ -19,6 +19,7 @@ use tauri::{
     AppHandle, Manager,
 };
 use tauri_plugin_dialog::DialogExt;
+pub mod encoding;
 pub mod external;
 pub mod file_ops;
 pub mod save;
@@ -136,12 +137,6 @@ pub async fn open_document(
 ) -> ResultEnvelope<OpenDocument> {
     let service = app.state::<SharedFiles>().inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        if encoding_override
-            .as_deref()
-            .is_some_and(|encoding| encoding != "utf-8")
-        {
-            return Err(AppError::new(ErrorCode::Unsupported, "所选编码暂不可用。"));
-        }
         let open_mode = match mode.as_deref() {
             None | Some("normal") => OpenRequestMode::Auto,
             Some("head-preview") => OpenRequestMode::HeadPreview,
@@ -158,7 +153,12 @@ pub async fn open_document(
         let result = service
             .lock()
             .map_err(|_| internal_error())?
-            .open_document_with_mode_and_id(reference, open_mode, document_id.as_deref());
+            .open_document_with_encoding(
+                reference,
+                open_mode,
+                document_id.as_deref(),
+                encoding_override.as_deref(),
+            );
         result
     })
     .await

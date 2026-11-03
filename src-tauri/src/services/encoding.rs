@@ -16,6 +16,79 @@ pub const LABELS: [&str; 8] = [
     "windows-1252",
 ];
 
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EncodingInspection {
+    pub encoding: String,
+    pub document_version: u64,
+    pub loss_count: usize,
+    pub samples: Vec<LossPosition>,
+    pub replacement_text: Option<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct LossPosition {
+    pub offset: usize,
+    pub length: usize,
+}
+
+pub fn inspect_encoding(
+    text: &str,
+    encoding: &str,
+    version: u64,
+) -> Result<EncodingInspection, AppError> {
+    if text.len() > super::save::MAX_SNAPSHOT_BYTES
+        || version > 9_007_199_254_740_991
+        || text.contains('\r')
+    {
+        return Err(AppError::new(
+            ErrorCode::InvalidInput,
+            "编码检查快照无效或超过64MiB。",
+        ));
+    }
+    let mut result = EncodingInspection {
+        encoding: encoding.to_owned(),
+        document_version: version,
+        loss_count: 0,
+        samples: Vec::new(),
+        replacement_text: None,
+    };
+    match encode_text(text, encoding, "none") {
+        Ok(_) => return Ok(result),
+        Err(error) if error.code == ErrorCode::LossyEncoding => {}
+        Err(error) => return Err(error),
+    }
+    let mut cache = std::collections::HashMap::new();
+    let mut replacement = String::with_capacity(text.len());
+    let mut offset = 0;
+    for character in text.chars() {
+        let representable = character.is_ascii()
+            || *cache.entry(character).or_insert_with(|| {
+                let mut bytes = [0u8; 4];
+                encode_text(character.encode_utf8(&mut bytes), encoding, "none").is_ok()
+            });
+        if representable {
+            replacement.push(character);
+        } else {
+            replacement.push('?');
+            result.loss_count += 1;
+            if result.samples.len() < 32 {
+                result.samples.push(LossPosition {
+                    offset,
+                    length: character.len_utf16(),
+                });
+            }
+        }
+        offset += character.len_utf16();
+    }
+    if result.loss_count == 0 {
+        return Err(loss());
+    }
+    encode_text(&replacement, encoding, "none")?;
+    result.replacement_text = Some(replacement);
+    Ok(result)
+}
+
 fn code_page(label: &str) -> Result<u32, AppError> {
     match label {
         "gb18030" => Ok(54936),

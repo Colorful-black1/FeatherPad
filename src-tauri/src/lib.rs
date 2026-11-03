@@ -56,6 +56,8 @@ pub fn run() {
             commands::file_ops::get_trash_impact,
             commands::file_ops::trash_entry,
             commands::open_document,
+            commands::encoding::check_encoding,
+            commands::encoding::reopen_with_encoding,
             commands::settings::load_settings,
             commands::settings::save_settings,
             commands::settings::restore_settings,

@@ -2,7 +2,7 @@ use featherpad_lib::{
     models::{ErrorCode, Newline, NewlineMap, SaveRequest, TextFormat},
     services::{
         encode::encode_snapshot,
-        encoding::{decode_text, encode_text},
+        encoding::{decode_text, encode_text, inspect_encoding},
         text::{decode_basic, normalize_newlines},
     },
 };
@@ -180,6 +180,32 @@ fn strict_encoding_rejects_defaults_best_fit_malformed_and_mismatched_bom() {
         assert_eq!(decoded.text, "无BOM😀");
         assert_eq!(decoded.bom, "none");
     }
+}
+
+#[test]
+fn encoding_inspection_counts_loss_and_reports_utf16_offsets_without_applying_replacement() {
+    let original = "A😀中\nΩ😀";
+    let result = inspect_encoding(original, "windows-1252", 9).unwrap();
+    assert_eq!(result.document_version, 9);
+    assert_eq!(result.loss_count, 4);
+    assert_eq!(
+        result
+            .samples
+            .iter()
+            .map(|p| (p.offset, p.length))
+            .collect::<Vec<_>>(),
+        vec![(1, 2), (3, 1), (5, 1), (6, 2)]
+    );
+    assert_eq!(result.replacement_text.as_deref(), Some("A??\n??"));
+    assert_eq!(original, "A😀中\nΩ😀");
+    let bounded = inspect_encoding(&"😀".repeat(40), "gbk", 1).unwrap();
+    assert_eq!(bounded.loss_count, 40);
+    assert_eq!(bounded.samples.len(), 32);
+    let unicode = inspect_encoding(original, "gb18030", 9).unwrap();
+    assert_eq!(unicode.loss_count, 0);
+    assert!(unicode.replacement_text.is_none());
+    assert!(inspect_encoding("raw\r\n", "gbk", 0).is_err());
+    assert!(inspect_encoding("text", "gbk", 9_007_199_254_740_992).is_err());
 }
 
 #[test]

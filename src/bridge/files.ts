@@ -320,9 +320,9 @@ export const files = {
   renameEntry: (request: RenameEntryRequest) => callCommand('rename_entry', { ...request }, isRenameEntryResult),
   trashImpact: (request: TrashImpactRequest) => callCommand('get_trash_impact', { ...request }, isTrashImpact),
   trashEntry: (request: TrashEntryRequest) => callCommand('trash_entry', { ...request }, isTrashEntryResult),
-  open: (ref: FileRef, mode?: Exclude<OpenMode, 'normal'>, documentId?: DocumentId) => callCommand(
+  open: (ref: FileRef, mode?: Exclude<OpenMode, 'normal'>, documentId?: DocumentId, encodingOverride?: string) => callCommand(
     'open_document',
-    { ref, ...(mode ? { mode } : {}), ...(documentId ? { documentId } : {}) },
+    { ref, ...(mode ? { mode } : {}), ...(documentId ? { documentId } : {}), ...(encodingOverride ? { encodingOverride } : {}) },
     isOpenDocument,
   ),
   release: (documentId: DocumentId) => callCommand('release_document', { documentId }, isReleaseDocumentResult),
