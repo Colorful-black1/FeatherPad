@@ -21,6 +21,7 @@ use tauri::{
 use tauri_plugin_dialog::DialogExt;
 pub mod assets;
 pub mod encoding;
+pub mod export;
 pub mod external;
 pub mod file_ops;
 pub mod replacement;

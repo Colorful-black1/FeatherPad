@@ -1,6 +1,6 @@
 import type { DocumentId, FileRef } from '../shared/contracts/files';
 import { callCommand, isRecord } from './invoke';
-import { isFileRef } from './files';
+import { isFileRef, isSaveAsAck } from './files';
 
 export interface ResourceRequest {
   documentId: DocumentId | null;
@@ -32,6 +32,8 @@ export function isResourceImage(value: unknown): value is ResourceImage {
 }
 
 export const previewBridge = {
+  exportHtml: (request: { documentId: DocumentId; requestId: string; documentVersion: number; html: string }) =>
+    callCommand('export_html', { ...request }, isSaveAsAck),
   read: (request: ResourceRequest) => callCommand('read_preview_resource', { ...request }, isResourceImage),
   link: (request: Omit<ResourceRequest, 'maxBytes'>) => callCommand('authorize_preview_link', { ...request }, isFileRef),
   openExternal: (url: string) => callCommand('open_external_preview', { url, confirmed: true }, (value): value is boolean => typeof value === 'boolean'),

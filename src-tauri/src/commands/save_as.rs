@@ -30,39 +30,51 @@ pub async fn save_document_as(
             .into())
         }
     };
-    let service = app.state::<SharedFiles>().inner().clone();
-    let active = app.state::<Arc<InFlightSaves>>().inner().clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
         let request: SaveAsRequest = serde_json::from_value(value)
             .map_err(|_| AppError::new(ErrorCode::InvalidInput, "另存快照格式无效。"))?;
-        let _permit = active.enter_as(&request)?;
-        let start = service
-            .lock()
-            .map_err(|_| internal_error())?
-            .begin_save_as(&request)?;
-        let ticket = match start {
-            SaveAsStart::Fresh(ticket) => ticket,
-            SaveAsStart::Replay(result) => return result,
-        };
-        let result = choose_and_save(&app, &service, request);
-        service
-            .lock()
-            .map_err(|_| internal_error())?
-            .finish_save_as(ticket, result)
+        perform_save_as(&app, request, false)
     })
     .await
     .unwrap_or_else(|_| Err(internal_error()));
     Ok(result.into())
 }
 
+pub(super) fn perform_save_as(
+    app: &AppHandle,
+    request: SaveAsRequest,
+    export_html: bool,
+) -> Result<SaveAsAck, AppError> {
+    let service = app.state::<SharedFiles>().inner().clone();
+    let active = app.state::<Arc<InFlightSaves>>().inner().clone();
+    let _permit = active.enter_as(&request)?;
+    let start = service
+        .lock()
+        .map_err(|_| internal_error())?
+        .begin_save_as(&request)?;
+    let ticket = match start {
+        SaveAsStart::Fresh(ticket) => ticket,
+        SaveAsStart::Replay(result) => return result,
+    };
+    let result = choose_and_save(app, &service, request, export_html);
+    let result = service
+        .lock()
+        .map_err(|_| internal_error())?
+        .finish_save_as(ticket, result);
+    result
+}
+
 fn choose_and_save(
     app: &AppHandle,
     service: &SharedFiles,
     request: SaveAsRequest,
+    export_html: bool,
 ) -> Result<SaveAsAck, AppError> {
     let root = journal_root(app)?;
     let parent = app.get_webview_window("main").ok_or_else(internal_error)?;
-    let title = if request.intent == SaveIntent::Copy {
+    let title = if export_html {
+        "导出 HTML"
+    } else if request.intent == SaveIntent::Copy {
         "保存副本"
     } else {
         "另存为"
@@ -72,7 +84,11 @@ fn choose_and_save(
         .file()
         .set_parent(&parent)
         .set_title(title)
-        .set_file_name("无标题.txt")
+        .set_file_name(if export_html {
+            "文档.html"
+        } else {
+            "无标题.txt"
+        })
         .blocking_save_file();
     let Some(selection) = selection else {
         return Err(AppError::new(

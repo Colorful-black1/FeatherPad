@@ -1,6 +1,6 @@
 # SPEC-markdown：安全 Markdown 阅读与导出
 
-> 模块 `markdown`；业务依赖仅 `editor`、`file-core`。状态：2026-11-03用户确认开始M3，T301–T304实现完成，T305进行中，G3待验。拥有 F-MD-001–011，全部首次在M3验收；完整索引见 [矩阵](../FEATURE-MATRIX.md)。
+> 模块 `markdown`；业务依赖仅 `editor`、`file-core`。状态：2026-11-03用户确认开始M3，T301–T305实现完成，T306进行中，G3待验。拥有 F-MD-001–011，全部首次在M3验收；完整索引见 [矩阵](../FEATURE-MATRIX.md)。
 
 实施决策（T301）：锁定Marked18.1.3（MIT）和DOMPurify3.4.17（Apache-2.0或MPL-2.0），已核对包元数据、首次禁脚本安装。150ms合并后才从CodeMirror复制快照到专用Worker，2秒超时终止Worker；结果绑定documentId/bufferVersion/requestId。宿主执行显式标签白名单清洗后，放入无任何sandbox权限的srcdoc iframe，内层CSP禁脚本/联网/表单/插件，绝不授予same-origin、Tauri IPC或顶层导航。T301中的URL和图片只显示安全占位，真实授权资源与用户点击动作留T303。三模式在应用组合层连接editor，editor不反向导入markdown。
 
@@ -74,6 +74,8 @@ raw HTML默认禁用并按纯文本转义；用户可在设置显式启用清洗
 导出使用同一清理后的AST/资源授权，选择目标路径与覆盖确认；导出dirty缓冲时显示“当前未保存内容”及version。导出期间源变更不混入既有作业，可选择取消重做；最终说明导出的是哪个快照。写目标通过file-core安全临时写/替换，取消/失败不保留伪完整目标，已存在目标不损坏。
 
 HTML：生成独立UTF8 HTML，内置受控CSS、目录anchor、可嵌入本地允许资源，不输出任何Tauri桥和本机绝对路径。单资源≤20MiB，总嵌入≤50MiB；缺失/越权/超限资源列出并允许“带占位继续/取消”，不能导出后静默失图。离线打开不请求网络；含远程图仍占位，外部链接保留安全URL供用户点击。
+
+T305实现决策：单独冻结CodeMirror Text/version，不要求先保存；独立Worker和资源序列可取消。复用预览清洗生成便携HTML后去除运行时/应用动作，任务只读、代码保留离线高亮，本地文档链接转为无路径文本。最终HTML≤64MiB，与现有安全保存事务预算一致；超限明确拒绝且不截断。原生专用命令强制Copy/UTF8，通过原生选择器及既有save_as核心写入，源文档不接受导出Ack，保存状态/路径/undo不变。
 
 PDF：必须实现真正本地生成PDF到所选路径，不能仅调用浏览器打印对话框并要求用户自行选打印机。Windows优先验证WebView2 PrintToPdf/PrintToPdfStream的Tauri可调用适配器；清理内容在无IPC、无网络的专用渲染面板加载，等本地图像/字体就绪后输出。接口/运行时不支持则返回PDF_BACKEND_UNAVAILABLE和离线修复指引，不能假报成功；M3/M5需把能力验证完成，否则v1未完成。
 

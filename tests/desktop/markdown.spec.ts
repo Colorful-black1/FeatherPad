@@ -122,6 +122,37 @@ test('real Release reads a shared Markdown buffer offline in an isolated preview
     expect(requests).toEqual([]);
     expect(await page.evaluate(() => Reflect.get(window, 'pwned'))).toBeUndefined();
     await page.screenshot({ path: path.join(evidence, 'markdown-split.png') });
+    await modes.getByRole('button', { name: '源码', exact: true }).click();
+    await page.locator('.cm-content').focus();
+    await page.keyboard.press('Control+End');
+    await page.keyboard.insertText('\n\n## 只在缓冲的导出内容\n');
+    await page.getByRole('button', { name: '导出…', exact: true }).click();
+    const exporter = page.getByRole('dialog', { name: '导出 Markdown', exact: true });
+    await expect(exporter.getByText(/当前未保存内容/)).toBeVisible();
+    await expect(exporter.getByRole('region', { name: '导出缺失资源', exact: true })).toContainText('远程');
+    const htmlTarget = path.join(dataDir, '离线导出.html');
+    await exporter.getByRole('button', { name: '带占位继续导出…', exact: true }).click();
+    await chooser.select('save', htmlTarget);
+    await expect(exporter).toBeHidden();
+    const html = await readFile(htmlTarget, 'utf8');
+    expect(html).toContain('只在缓冲的导出内容');
+    expect(html).toContain('data:image/gif;base64,');
+    expect(html).not.toMatch(/<script|__TAURI|data-(?:task|copy|link|source)-|https:\/\/example.com\/leak|file:\/\//i);
+    expect(html).not.toContain(dataDir);
+    expect(sha(await readFile(source))).toBe(originalHash);
+    const portableContext = await chromium.launchPersistentContext(path.join(dataDir, 'portable-profile'), { channel: 'msedge', headless: true, offline: true });
+    try {
+      const portable = portableContext.pages()[0]!;
+      await portable.goto(`file:///${htmlTarget.replaceAll('\\', '/')}`);
+      await expect(portable.getByRole('heading', { name: '只在缓冲的导出内容', exact: true })).toBeVisible();
+      await expect.poll(() => portable.getByRole('img', { name: '像素', exact: true }).evaluate(image => (image as HTMLImageElement).naturalWidth)).toBe(1);
+      expect(await portable.locator('script').count()).toBe(0);
+    } finally { await portableContext.close(); }
+    await page.locator('.cm-content').focus();
+    await page.keyboard.press('Control+z');
+    await expect(page.locator('.cm-line')).toHaveText(lines);
+    await modes.getByRole('button', { name: '分屏', exact: true }).click();
+    await expect(frame.getByRole('heading', { name: '原生阅读', exact: true })).toBeVisible();
     await frame.getByRole('button', { name: '同目录文件', exact: true }).click();
     await expect(page.getByRole('tab', { name: 'linked.md', exact: true })).toBeVisible();
     await expect(page.locator('.cm-content')).toHaveText('# 链接文档');
@@ -129,7 +160,8 @@ test('real Release reads a shared Markdown buffer offline in an isolated preview
       executableSha256, dataDir, webview2: await page.evaluate(() => navigator.userAgent),
       originalHash, afterHash: sha(await readFile(source)), isolation, remoteRequests: requests.length,
       realChooser: true, sharedBufferAndUndo: true, browserOffline: true, sourceBytesUnchanged: true,
-      localImages: true, svgSanitized: true, directoryAuthorization: true, restrictedHtml: true, localLinkOpened: true }, null, 2));
+      localImages: true, svgSanitized: true, directoryAuthorization: true, restrictedHtml: true, localLinkOpened: true,
+      htmlTarget, htmlSha256: sha(await readFile(htmlTarget)), htmlOfflineReopened: true, dirtySnapshotExported: true }, null, 2));
   } finally {
     await writeFile(path.join(evidence, 'diagnostics.json'), JSON.stringify(diagnostics, null, 2));
     if (child.exitCode === null) child.kill();

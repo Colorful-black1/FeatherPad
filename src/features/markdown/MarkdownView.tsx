@@ -14,6 +14,7 @@ import { ExternalLinkDialog } from './ExternalLinkDialog';
 import { prepareRawHtml } from './raw-html';
 import { Outline } from './Outline';
 import { useMarkdownScroll } from './scroll-sync';
+import { ExportDialog } from './ExportDialog';
 
 interface DocumentContentProps {
   registry: DocumentRegistry; id: DocumentId; autoFocus: boolean;
@@ -40,6 +41,7 @@ function MarkdownView({ registry, id, autoFocus, group, dark, allowHtml, onActiv
   const [notice, setNotice] = useState<string | null>(null);
   const [directory, setDirectory] = useState<FileRef | null>(null);
   const [syncScroll, setSyncScroll] = useState(true);
+  const [exportOpen, setExportOpen] = useState(false);
   const previewFrame = useRef<HTMLIFrameElement>(null);
   const restorePreviewFocus = useRef(false);
   const record = registry.getDocument(id)!;
@@ -124,10 +126,14 @@ function MarkdownView({ registry, id, autoFocus, group, dark, allowHtml, onActiv
           {['源码', '阅读', '分屏'][index]}</button>)}
       </div>
       <span>{effectiveMode === 'source' ? 'Markdown · 同一正文缓冲' : `阅读快照 · v${version}`}</span>
+      <button type="button" className="plain-button" disabled={record.summary.closing || record.summary.hotExitFrozen}
+        onClick={() => setExportOpen(true)}>导出…</button>
       {effectiveMode === 'split' && <label className="toolbar-check"><input type="checkbox" aria-label="Markdown同步滚动"
         checked={syncScroll} disabled={Boolean(reply?.mappingWarning)} onChange={event => setSyncScroll(event.currentTarget.checked)} />按块同步滚动</label>}
     </header>
     {notice && <p className="notice" role="status">{notice}</p>}
+    {exportOpen && <ExportDialog registry={registry} id={id} directory={directory} allowHtml={allowHtml}
+      onClose={() => setExportOpen(false)} onSaved={setNotice} />}
     {reply?.htmlWarning && <p className="notice" role="alert">{reply.htmlWarning}</p>}
     {reply?.mappingWarning && <p className="notice" role="status">{reply.mappingWarning}</p>}
     {links.pending && <ExternalLinkDialog url={links.pending.url} busy={links.busy}
