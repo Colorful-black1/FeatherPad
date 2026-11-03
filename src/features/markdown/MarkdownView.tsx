@@ -12,6 +12,8 @@ import { ResourcePanel } from './ResourcePanel';
 import { usePreviewLinks } from './use-preview-links';
 import { ExternalLinkDialog } from './ExternalLinkDialog';
 import { prepareRawHtml } from './raw-html';
+import { Outline } from './Outline';
+import { useMarkdownScroll } from './scroll-sync';
 
 interface DocumentContentProps {
   registry: DocumentRegistry; id: DocumentId; autoFocus: boolean;
@@ -37,6 +39,7 @@ function MarkdownView({ registry, id, autoFocus, group, dark, allowHtml, onActiv
   const [compact, setCompact] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [directory, setDirectory] = useState<FileRef | null>(null);
+  const [syncScroll, setSyncScroll] = useState(true);
   const previewFrame = useRef<HTMLIFrameElement>(null);
   const restorePreviewFocus = useRef(false);
   const record = registry.getDocument(id)!;
@@ -44,12 +47,15 @@ function MarkdownView({ registry, id, autoFocus, group, dark, allowHtml, onActiv
   const channel = useMemo(() => `${crypto.randomUUID().replaceAll('-', '')}${version.toString(36)}${id.length.toString(36)}`, [id, version]);
   const effectiveMode = mode === 'split' && compact ? 'read' : mode;
   const render = useMarkdownRender(registry, id, version, effectiveMode !== 'source', allowHtml);
-  const rawReply = render.state?.reply;
+  const rawReply = effectiveMode === 'source' ? undefined : render.state?.reply;
   const reply = useMemo(() => rawReply ? prepareRawHtml(rawReply) : undefined, [rawReply]);
   const resources = useMarkdownResources(registry, id, reply, directory);
   const links = usePreviewLinks({ registry, id, directory, reply,
     frame: previewFrame, channel, onNotice: setNotice, onOpenFile });
   const openPreviewLink = links.openIndex;
+  const scroll = useMarkdownScroll({ registry, id, root, frame: previewFrame, reply, channel,
+    enabled: syncScroll, split: effectiveMode === 'split', previewAction: restorePreviewFocus });
+  const previewScroll = scroll.previewScroll;
   const readOnly = !!record.summary.readOnlyReason || record.summary.closing || record.summary.hotExitFrozen;
   const frame = useMemo(() => reply ? markdownFrame(reply.html, dark, channel, readOnly,
     resources.images, reply.images) : '', [reply, dark, channel, readOnly, resources.images]);
@@ -83,11 +89,13 @@ function MarkdownView({ registry, id, autoFocus, group, dark, allowHtml, onActiv
       } else if (kind === 'link') {
         onActivate?.();
         openPreviewLink(index);
+      } else if (kind === 'scroll') {
+        previewScroll(index);
       }
     };
     window.addEventListener('message', receive);
     return () => window.removeEventListener('message', receive);
-  }, [reply, channel, id, registry, readOnly, onActivate, openPreviewLink]);
+  }, [reply, channel, id, registry, readOnly, onActivate, openPreviewLink, previewScroll]);
   useEffect(() => {
     if (!root.current) return;
     const observer = new ResizeObserver(entries => setCompact((entries[0]?.contentRect.width ?? 0) < 650));
@@ -116,9 +124,12 @@ function MarkdownView({ registry, id, autoFocus, group, dark, allowHtml, onActiv
           {['源码', '阅读', '分屏'][index]}</button>)}
       </div>
       <span>{effectiveMode === 'source' ? 'Markdown · 同一正文缓冲' : `阅读快照 · v${version}`}</span>
+      {effectiveMode === 'split' && <label className="toolbar-check"><input type="checkbox" aria-label="Markdown同步滚动"
+        checked={syncScroll} disabled={Boolean(reply?.mappingWarning)} onChange={event => setSyncScroll(event.currentTarget.checked)} />按块同步滚动</label>}
     </header>
     {notice && <p className="notice" role="status">{notice}</p>}
     {reply?.htmlWarning && <p className="notice" role="alert">{reply.htmlWarning}</p>}
+    {reply?.mappingWarning && <p className="notice" role="status">{reply.mappingWarning}</p>}
     {links.pending && <ExternalLinkDialog url={links.pending.url} busy={links.busy}
       onCancel={links.close} onConfirm={() => void links.confirm()} />}
     {mode === 'split' && compact && <p className="notice" role="note">空间不足，分屏暂以阅读显示；可切换源码或扩大编辑区域。</p>}
@@ -142,12 +153,14 @@ function MarkdownView({ registry, id, autoFocus, group, dark, allowHtml, onActiv
         }} />}
       {effectiveMode !== 'source' && <section className="markdown-reading" aria-label="Markdown阅读预览"
         aria-busy={!render.state || render.state.status === 'loading'}>
+        {reply && <Outline headings={reply.headings} onGo={scroll.go} />}
         {!render.state || render.state.status === 'loading'
           ? <div className="markdown-render-status"><p role="status">正在生成阅读快照…</p>
             <button type="button" className="plain-button" onClick={render.cancel}>取消渲染</button></div>
           : render.state.status === 'ready'
             ? <><iframe ref={previewFrame} title={`${record.summary.title} Markdown阅读 · ${group}`} sandbox="allow-scripts" srcDoc={frame}
               onLoad={() => {
+                scroll.frameReady();
                 if (!restorePreviewFocus.current) return;
                 restorePreviewFocus.current = false;
                 previewFrame.current?.focus();

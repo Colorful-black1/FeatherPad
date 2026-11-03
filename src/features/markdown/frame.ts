@@ -22,7 +22,7 @@ export function markdownFrame(html: string, dark: boolean, channel: string, read
     if (data.attrName === 'src' && !accepted.has(data.attrValue)) data.keepAttr = false;
   });
   const safe = purifier.sanitize(html, { ALLOWED_TAGS: tags,
-    ALLOWED_ATTR: ['class', 'title', 'open', 'colspan', 'rowspan', 'aria-label', 'start', 'align', 'type', 'checked', 'disabled', 'data-task-id', 'data-code-id', 'data-copy-id', 'data-image-id', 'data-link-id', 'src', 'alt', 'width', 'height'],
+    ALLOWED_ATTR: ['id', 'data-source-from', 'class', 'title', 'open', 'colspan', 'rowspan', 'aria-label', 'start', 'align', 'type', 'checked', 'disabled', 'data-task-id', 'data-code-id', 'data-copy-id', 'data-image-id', 'data-link-id', 'src', 'alt', 'width', 'height'],
     ALLOW_DATA_ATTR: false, ALLOW_ARIA_ATTR: false });
   const runtime = runtimeSource.replace(/\r\n/g, '\n').trim();
   return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">

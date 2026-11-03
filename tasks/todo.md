@@ -1,6 +1,6 @@
 # 开发任务清单
 
-当前阶段：**M0/G0、M1/G1、M2/G2 已通过（2026-11-03）；用户已确认继续，M3/T304进行中**。完整 v1 需要 M0–M5 全部 86 项必需功能，M1 只是可试用 MVP，不是成品。
+当前阶段：**M0/G0、M1/G1、M2/G2 已通过（2026-11-03）；用户已确认继续，M3/T305进行中**。完整 v1 需要 M0–M5 全部 86 项必需功能，M1 只是可试用 MVP，不是成品。
 
 2026-11-03 用户修订验收粒度：**以 M 为验收单元**。M 内各 T 只做实现和最小自检，不再每个 T 跑一遍大量测试；整个 M 的 T 全部完成后，统一执行一次全量回归、真实 Release 验收和矩阵证据汇总，通过后打勾并停止，等待用户确认后再推进下一阶段。M0 与 M1 的已完成任务产生于旧的逐任务策略，其逐项证据仍然有效，保存在 [PROGRESS](PROGRESS.md) 和 [M0验收](../docs/acceptance/M0.md)、[M1验收](../docs/acceptance/M1.md)（按 `T1xx` 检索即可定位）。
 
@@ -164,8 +164,8 @@ pnpm test:desktop:all
 | [x] T301 Markdown三模式 | T216 | F-MD-001..002 | source/read/split 共 buffer，GFM 渲染，双组布局不改源码 | src/features/markdown/MarkdownView.tsx、src/workers/markdown.worker.ts、src/features/markdown/parser.ts |
 | [x] T302 代码块/任务编辑 | T301 | F-MD-003,F-MD-011 | 高亮复制安全；勾任务定位原始节点，一次 undo，旧映射不可改 | src/features/markdown/code-block.ts、src/features/markdown/task-mapping.ts |
 | [x] T303 安全资源和链接 | T301 | F-MD-004,F-MD-006..007 | 相对资源授权、远程默认阻止、受限 HTML 清洗、危险协议拒绝 | src/features/markdown/sanitize.ts、src/features/markdown/links.ts、src-tauri/src/services/assets.rs |
-| [~] T304 目录与同步滚动 | T302 | F-MD-005,F-MD-008 | H1-6 稳定锚点、源映射、版本取消，大文档降级 | src/features/markdown/Outline.tsx、src/features/markdown/source-map.ts、src/features/markdown/scroll-sync.ts |
-| [ ] T305 HTML导出 | T303,T304 | F-MD-009 | 实际离线独立 HTML，安全资源内嵌、覆盖确认与失败保护 | src/features/markdown/export-html.ts、src-tauri/src/services/export.rs |
+| [x] T304 目录与同步滚动 | T302 | F-MD-005,F-MD-008 | H1-6 稳定锚点、源映射、版本取消，大文档降级 | src/features/markdown/Outline.tsx、src/features/markdown/source-map.ts、src/features/markdown/scroll-sync.ts |
+| [~] T305 HTML导出 | T303,T304 | F-MD-009 | 实际离线独立 HTML，安全资源内嵌、覆盖确认与失败保护 | src/features/markdown/export-html.ts、src-tauri/src/services/export.rs |
 | [ ] T306 PDF导出spike和实现 | T305 | F-MD-010 | WebView2 生成真 PDF，纸张方向边距，中文分页/取消失败 | src-tauri/src/platform/windows/pdf.rs、src/features/markdown/ExportDialog.tsx |
 | [ ] T307 JSON/XML/Web格式化 | T216 | F-SEARCH-010 | Worker 按需 parser、JSONC 注释、格式一次 undo、解析错定位且不执行代码 | src/workers/format.worker.ts、src/features/search-tools/formatters.ts、src/features/search-tools/format.ts |
 | [ ] T308 SQL/YAML格式化 | T307 | F-SEARCH-011 | SQL 显式方言；YAML 注释锚点多文档保真，Java 无伪 formatter | src/features/search-tools/formatters-sql.ts、src/features/search-tools/formatters-yaml.ts |

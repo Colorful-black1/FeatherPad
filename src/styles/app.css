@@ -144,6 +144,18 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round
 .markdown-resource-details ul { padding-inline-start: var(--space-5); }
 .markdown-resource-panel > button { margin: var(--space-1) var(--space-3) var(--space-2); }
 .external-link-target { overflow-wrap: anywhere; font-family: var(--font-mono); }
+.markdown-outline { flex: 0 0 auto; padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border); background: var(--bg-surface); color: var(--text-secondary); font-size: 12px; }
+.markdown-outline > summary { cursor: pointer; }
+.markdown-outline > label { display: flex; align-items: center; gap: var(--space-2); margin: var(--space-2) 0; }
+.markdown-outline input { min-width: 0; flex: 1; }
+.markdown-outline ol { list-style: none; padding: 0; margin: 0; max-height: 10rem; overflow: auto; }
+.markdown-outline li { display: flex; align-items: baseline; }
+.markdown-outline li[data-level="2"] { padding-inline-start: var(--space-2); }
+.markdown-outline li[data-level="3"] { padding-inline-start: var(--space-4); }
+.markdown-outline li[data-level="4"] { padding-inline-start: var(--space-6); }
+.markdown-outline li[data-level="5"] { padding-inline-start: var(--space-8); }
+.markdown-outline li[data-level="6"] { padding-inline-start: calc(var(--space-8) + var(--space-2)); }
+.markdown-outline li > button:last-child { overflow-wrap: anywhere; text-align: start; }
 .editor-keyboard-panel { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); padding: var(--space-1) var(--space-2); color: var(--text-secondary); background: var(--bg-sidebar); font: 11px/1.5 var(--font-ui); }
 .editor-keyboard-panel button { border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 0 var(--space-2); min-height: 24px; background: var(--bg-surface); }
 .editor-keyboard-panel button[aria-pressed="true"] { background: var(--bg-selected); color: var(--accent); border-color: var(--accent); }
