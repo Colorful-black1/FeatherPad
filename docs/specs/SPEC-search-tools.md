@@ -1,6 +1,6 @@
 # SPEC-search-tools：查找、受保护替换与格式工具
 
-> 轻羽 FeatherPad；模块 `search-tools`；业务依赖仅 `editor`、`workspace`、`file-core`。状态：M1 F-SEARCH-001–003与M2 F-SEARCH-004–009已通过G1/G2；M3的T307实现完成，T308进行中，F-SEARCH-010–012统一验收仍待G3。详见 [矩阵](../FEATURE-MATRIX.md)。
+> 轻羽 FeatherPad；模块 `search-tools`；业务依赖仅 `editor`、`workspace`、`file-core`。状态：M1 F-SEARCH-001–003与M2 F-SEARCH-004–009已通过G1/G2；M3的T307–T308实现完成，T309进行中，F-SEARCH-010–012统一验收仍待G3。详见 [矩阵](../FEATURE-MATRIX.md)。
 
 ## Objective 与提供方契约
 
@@ -108,6 +108,8 @@ T307决策：锁定jsonc-parser3.3.1、Prettier3.9.10、@prettier/plugin-xml3.4.
 | Java | **仅editor高亮，没有语义或通用formatter** | 格式化按钮禁用说明，不调用JS formatter碰运气 |
 
 具体库及SQL方言默认通用，写入设置必须可见。格式化不能执行shell、读取工程formatter脚本、安装插件或联网。许可证/包体/安全维护纳入M3验证；格式不保真必须失败，不以“最佳努力”静默删注释。
+
+T308实现：锁定sql-formatter15.9.0（MIT）与yaml2.9.1（ISC），禁脚本安装、生产audit零已知漏洞；锁变化仅新依赖与Vite可选yaml peer绑定，未升级既有版本。[SQL后端](https://github.com/sql-formatter-org/sql-formatter)只暴露通用/SQLite/PostgreSQL/MySQL四种方言，关键字/标识符/字符串/参数保留，不代参、不连接数据库，显式拒绝过程/函数/触发器/DELIMITER及未选方言的反引号，仍非语义验证。YAML用本地Prettier源感知printer排版前后，独立[yaml CST/AST](https://eemeli.org/yaml/)核对全部注释、映射顺序、原数值字面量、锚点/别名、tag、多文档/指令和块scalar header/chomp及语义值；不转原生对象dump、不展开别名，无法保真拒绝。YAML禁Tab缩进；所有作业沿用T307版本/预算/预览/undo协议。
 
 ## 文本工具（F-SEARCH-012）
 

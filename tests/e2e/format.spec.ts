@@ -55,3 +55,35 @@ test('invalid syntax reports a location without changing the buffer; formatted H
   expect(await page.evaluate(() => Reflect.get(window, 'formatterPwned'))).toBeUndefined();
   expect(requests).toEqual([]);
 });
+
+test('SQL requires its visible dialect and YAML formatting preserves anchors, comments and block chomp through undo', async ({ page }) => {
+  await page.goto('/'); await page.getByRole('button', { name: '新建文本', exact: true }).click();
+  const language = page.getByRole('combobox', { name: '语言模式', exact: true });
+  await language.selectOption('sql');
+  const editor = page.locator('.cm-content');
+  await editor.focus(); await page.keyboard.insertText('select `name` from `users` where id=:id;');
+  await page.getByRole('button', { name: '格式化…', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '格式化文档', exact: true });
+  await expect(dialog.getByRole('combobox', { name: 'SQL格式化方言', exact: true })).toHaveValue('sql');
+  await dialog.getByRole('button', { name: '生成格式预览', exact: true }).click();
+  await expect(dialog.getByRole('alert')).toContainText('需要显式选择SQLite或MySQL');
+  await dialog.getByRole('combobox', { name: 'SQL格式化方言', exact: true }).selectOption('mysql');
+  await dialog.getByRole('button', { name: '生成格式预览', exact: true }).click();
+  await expect(dialog.locator('pre')).toContainText('`name`');
+  await expect(dialog.locator('pre')).toContainText(':id');
+  await dialog.getByRole('button', { name: '应用为一次撤销', exact: true }).click();
+  await editor.focus(); await page.keyboard.press('Control+z');
+  await expect(page.locator('.cm-line')).toHaveText(['select `name` from `users` where id=:id;']);
+  await language.selectOption('yaml'); await editor.focus(); await page.keyboard.press('Control+a');
+  const yaml = '# 注释\nbase: &base\n   key: value\nref: *base\ntext: |-\n  literal\n';
+  await page.keyboard.insertText(yaml);
+  await page.getByRole('button', { name: '格式化…', exact: true }).click();
+  await dialog.getByRole('button', { name: '生成格式预览', exact: true }).click();
+  await expect(dialog.locator('pre')).toContainText('&base');
+  await expect(dialog.locator('pre')).toContainText('*base');
+  await expect(dialog.locator('pre')).toContainText('|-');
+  await expect(dialog.locator('pre')).toContainText('# 注释');
+  await dialog.getByRole('button', { name: '应用为一次撤销', exact: true }).click();
+  await editor.focus(); await page.keyboard.press('Control+z');
+  expect((await page.locator('.cm-line').allTextContents()).join('\n')).toBe(yaml);
+});

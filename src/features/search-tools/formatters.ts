@@ -1,19 +1,20 @@
 import type { Options, Parser, Plugin } from 'prettier';
+import type { SqlDialect } from './format-options';
+import { FormatFailure } from './format-error';
 
-export const formatLanguages = ['json', 'jsonc', 'xml', 'html', 'css', 'javascript', 'jsx', 'typescript', 'tsx'] as const;
+export const formatLanguages = ['json', 'jsonc', 'xml', 'html', 'css', 'javascript', 'jsx', 'typescript', 'tsx', 'sql', 'yaml'] as const;
 export type FormatLanguage = typeof formatLanguages[number];
 export function formatLanguage(language: string, path: string | null): FormatLanguage | null {
   if (language === 'javascript' && /\.jsx$/i.test(path ?? '')) return 'jsx';
   if (language === 'typescript' && /\.tsx$/i.test(path ?? '')) return 'tsx';
   return formatLanguages.includes(language as FormatLanguage) ? language as FormatLanguage : null;
 }
-export interface FormatOptions { indent: 2 | 4 | 8; useTabs: boolean; singleQuote: boolean; semi: boolean; trailingComma: 'preserve' | 'none' }
-export const defaultFormatOptions: FormatOptions = { indent: 2, useTabs: false, singleQuote: false, semi: true, trailingComma: 'preserve' };
+export interface FormatOptions { indent: 2 | 4 | 8; useTabs: boolean; singleQuote: boolean; semi: boolean; trailingComma: 'preserve' | 'none'; sqlDialect: SqlDialect }
+export const defaultFormatOptions: FormatOptions = { indent: 2, useTabs: false, singleQuote: false, semi: true, trailingComma: 'preserve', sqlDialect: 'sql' };
 export interface FormatDiagnostic { message: string; line: number; column: number }
 export interface FormatRequest { requestId: string; documentId: string; version: number; language: FormatLanguage; options: FormatOptions; source: string }
 export type FormatReply = Pick<FormatRequest, 'requestId' | 'documentId' | 'version'> & ({ ok: true; text: string } | { ok: false; diagnostic: FormatDiagnostic });
 
-class FormatFailure extends Error { constructor(message: string, readonly offset = 0) { super(message); } }
 function diagnostic(source: string, reason: unknown): FormatDiagnostic {
   if (reason instanceof FormatFailure) {
     const lines = source.slice(0, reason.offset).split('\n');
@@ -91,7 +92,7 @@ function xmlBoundary(source: string) {
   }
 }
 
-async function webFormat(source: string, language: Exclude<FormatLanguage, 'json' | 'jsonc'>, options: FormatOptions): Promise<string> {
+async function webFormat(source: string, language: Exclude<FormatLanguage, 'json' | 'jsonc' | 'sql' | 'yaml'>, options: FormatOptions): Promise<string> {
   const prettier = await import('prettier/standalone');
   const plugins: Plugin[] = [];
   let parser: string = language;
@@ -133,8 +134,11 @@ export async function formatSource(request: FormatRequest): Promise<FormatReply>
   try {
     if (new TextEncoder().encode(request.source).byteLength >= 20 * 1024 * 1024) throw new FormatFailure('20MiB及以上文档不能格式化。');
     if (!formatLanguages.includes(request.language)) throw new FormatFailure('当前语言没有格式化器，Java仅提供高亮。');
-    const text = request.language === 'json' || request.language === 'jsonc' ? await jsonFormat(request.source, request.language, request.options)
-      : await webFormat(request.source, request.language, request.options);
+    let text: string;
+    if (request.language === 'json' || request.language === 'jsonc') text = await jsonFormat(request.source, request.language, request.options);
+    else if (request.language === 'sql') text = await (await import('./formatters-sql')).formatSql(request.source, request.options);
+    else if (request.language === 'yaml') text = await (await import('./formatters-yaml')).formatYaml(request.source, request.options);
+    else text = await webFormat(request.source, request.language, request.options);
     if (new TextEncoder().encode(text).byteLength >= 20 * 1024 * 1024) throw new FormatFailure('格式化结果超过20MiB预算。');
     return { ...identity, ok: true, text };
   } catch (reason: unknown) { return { ...identity, ok: false, diagnostic: diagnostic(request.source, reason) }; }

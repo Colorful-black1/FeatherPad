@@ -5,7 +5,7 @@
 - 产品名称：**轻羽 FeatherPad**。
 - 当前交付：完整产品方案、86项功能矩阵、模块规格、UI规范与离线交互原型、技术/本机环境文档、M0–M5实现计划、57个开发任务、agent执行入口。
 - 产品代码：**M0/G0、M1/G1、M2/G2均已通过（2026-11-03）**。M1提供真实文件打开/编辑/保存/恢复闭环；M2补齐编码与换行、多根/收藏/工作区文件、安全遍历与监听、拖放移动、分栏/多光标/折叠/导航、全文搜索、跨文件替换、全局唤起与隐私清理。完整v1仍需M3–M5。
-- 当前：**用户已于2026-11-03确认继续，M3/T301–T307实现完成，当前T308**。M2统一验收节点已提交为`a7e8070`。每完成一个M阶段都停止并等待确认，不自动进入下一阶段。
+- 当前：**用户已于2026-11-03确认继续，M3/T301–T308实现完成，当前T309**。M2统一验收节点已提交为`a7e8070`。每完成一个M阶段都停止并等待确认，不自动进入下一阶段。
 - 本次交付检查：详见 [DELIVERY-CHECK](../docs/DELIVERY-CHECK.md)，不代表产品关卡G0–G5通过。
 
 ## 已核查环境
@@ -14,6 +14,11 @@
 
 ## 实施证据（未来逐任务追加）
 
+### 2026-11-03 T308实现完成：显式SQL方言与YAML保真（G3待验）
+
+- F-SEARCH-011：SQL通用/SQLite/PostgreSQL/MySQL可见选择、仅词法排版，不代参/执行；保留关键字、字面量/注释/标识符与参数，拒绝过程语法和未选方言反引号。YAML源感知printer经独立CST/AST前后比对，核对原数值、注释、顺序、锚点/别名、tag、多文档/指令与block chomp，递归alias不展开，无法保真拒绝，Java仍禁用。
+- 最小自检exit0：typecheck/受影响ESLint；格式相关8项通过，追加CST全注释与纯注释文档后3项定向复验通过；Web1 passed/1.1秒（总16.2秒）验证显式方言拒绝→选MySQL→预览/应用/undo、YAML注释锚点/chomp与undo。日志`.artifacts/T308/logs/{unit-sql-yaml-r3,web-sql-yaml}.log`，首轮参数/方言失败日志保留。SQL参数配置和反引号边界已修；未降低断言。
+- 精确新增sql-formatter15.9.0（MIT）和yaml2.9.1（ISC），禁脚本安装，生产audit零已知漏洞；锁定版本未自动升级，Vite仅增加可选yaml peer绑定。元数据/audit在`.artifacts/T308/`。未写盘、未重复Release；G3整体待验。下一T309。
 ### 2026-11-03 T307实现完成：JSON/XML/Web格式化（G3待验）
 
 - F-SEARCH-010：全文冻结快照、按需本地Worker/2秒取消/大文档确认、生成预览后一次undo应用，迟到版本拒绝。JSON/JSONC token edits保护大数、重复key和注释；XML strict保mixed-content/CDATA/namespace，拒绝DTD/自定义实体；HTML/CSS/JS/TS/显式JSX/TSX parser仅排版、不执行代码/项目配置，Java禁用。混合EOL原token按序保留，新增用原主导类型，编码不变、undo完整恢复。

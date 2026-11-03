@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { DocumentId } from '../../shared/contracts/files';
 import type { DocumentRegistry } from '../editor/documents';
 import { defaultFormatOptions, formatLanguage, formatLanguages, type FormatLanguage, type FormatOptions, type FormatReply, type FormatRequest } from './formatters';
+import { sqlDialects, type SqlDialect } from './format-options';
 
 export function FormatDialog({ registry, id, onClose }: { registry: DocumentRegistry; id: DocumentId; onClose: () => void }) {
   const [snapshot] = useState(() => {
@@ -68,7 +69,12 @@ export function FormatDialog({ registry, id, onClose }: { registry: DocumentRegi
         <label><input type="checkbox" checked={options.semi} onChange={event => changeOptions({ ...options, semi: event.currentTarget.checked })} />JS/TS分号</label>
         <label>尾逗号 <select aria-label="格式化尾逗号" value={options.trailingComma} onChange={event => changeOptions({ ...options, trailingComma: event.currentTarget.value as FormatOptions['trailingComma'] })}>
           <option value="preserve">JSONC保留 / Web标准</option><option value="none">移除</option></select></label>
+        {language === 'sql' && <label>SQL方言 <select aria-label="SQL格式化方言" value={options.sqlDialect}
+          onChange={event => changeOptions({ ...options, sqlDialect: event.currentTarget.value as SqlDialect })}>
+          {sqlDialects.map(dialect => <option key={dialect} value={dialect}>{dialect === 'sql' ? '通用SQL' : dialect}</option>)}</select></label>}
       </fieldset>
+      {language === 'sql' && <p role="note">仅所选方言的词法排版，不验证SQL语义，不支持存储过程/PLSQL/TSQL/任意厂商扩展，不连接数据库。</p>}
+      {language === 'yaml' && <p role="note">使用空格缩进；对照CST保留注释、锚点/别名、tag、多文档和块文本chomp，无法保真则拒绝。</p>}
       <p>只处理全文语法，不执行代码或项目配置。XML保留内容空白；不支持Java、SCSS/Less或任意模板插件。</p>
       {snapshot.mixed && <p role="note">原有混合换行按顺序保留，新增换行使用原主导类型；一次撤销恢复全部换行标记。</p>}
       {large && <label><input type="checkbox" checked={allowLarge} onChange={event => setAllowLarge(event.currentTarget.checked)} />文档超过2MiB，允许本次生成预览（仍限2秒）</label>}
