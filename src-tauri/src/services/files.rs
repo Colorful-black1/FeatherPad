@@ -5,8 +5,8 @@ use super::{
     open_policy::{has_long_line, OpenPolicy},
     snapshot::read_snapshot,
     stream_snapshot::{
-        decode_window, read_stream_snapshot, NewlineStats, StreamEncoding, HEAD_PREVIEW_BYTES,
-        INITIAL_CHUNK_BYTES, MAX_CHUNK_BYTES, MAX_WINDOW_BYTES,
+        decode_window, read_stream_snapshot_with_encoding, NewlineStats, StreamEncoding,
+        HEAD_PREVIEW_BYTES, INITIAL_CHUNK_BYTES, MAX_CHUNK_BYTES, MAX_WINDOW_BYTES,
     },
     text::normalize_newlines,
 };
@@ -81,11 +81,21 @@ impl FileService {
             return Err(AppError::new(ErrorCode::Unsupported, "不支持所选编码。"));
         }
         let (file, path) = self.grants.open_file(&reference)?;
-        if preferred_document_id.is_none() {
-            if let Some(id) = self.documents.owner_at(&path).or_else(|| {
+        let existing_id = self
+            .documents
+            .owner_at(&path)
+            .or_else(|| {
                 self.documents
                     .owner_of(&super::identity::identify(&file, &path))
-            }) {
+            })
+            .map(str::to_owned);
+        let retained_encoding = existing_id
+            .as_deref()
+            .and_then(|id| self.documents.encoding(id))
+            .map(str::to_owned);
+        let encoding = retained_encoding.as_deref().or(encoding);
+        if preferred_document_id.is_none() {
+            if let Some(id) = existing_id.as_deref() {
                 // A path reopened between an external replacement and its notification
                 // focuses its existing buffer; only explicit reload may adopt a new lease.
                 if !self.documents.is_fragment(id) {
@@ -119,10 +129,10 @@ impl FileService {
         let initial_size = file.metadata().map_err(crate::models::io_error)?.len();
         match (OpenPolicy::for_size(initial_size), requested_mode) {
             (OpenPolicy::LargeReadOnly, OpenRequestMode::Auto) => {
-                return self.open_large_readonly(reference, file, preferred_document_id);
+                return self.open_large_readonly(reference, file, preferred_document_id, encoding);
             }
             (OpenPolicy::HeadPreviewOnly, OpenRequestMode::HeadPreview) => {
-                return self.open_head_preview(reference, file, preferred_document_id);
+                return self.open_head_preview(reference, file, preferred_document_id, encoding);
             }
             (OpenPolicy::HeadPreviewOnly, OpenRequestMode::Auto) => {
                 return Err(AppError::new(
@@ -165,7 +175,7 @@ impl FileService {
                 let latest_size = latest.metadata().map_err(crate::models::io_error)?.len();
                 return match OpenPolicy::for_size(latest_size) {
                     OpenPolicy::LargeReadOnly => {
-                        self.open_large_readonly(reference, latest, preferred_document_id)
+                        self.open_large_readonly(reference, latest, preferred_document_id, encoding)
                     }
                     OpenPolicy::HeadPreviewOnly => Err(AppError::new(
                         ErrorCode::TooLarge,
@@ -295,12 +305,13 @@ impl FileService {
         let raw_end = request
             .byte_offset
             .saturating_add(request.max_bytes)
-            .saturating_add(8)
+            .saturating_add(4)
             .min(total.saturating_add(MAX_WINDOW_BYTES));
-        let snapshot = read_stream_snapshot(
+        let snapshot = read_stream_snapshot_with_encoding(
             document.file.try_clone().map_err(crate::models::io_error)?,
             super::save::MAX_FILE_BYTES,
             raw_start..raw_end,
+            self.documents.encoding(owner),
         )?;
         if snapshot.identity != document.identity
             || snapshot.path != document.path
@@ -331,11 +342,13 @@ impl FileService {
         reference: FileRef,
         file: std::fs::File,
         preferred_document_id: Option<&str>,
+        encoding: Option<&str>,
     ) -> Result<OpenDocument, AppError> {
-        let snapshot = read_stream_snapshot(
+        let snapshot = read_stream_snapshot_with_encoding(
             file,
             super::save::MAX_FILE_BYTES,
             0..INITIAL_CHUNK_BYTES + 8,
+            encoding,
         )?;
         if OpenPolicy::for_size(snapshot.metadata.size_bytes) != OpenPolicy::LargeReadOnly {
             return Err(AppError::new(
@@ -356,6 +369,8 @@ impl FileService {
             preferred_document_id,
         )?;
         self.documents.mark_fragment(&document_id);
+        self.documents
+            .set_encoding(&document_id, snapshot.encoding.encoding());
         let handle_id = self
             .documents
             .issue_chunk_handle(&document_id)
@@ -389,8 +404,14 @@ impl FileService {
         reference: FileRef,
         file: std::fs::File,
         preferred_document_id: Option<&str>,
+        encoding: Option<&str>,
     ) -> Result<OpenDocument, AppError> {
-        let snapshot = read_stream_snapshot(file, u64::MAX, 0..HEAD_PREVIEW_BYTES + 8)?;
+        let snapshot = read_stream_snapshot_with_encoding(
+            file,
+            u64::MAX,
+            0..HEAD_PREVIEW_BYTES + 8,
+            encoding,
+        )?;
         if OpenPolicy::for_size(snapshot.metadata.size_bytes) != OpenPolicy::HeadPreviewOnly {
             return Err(AppError::new(
                 ErrorCode::Conflict,
@@ -410,6 +431,8 @@ impl FileService {
             preferred_document_id,
         )?;
         self.documents.mark_fragment(&document_id);
+        self.documents
+            .set_encoding(&document_id, snapshot.encoding.encoding());
         Ok(OpenDocument {
             document_id,
             canonical_identity,

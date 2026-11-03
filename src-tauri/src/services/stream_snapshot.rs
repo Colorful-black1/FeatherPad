@@ -23,21 +23,28 @@ pub enum StreamEncoding {
     Utf8 { bom: bool },
     Utf16Le,
     Utf16Be,
+    Utf16LeNoBom,
+    Utf16BeNoBom,
+    Legacy { label: &'static str },
 }
 
 impl StreamEncoding {
     pub fn encoding(self) -> &'static str {
         match self {
             Self::Utf8 { .. } => "utf-8",
-            Self::Utf16Le => "utf-16le",
-            Self::Utf16Be => "utf-16be",
+            Self::Utf16Le | Self::Utf16LeNoBom => "utf-16le",
+            Self::Utf16Be | Self::Utf16BeNoBom => "utf-16be",
+            Self::Legacy { label } => label,
         }
     }
 
     pub fn bom(self) -> &'static str {
         match self {
             Self::Utf8 { bom: true } => "utf8",
-            Self::Utf8 { bom: false } => "none",
+            Self::Utf8 { bom: false }
+            | Self::Utf16LeNoBom
+            | Self::Utf16BeNoBom
+            | Self::Legacy { .. } => "none",
             Self::Utf16Le => "utf16le",
             Self::Utf16Be => "utf16be",
         }
@@ -47,7 +54,10 @@ impl StreamEncoding {
         match self {
             Self::Utf8 { bom: true } => 3,
             Self::Utf16Le | Self::Utf16Be => 2,
-            Self::Utf8 { bom: false } => 0,
+            Self::Utf8 { bom: false }
+            | Self::Utf16LeNoBom
+            | Self::Utf16BeNoBom
+            | Self::Legacy { .. } => 0,
         }
     }
 }
@@ -86,13 +96,22 @@ pub fn read_stream_snapshot(
     read_stream_snapshot_observed(file, limit, window, |_| Ok(()))
 }
 
+pub(super) fn read_stream_snapshot_with_encoding(
+    file: File,
+    limit: u64,
+    window: Range<u64>,
+    encoding: Option<&str>,
+) -> Result<StreamSnapshot, AppError> {
+    read_stream_snapshot_validated(file, limit, window, true, encoding, |_| Ok(()))
+}
+
 fn read_stream_snapshot_observed(
     file: File,
     limit: u64,
     window: Range<u64>,
     after_read: impl FnMut(u64) -> Result<(), AppError>,
 ) -> Result<StreamSnapshot, AppError> {
-    read_stream_snapshot_validated(file, limit, window, true, after_read)
+    read_stream_snapshot_validated(file, limit, window, true, None, after_read)
 }
 
 // Explicit diagnostic previews may show invalid text, but retain the same bounded
@@ -101,7 +120,7 @@ pub(super) fn read_raw_preview_window(
     file: File,
     window: Range<u64>,
 ) -> Result<StreamSnapshot, AppError> {
-    read_stream_snapshot_validated(file, u64::MAX, window, false, |_| Ok(()))
+    read_stream_snapshot_validated(file, u64::MAX, window, false, None, |_| Ok(()))
 }
 
 fn read_stream_snapshot_validated(
@@ -109,6 +128,7 @@ fn read_stream_snapshot_validated(
     limit: u64,
     window: Range<u64>,
     strict_text: bool,
+    encoding_override: Option<&str>,
     mut after_read: impl FnMut(u64) -> Result<(), AppError>,
 ) -> Result<StreamSnapshot, AppError> {
     if window.end < window.start || window.end - window.start > MAX_WINDOW_BYTES {
@@ -137,7 +157,7 @@ fn read_stream_snapshot_validated(
     hash.update(identity.revision_tag());
     let mut prefix = vec![0; before.len().min(4) as usize];
     file.read_exact(&mut prefix).map_err(io_error)?;
-    let encoding = detect_encoding(&prefix);
+    let encoding = select_encoding(&prefix, encoding_override)?;
     file.seek(SeekFrom::Start(0)).map_err(io_error)?;
     let mut validator = StreamValidator::new(encoding);
     let validate_text = strict_text && window.end > window.start;
@@ -238,9 +258,12 @@ pub fn decode_window(
             };
             (start, total.min(start.saturating_add(max_bytes)))
         }
-        StreamEncoding::Utf16Le | StreamEncoding::Utf16Be => {
+        StreamEncoding::Utf16Le
+        | StreamEncoding::Utf16Be
+        | StreamEncoding::Utf16LeNoBom
+        | StreamEncoding::Utf16BeNoBom => {
             let start = if requested_start == 0 {
-                2
+                snapshot.encoding.bom_len() as u64
             } else if requested_start.is_multiple_of(2) {
                 requested_start
             } else {
@@ -248,6 +271,14 @@ pub fn decode_window(
             };
             let decoded_end = total.min(start.saturating_add(max_bytes));
             (start, decoded_end - (decoded_end - start) % 2)
+        }
+        StreamEncoding::Legacy { label } => {
+            let start = legacy_boundary(
+                snapshot.file.try_clone().map_err(io_error)?,
+                requested_start,
+                label,
+            )?;
+            (start, total.min(start.saturating_add(max_bytes)))
         }
     };
     if end > raw_end {
@@ -286,8 +317,14 @@ pub fn decode_window(
                 }
             }
         }
-        StreamEncoding::Utf16Le | StreamEncoding::Utf16Be => {
-            let little = snapshot.encoding == StreamEncoding::Utf16Le;
+        StreamEncoding::Utf16Le
+        | StreamEncoding::Utf16Be
+        | StreamEncoding::Utf16LeNoBom
+        | StreamEncoding::Utf16BeNoBom => {
+            let little = matches!(
+                snapshot.encoding,
+                StreamEncoding::Utf16Le | StreamEncoding::Utf16LeNoBom
+            );
             let mut units = snapshot.window[start_index..end_index]
                 .as_chunks::<2>()
                 .0
@@ -310,6 +347,19 @@ pub fn decode_window(
             }
             String::from_utf16(&units)
                 .map_err(|_| AppError::new(ErrorCode::LossyEncoding, "无法无损读取UTF-16分块。"))?
+        }
+        StreamEncoding::Legacy { label } => {
+            let complete =
+                super::encoding::legacy_prefix_len(&snapshot.window[start_index..end_index], label);
+            if complete == 0 && start < total {
+                return Err(AppError::new(
+                    ErrorCode::InvalidInput,
+                    "分块大小不足以读取完整字符。",
+                ));
+            }
+            end_index = start_index + complete;
+            end = snapshot.window_start + end_index as u64;
+            super::encoding::decode_legacy_window(&snapshot.window[start_index..end_index], label)?
         }
     };
     let (text, _) = normalize_newlines(&text);
@@ -340,7 +390,13 @@ pub fn line_number_at(
     let mut buffer = [0u8; 64 * 1024];
     while remaining > 0 {
         let mut length = remaining.min(buffer.len() as u64) as usize;
-        if matches!(encoding, StreamEncoding::Utf16Le | StreamEncoding::Utf16Be) {
+        if matches!(
+            encoding,
+            StreamEncoding::Utf16Le
+                | StreamEncoding::Utf16Be
+                | StreamEncoding::Utf16LeNoBom
+                | StreamEncoding::Utf16BeNoBom
+        ) {
             length -= length % 2;
             if length == 0 {
                 break;
@@ -355,19 +411,28 @@ pub fn line_number_at(
                     StreamEncoding::Utf8 { bom: true } => &[0xef, 0xbb, 0xbf][..],
                     StreamEncoding::Utf16Le => &[0xff, 0xfe][..],
                     StreamEncoding::Utf16Be => &[0xfe, 0xff][..],
-                    StreamEncoding::Utf8 { bom: false } => &[][..],
+                    StreamEncoding::Utf8 { bom: false }
+                    | StreamEncoding::Utf16LeNoBom
+                    | StreamEncoding::Utf16BeNoBom
+                    | StreamEncoding::Legacy { .. } => &[][..],
                 })
                 .unwrap_or(bytes);
             first = false;
         }
         match encoding {
-            StreamEncoding::Utf8 { .. } => {
+            StreamEncoding::Utf8 { .. } | StreamEncoding::Legacy { .. } => {
                 for byte in bytes {
                     count_newline_byte(*byte, &mut previous_cr, &mut lines);
                 }
             }
-            StreamEncoding::Utf16Le | StreamEncoding::Utf16Be => {
-                let little = encoding == StreamEncoding::Utf16Le;
+            StreamEncoding::Utf16Le
+            | StreamEncoding::Utf16Be
+            | StreamEncoding::Utf16LeNoBom
+            | StreamEncoding::Utf16BeNoBom => {
+                let little = matches!(
+                    encoding,
+                    StreamEncoding::Utf16Le | StreamEncoding::Utf16LeNoBom
+                );
                 for [first, second] in bytes.as_chunks::<2>().0 {
                     let unit = if little {
                         u16::from_le_bytes([*first, *second])
@@ -394,6 +459,70 @@ fn detect_encoding(prefix: &[u8]) -> StreamEncoding {
         StreamEncoding::Utf8 {
             bom: prefix.starts_with(&[0xef, 0xbb, 0xbf]),
         }
+    }
+}
+
+fn select_encoding(prefix: &[u8], selected: Option<&str>) -> Result<StreamEncoding, AppError> {
+    let detected = detect_encoding(prefix);
+    let Some(label) = selected else {
+        return Ok(detected);
+    };
+    let Some(label) = super::encoding::LABELS
+        .iter()
+        .copied()
+        .find(|value| *value == label)
+    else {
+        return Err(AppError::new(ErrorCode::Unsupported, "不支持所选编码。"));
+    };
+    if detected.bom_len() > 0 {
+        return if detected.encoding() == label {
+            Ok(detected)
+        } else {
+            Err(AppError::new(
+                ErrorCode::LossyEncoding,
+                "所选编码与文件BOM不一致。",
+            ))
+        };
+    }
+    Ok(match label {
+        "utf-8" => StreamEncoding::Utf8 { bom: false },
+        "utf-16le" => StreamEncoding::Utf16LeNoBom,
+        "utf-16be" => StreamEncoding::Utf16BeNoBom,
+        _ => StreamEncoding::Legacy { label },
+    })
+}
+
+fn legacy_boundary(mut file: File, requested: u64, label: &str) -> Result<u64, AppError> {
+    file.seek(SeekFrom::Start(0)).map_err(io_error)?;
+    let mut reader = file.take(requested.saturating_add(4));
+    let mut buffer = [0u8; 64 * 1024];
+    let mut pending = Vec::new();
+    let mut offset = 0u64;
+    loop {
+        if offset >= requested {
+            return Ok(offset);
+        }
+        let length = reader.read(&mut buffer).map_err(io_error)?;
+        if length == 0 {
+            return Err(AppError::new(
+                ErrorCode::EncodingRequired,
+                "读取起点不在完整字符边界。",
+            ));
+        }
+        pending.extend_from_slice(&buffer[..length]);
+        let mut consumed = 0;
+        while consumed < pending.len() {
+            if offset >= requested {
+                return Ok(offset);
+            }
+            let width = super::encoding::legacy_width(&pending[consumed..], label);
+            if pending.len() - consumed < width {
+                break;
+            }
+            consumed += width;
+            offset += width as u64;
+        }
+        pending.drain(..consumed);
     }
 }
 
@@ -426,7 +555,17 @@ impl StreamValidator {
         self.pending.extend_from_slice(bytes);
         match self.encoding {
             StreamEncoding::Utf8 { .. } => self.feed_utf8(),
-            StreamEncoding::Utf16Le | StreamEncoding::Utf16Be => self.feed_utf16(),
+            StreamEncoding::Utf16Le
+            | StreamEncoding::Utf16Be
+            | StreamEncoding::Utf16LeNoBom
+            | StreamEncoding::Utf16BeNoBom => self.feed_utf16(),
+            StreamEncoding::Legacy { label } => {
+                let length = super::encoding::legacy_prefix_len(&self.pending, label);
+                let source = super::encoding::decode_legacy_window(&self.pending[..length], label)?;
+                self.consume(source.chars());
+                self.pending.drain(..length);
+                Ok(())
+            }
         }
     }
 
@@ -454,7 +593,10 @@ impl StreamValidator {
     }
 
     fn feed_utf16(&mut self) -> Result<(), AppError> {
-        let little = self.encoding == StreamEncoding::Utf16Le;
+        let little = matches!(
+            self.encoding,
+            StreamEncoding::Utf16Le | StreamEncoding::Utf16LeNoBom
+        );
         let pair_count = self.pending.len() / 2;
         let units = self.pending[..pair_count * 2]
             .as_chunks::<2>()
@@ -495,6 +637,11 @@ impl StreamValidator {
                 AppError::new(
                     ErrorCode::EncodingRequired,
                     "无法按UTF-8读取，请选择合适的编码。",
+                )
+            } else if matches!(self.encoding, StreamEncoding::Legacy { .. }) {
+                AppError::new(
+                    ErrorCode::LossyEncoding,
+                    "传统编码包含不完整字符，未执行替代。",
                 )
             } else {
                 invalid_utf16()
@@ -595,7 +742,10 @@ fn invalid_utf16() -> AppError {
 
 #[cfg(test)]
 mod tests {
-    use super::read_stream_snapshot_observed;
+    use super::{
+        decode_window, line_number_at, read_stream_snapshot_observed,
+        read_stream_snapshot_with_encoding,
+    };
     use crate::{
         models::ErrorCode,
         services::{
@@ -675,5 +825,72 @@ mod tests {
         );
         assert!(grew);
         assert_eq!(result.err().unwrap().code, ErrorCode::Conflict);
+    }
+
+    #[test]
+    fn selected_encodings_validate_across_buffer_splits_and_align_bounded_windows() {
+        use crate::services::encoding::encode_text;
+        for (encoding, marker) in [
+            ("gb18030", "中😀"),
+            ("gbk", "中文"),
+            ("shift_jis", "日本"),
+            ("big5", "中文"),
+            ("windows-1252", "café€"),
+            ("utf-16le", "中文😀"),
+            ("utf-16be", "中文😀"),
+        ] {
+            let prefix = "x".repeat(65_535);
+            let offset = encode_text(&prefix, encoding, "none").unwrap().len() as u64;
+            let bytes =
+                encode_text(&format!("{prefix}{marker}\r\nlast\n"), encoding, "none").unwrap();
+            let path = fixture(0);
+            fs::write(&path, &bytes).unwrap();
+            let snapshot = read_stream_snapshot_with_encoding(
+                File::open(&path).unwrap(),
+                bytes.len() as u64,
+                offset..bytes.len() as u64,
+                Some(encoding),
+            )
+            .unwrap();
+            assert_eq!(snapshot.encoding.encoding(), encoding);
+            assert_eq!(snapshot.encoding.bom(), "none");
+            let first = decode_window(&snapshot, offset, 3).unwrap();
+            assert!(!first.text.is_empty());
+            assert!(marker.starts_with(&first.text));
+            let second = decode_window(
+                &snapshot,
+                first.byte_end,
+                snapshot.metadata.size_bytes - first.byte_end,
+            )
+            .unwrap();
+            assert_eq!(
+                format!("{}{}", first.text, second.text),
+                format!("{marker}\nlast\n")
+            );
+            assert_eq!(
+                line_number_at(
+                    File::open(&path).unwrap(),
+                    bytes.len() as u64,
+                    snapshot.encoding
+                )
+                .unwrap(),
+                3
+            );
+            if encoding == "gbk" {
+                let middle = decode_window(&snapshot, offset + 1, 4).unwrap();
+                assert_eq!(middle.byte_start, offset + 2);
+                assert!(middle.text.starts_with('文'));
+                let mut malformed = bytes;
+                malformed.push(0x81);
+                fs::write(&path, malformed).unwrap();
+                assert!(read_stream_snapshot_with_encoding(
+                    File::open(&path).unwrap(),
+                    u64::MAX,
+                    0..8,
+                    Some(encoding)
+                )
+                .is_err());
+            }
+        }
     }
 }

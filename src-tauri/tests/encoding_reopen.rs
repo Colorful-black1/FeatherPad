@@ -1,5 +1,7 @@
 use featherpad_lib::{
-    models::{ErrorCode, NewlineMap, OpenDocumentContent, SaveRequest, TextFormat},
+    models::{
+        ErrorCode, NewlineMap, OpenDocumentContent, ReadChunkRequest, SaveRequest, TextFormat,
+    },
     services::{
         encoding::encode_text,
         files::{FileService, OpenRequestMode},
@@ -260,4 +262,72 @@ fn recovery_preserves_unrepresentable_unsaved_text_and_still_rejects_invalid_map
         recovery.persist_snapshot(invalid).unwrap_err().code,
         ErrorCode::InvalidInput
     );
+}
+
+#[test]
+fn real_twenty_mib_legacy_file_uses_bounded_selected_encoding_chunks_and_rejects_save() {
+    let root = root();
+    let path = root.join("large-gbk.txt");
+    let line = encode_text("中文\n", "gbk", "none").unwrap();
+    let bytes = line.repeat(20 * 1024 * 1024 / line.len() + 1);
+    fs::write(&path, &bytes).unwrap();
+    let mut files = FileService::default();
+    let reference = files
+        .grants
+        .register_selection(&path, GrantKind::File)
+        .unwrap();
+    let opened = files
+        .open_document_with_encoding(reference.clone(), OpenRequestMode::Auto, None, Some("gbk"))
+        .unwrap();
+    assert_eq!(opened.mode, "large-readonly");
+    assert_eq!(opened.format.encoding, "gbk");
+    let OpenDocumentContent::Chunked {
+        handle_id,
+        initial_chunk,
+        ..
+    } = opened.content
+    else {
+        panic!("expected bounded chunks");
+    };
+    assert!(initial_chunk.text.starts_with("中文\n"));
+    assert!(initial_chunk.byte_end <= 64 * 1024);
+    let next = files
+        .read_document_chunk(ReadChunkRequest {
+            document_id: opened.document_id.clone(),
+            handle_id,
+            expected_disk_revision: opened.metadata.disk_revision.clone(),
+            byte_offset: initial_chunk.byte_end,
+            max_bytes: 1024 * 1024,
+        })
+        .unwrap();
+    assert!(next.text.starts_with("中文\n"));
+    assert!(next.byte_end - next.byte_start <= 1024 * 1024);
+    assert_eq!(
+        next.first_line,
+        1 + initial_chunk.text.bytes().filter(|b| *b == b'\n').count() as u64
+    );
+    let reopened = files.open_document(reference).unwrap();
+    assert_eq!(reopened.document_id, opened.document_id);
+    assert_eq!(reopened.format.encoding, "gbk");
+    let request = SaveRequest {
+        document_id: opened.document_id,
+        request_id: uuid::Uuid::new_v4().to_string(),
+        document_version: 1,
+        expected_disk_revision: opened.metadata.disk_revision,
+        text: "cannot save a fragment".into(),
+        format: opened.format,
+        newline_map: None,
+    };
+    assert_eq!(
+        files
+            .save_existing(
+                request,
+                &root.join("rejected"),
+                HardLinkPolicy::RequireConfirmation
+            )
+            .unwrap_err()
+            .code,
+        ErrorCode::ReadOnly
+    );
+    assert_eq!(fs::read(path).unwrap(), bytes);
 }

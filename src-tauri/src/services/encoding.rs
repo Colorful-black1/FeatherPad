@@ -100,6 +100,51 @@ fn code_page(label: &str) -> Result<u32, AppError> {
     }
 }
 
+pub(super) fn legacy_width(bytes: &[u8], label: &str) -> usize {
+    let Some(first) = bytes.first() else {
+        return 0;
+    };
+    if label == "windows-1252" {
+        return 1;
+    }
+    if label == "shift_jis" {
+        return if matches!(first, 0x81..=0x9f | 0xe0..=0xfc) {
+            2
+        } else {
+            1
+        };
+    }
+    if !(0x81..=0xfe).contains(first) {
+        return 1;
+    }
+    if label == "gb18030" && bytes.get(1).is_some_and(|byte| byte.is_ascii_digit()) {
+        4
+    } else {
+        2
+    }
+}
+
+pub(super) fn legacy_prefix_len(bytes: &[u8], label: &str) -> usize {
+    let mut offset = 0;
+    while offset < bytes.len() {
+        let width = legacy_width(&bytes[offset..], label);
+        if bytes.len() - offset < width {
+            break;
+        }
+        offset += width;
+    }
+    offset
+}
+
+pub(super) fn decode_legacy_window(bytes: &[u8], label: &str) -> Result<String, AppError> {
+    let page = code_page(label)?;
+    let text = decode_legacy(bytes, page)?;
+    if encode_legacy(&text, page)? != bytes {
+        return Err(loss());
+    }
+    Ok(text)
+}
+
 fn loss() -> AppError {
     AppError::new(
         ErrorCode::LossyEncoding,
