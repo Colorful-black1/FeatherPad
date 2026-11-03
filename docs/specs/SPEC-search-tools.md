@@ -1,6 +1,6 @@
 # SPEC-search-tools：查找、受保护替换与格式工具
 
-> 轻羽 FeatherPad；模块 `search-tools`；业务依赖仅 `editor`、`workspace`、`file-core`。状态：M1 F-SEARCH-001–003与M2 F-SEARCH-004–009已实现并通过G1/G2统一验收；M3 F-SEARCH-010–012待实现。详见 [矩阵](../FEATURE-MATRIX.md)。
+> 轻羽 FeatherPad；模块 `search-tools`；业务依赖仅 `editor`、`workspace`、`file-core`。状态：M1 F-SEARCH-001–003与M2 F-SEARCH-004–009已通过G1/G2；M3的T307实现完成，T308进行中，F-SEARCH-010–012统一验收仍待G3。详见 [矩阵](../FEATURE-MATRIX.md)。
 
 ## Objective 与提供方契约
 
@@ -88,6 +88,10 @@ journal含schemaVersion、batchId、plan摘要、原始字节备份引用/校验
 回滚每文件先核对当前revision==记录的afterRevision且无dirty所有者，再恢复原始字节（不是重新序列化文本）；当前已被用户/外部修改则标ROLLBACK_CONFLICT，保留备份并提供打开对比/另存，不覆盖。回滚本身同样可能部分完成，必须逐项报告。最近20个批次/30天为清理提示阈值，总256MiB备份预算；存在未核实/回滚冲突/未保存唯一副本不能自动删除。空间不足拒绝新批量提交并让用户管理备份。回滚记录与普通editor undo不同，UI不可混淆。
 
 ## 格式化边界（F-SEARCH-010/011）
+
+T307决策：锁定jsonc-parser3.3.1、Prettier3.9.10、@prettier/plugin-xml3.4.2（MIT；XML词法依赖@xml-tools/parser1.0.12为Apache-2.0），禁脚本安装并复查依赖，生产audit无已知漏洞。JSON/JSONC先严格检查错误，再使用format/applyEdits调整token间空白，保留原数字/重复key/注释；仅显式移除尾逗号。Web使用[standalone](https://prettier.io/docs/browser)与随包本地解析器，不读配置/插件；JSX/TSX按扩展初始化并可显式选定，其他模式拒绝JSX。XML依[插件strict策略](https://github.com/prettier/plugin-xml#whitespace)保留mixed-content空白/CDATA/namespace，额外拒绝DTD和自定义实体，不存在网络resolver。HTML内嵌语言不自动重排，CSS预处理器明确不支持。
+
+交互为全文快照→2秒Worker→预览→expectedVersion一次undo应用，取消/解析错/版本变化保留正文；>2MiB需本次确认，≥20MiB拒绝。当前不支持语法选区格式化。输出不改编码/BOM/换行意图，混合换行按原token顺序保留，新增使用原主导类型，界面显式说明，undo连同映射恢复。错误不向日志发送用户代码帧，仅传行列和有界安全消息。格式偏好限本次可见选项，不自动持久化或读取工程设置。
 
 所有格式化基于当前快照，在worker执行、可取消；预检查语法，失败给行列错误且正文不变。完成时expectedBufferVersion不一致提示重试，不覆盖新输入；一次事务一次undo，不自动保存、不改变编码/换行意图。默认全文；选区仅在formatter支持语法片段时启用，否则明确禁用。>2MiB先提示，≥20MiB只读禁用，默认2秒预算可取消。
 

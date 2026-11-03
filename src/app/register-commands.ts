@@ -2,7 +2,7 @@ import { CommandRegistry, type CommandDefinition } from '../shared/commands/regi
 
 export const appCommandIds = ['file.new', 'file.open', 'workspace.open', 'file.save', 'file.saveAs', 'file.saveCopy',
   'file.saveAll', 'file.close', 'editor.find', 'editor.toggleComment', 'editor.toggleBlockComment',
-  'search.workspace',
+  'search.workspace', 'tools.format',
   'editor.moveLineUp', 'editor.moveLineDown', 'editor.copyLineUp', 'editor.copyLineDown', 'editor.insertBlankLine',
   'editor.complete', 'editor.selectNextOccurrence', 'editor.selectAllOccurrences', 'editor.toggleFold',
   'navigation.goToLine', 'navigation.back', 'navigation.forward', 'navigation.outline',
@@ -11,6 +11,7 @@ export const appCommandIds = ['file.new', 'file.open', 'workspace.open', 'file.s
   'view.sidebar', 'view.theme', 'settings.open', 'commands.open', 'files.quickOpen'] as const;
 export type AppCommandId = typeof appCommandIds[number];
 export interface AppCommandState {
+  formatReason?: string | null;
   hasDocument: boolean;
   readOnlyReason: string | null;
   canSaveAs: boolean;
@@ -44,6 +45,7 @@ const commandInfo: CommandInfo[] = [
   ['file.close', '关闭当前标签', 'close tab', 'Ctrl+W', state => hasDocument(state) ?? (state.batchBusy || state.closing ? '请等待当前操作结束。' : null)],
   ['editor.find', '文件内查找与替换', 'find search replace 搜索', 'Ctrl+F', state => hasDocument(state) ?? (state.closing ? '正在关闭文档。' : null)],
   ['search.workspace', '在文件和工作区中查找', 'workspace search find in files 目录搜索', 'Ctrl+Shift+F', state => state.hasWorkspace ? null : '请先打开至少一个文件夹。'],
+  ['tools.format', '格式化文档', 'format json xml html css javascript typescript yaml sql 格式', 'Shift+Alt+F', state => hasDocument(state) ?? state.readOnlyReason ?? state.formatReason ?? (state.closing ? '正在关闭文档。' : null)],
   ['editor.toggleComment', '切换行注释', 'comment line annotation 注释', 'Ctrl+/', state => hasDocument(state) ?? state.readOnlyReason ?? (state.closing ? '正在关闭文档。' : null)],
   ['editor.toggleBlockComment', '切换块注释', 'block comment annotation 注释', 'Shift+Alt+A', state => hasDocument(state) ?? state.readOnlyReason ?? (state.closing ? '正在关闭文档。' : null)],
   ['editor.moveLineUp', '上移当前行', 'move line up 行', 'Alt+ArrowUp', state => hasDocument(state) ?? state.readOnlyReason ?? (state.closing ? '正在关闭文档。' : null)],

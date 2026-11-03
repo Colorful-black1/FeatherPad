@@ -1,6 +1,6 @@
 import { EditorSelection, type EditorState, type Text, type Transaction } from '@codemirror/state';
 import { isolateHistory } from '@codemirror/commands';
-import { documentFormat, formatState, sameDocumentFormat, setDocumentFormat, type DocumentFormatState } from './line-endings';
+import { documentFormat, formatState, sameDocumentFormat, setDocumentFormat, type DocumentFormatState, type Newline } from './line-endings';
 import { encodingIds, type EncodingId } from '../../shared/contracts/encoding';
 import type { Command, EditorView } from '@codemirror/view';
 import type { DocumentId, LoadedRecoveryEntry, OpenDocument, RenamedDocument, ResultEnvelope, SaveAck, SaveAsAck, SaveRequest, TextFormat, TrashEntryResult, WriteRecoverySnapshotRequest } from '../../shared/contracts/files';
@@ -492,6 +492,31 @@ export class DocumentRegistry {
   highlightSearch(id: DocumentId, ranges: readonly { from: number; to: number; current: boolean }[]) {
     const view = this.views.get(id)?.values().next().value;
     if (view) view.dispatch({ effects: setSearchHighlights.of(ranges) });
+  }
+
+  applyTextResult(id: DocumentId, expectedVersion: number, text: string, mappedEndings?: readonly Newline[]): ResultEnvelope<{ version: number }> {
+    const document = this.documents.get(id);
+    if (!document) return failure('NOT_FOUND', '文档已关闭。');
+    if (document.summary.readOnlyReason || document.fragment) return failure('READ_ONLY', '只读或限量预览不能应用文本工具。');
+    if (document.summary.closing || document.summary.hotExitFrozen) return failure('BUSY', '文档正在安全关闭，当前内容保留。');
+    if (document.summary.version !== expectedVersion) return failure('CONFLICT', '文档已变化，请重新生成预览。');
+    if (text.includes('\r') || text.length >= 20 * 1024 * 1024) return failure('INVALID_INPUT', '结果换行无效或超过编辑工具预算。');
+    const current = document.state.field(documentFormat);
+    const count = text.split('\n').length - 1;
+    const endings = mappedEndings ? [...mappedEndings] : Array.from({ length: count }, (_, index) => current.endings[index] ?? current.insertionEnding);
+    if (endings.length !== count || endings.some(ending => !['lf', 'crlf', 'cr'].includes(ending))) return failure('INVALID_INPUT', '结果逐行换行映射无效。');
+    if (document.state.doc.toString() === text && endings.every((ending, index) => ending === current.endings[index])) return { ok: true, value: { version: expectedVersion } };
+    const selection = document.state.selection;
+    const transaction = document.state.update({ changes: { from: 0, to: document.state.doc.length, insert: text },
+      selection: EditorSelection.create(selection.ranges.map(range => EditorSelection.range(Math.min(range.anchor, text.length), Math.min(range.head, text.length))), selection.mainIndex),
+      effects: setDocumentFormat.of({ ...current, endings }), annotations: isolateHistory.of('full') });
+    const view = this.views.get(id)?.values().next().value;
+    if (view) {
+      view.dispatch(transaction);
+      return document.state === transaction.state ? { ok: true, value: { version: document.summary.version } }
+        : failure('CONFLICT', '文本工具结果未接受，当前正文保留。');
+    }
+    return this.commit(id, [transaction]);
   }
 
   replaceRanges(id: DocumentId, expectedVersion: number, changes: readonly BufferChange[]): ResultEnvelope<{ version: number }> {

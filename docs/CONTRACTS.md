@@ -269,6 +269,8 @@ T303资源读取契约：`read_preview_resource { documentId: string|null, direc
 
 T304渲染结果包含`headings:{level,text,anchor,from,to}[]`和`sourceMap:{from,to}[]`，源位置是同一bufferVersion的LF/UTF16坐标。frame向宿主的`scroll`消息只含已知块的整数from；宿主发送`sourceScroll`或受限anchor，双方继续验证精确frame/parent及快照通道。目录定位可移动源码光标；日常同步仅滚动不改光标。映射校验失败返回mappingWarning并暂停同步，不能拿旧版本offset继续定位。
 
+T307格式Worker请求`{requestId,documentId,version,language,source,options}`，返回同一标识及`{ok:true,text}`或`{ok:false,diagnostic:{message,line,column}}`，不返回用户代码帧。2秒终止Worker，取消/迟到标识均拒绝；不经过Rust/磁盘。`DocumentRegistry.applyTextResult(id,expectedVersion,text,mappedEndings?)`只接受完整可写当前缓冲，原子绑定正文与逐行换行effect，一次undo。未提供映射时原换行token按序保留、新增用原insertionEnding，编码/BOM/行尾意图不变；任何版本冲突都不写新输入，成功不表示已保存。
+
 ```ts
 export interface TextJobRequest {
   jobId: string;

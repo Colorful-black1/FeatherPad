@@ -1,0 +1,57 @@
+import { expect, test } from './test-fixture';
+
+test('format worker previews JSONC before applying one undo step and Java remains unsupported', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: '新建文本', exact: true }).click();
+  await page.getByRole('combobox', { name: '语言模式', exact: true }).selectOption('jsonc');
+  const editor = page.locator('.cm-content');
+  const source = '{/*注释*/"large":123456789012345678901234567890,"key":1,"key":2,}';
+  await editor.focus(); await page.keyboard.insertText(source);
+  await page.getByRole('button', { name: '格式化…', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '格式化文档', exact: true });
+  await dialog.getByRole('button', { name: '生成格式预览', exact: true }).click();
+  const preview = dialog.getByRole('region', { name: '格式化预览', exact: true });
+  await expect(preview.locator('pre')).toContainText('123456789012345678901234567890');
+  await expect(preview.locator('pre')).toContainText('/*注释*/');
+  await expect(page.locator('.cm-line')).toHaveText([source]);
+  await dialog.getByRole('button', { name: '取消', exact: true }).click();
+  await expect(page.locator('.cm-line')).toHaveText([source]);
+  await page.keyboard.press('Shift+Alt+f');
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: '生成格式预览', exact: true }).click();
+  await expect(preview).toBeVisible();
+  const output = await preview.locator('pre').textContent();
+  await dialog.getByRole('button', { name: '应用为一次撤销', exact: true }).click();
+  await expect(dialog).toBeHidden();
+  expect((await page.locator('.cm-line').allTextContents()).join('\n')).toBe(output);
+  await editor.focus(); await page.keyboard.press('Control+z');
+  await expect(page.locator('.cm-line')).toHaveText([source]);
+  await page.getByRole('combobox', { name: '语言模式', exact: true }).selectOption('java');
+  await expect(page.getByRole('button', { name: '格式化…', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '格式化…', exact: true })).toHaveAttribute('title', /Java仅提供高亮/);
+});
+
+test('invalid syntax reports a location without changing the buffer; formatted HTML stays inert', async ({ page }) => {
+  const requests: string[] = [];
+  page.on('request', request => { if (request.url().startsWith('https://example.com/')) requests.push(request.url()); });
+  await page.goto('/');
+  await page.getByRole('button', { name: '新建文本', exact: true }).click();
+  await page.getByRole('combobox', { name: '语言模式', exact: true }).selectOption('json');
+  const editor = page.locator('.cm-content');
+  await editor.focus(); await page.keyboard.insertText('{\n"x":1,}');
+  await page.getByRole('button', { name: '格式化…', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '格式化文档', exact: true });
+  await dialog.getByRole('button', { name: '生成格式预览', exact: true }).click();
+  await expect(dialog.getByRole('alert')).toContainText('行2');
+  await expect(dialog.getByRole('button', { name: '应用为一次撤销', exact: true })).toBeDisabled();
+  await expect(page.locator('.cm-line')).toHaveText(['{', '"x":1,}']);
+  await dialog.getByRole('button', { name: '取消', exact: true }).click();
+  await page.getByRole('combobox', { name: '语言模式', exact: true }).selectOption('html');
+  await editor.focus(); await page.keyboard.press('Control+a');
+  await page.keyboard.insertText('<div><script>window.formatterPwned=1;</script><img src="https://example.com/leak"></div>');
+  await page.getByRole('button', { name: '格式化…', exact: true }).click();
+  await dialog.getByRole('button', { name: '生成格式预览', exact: true }).click();
+  await expect(dialog.locator('pre')).toContainText('window.formatterPwned=1;');
+  expect(await page.evaluate(() => Reflect.get(window, 'formatterPwned'))).toBeUndefined();
+  expect(requests).toEqual([]);
+});

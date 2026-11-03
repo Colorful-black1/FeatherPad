@@ -50,6 +50,8 @@ import { SaveAllResults } from '../features/editor/SaveAllResults';
 import { autoSaves } from '../features/editor/autosave';
 import { AutoSaveStatus } from '../features/editor/AutoSaveStatus';
 import { FindBar } from '../features/search-tools/FindBar';
+import { FormatDialog } from '../features/search-tools/FormatDialog';
+import { formatLanguage } from '../features/search-tools/formatters';
 import type { SearchScope } from '../features/search-tools/search-query';
 import { Explorer } from '../features/workspace/Explorer';
 import { RecentList } from '../features/workspace/RecentList';
@@ -119,6 +121,7 @@ export function App() {
   const [navigationHistory] = useState(() => new NavigationHistory());
   const navigationAvailability = useSyncExternalStore(navigationHistory.subscribe, navigationHistory.getSnapshot);
   const [goToOpen, setGoToOpen] = useState(false);
+  const [formatDocumentId, setFormatDocumentId] = useState<DocumentId | null>(null);
   const [outlineOpen, setOutlineOpen] = useState(false);
   const [startupPending, setStartupPending] = useState(() => !!Reflect.get(window, '__TAURI_INTERNALS__'));
   const [autoFocus, setAutoFocus] = useState(true);
@@ -836,6 +839,7 @@ export function App() {
     const active = id ? documents.getDocument(id)?.summary : undefined;
     const batch = saveAll.getSnapshot();
     return { hasDocument: !!active, readOnlyReason: active?.readOnlyReason ?? null, canSaveAs: active?.canSaveAs ?? false,
+      formatReason: active && !formatLanguage(active.languageId, active.displayPath) ? '当前语言没有格式化器，Java仅提供高亮。' : null,
       hasDirty: snapshot.documents.some(document => document.dirty), isPreview: !!active && tabs.getSnapshot().previewId === active.id,
       tabCount: snapshot.documents.length,
       cleanTabCount: snapshot.documents.filter(document => !document.dirty && !document.closing).length,
@@ -847,6 +851,7 @@ export function App() {
       batchBusy: batch.phase === 'running' || batch.phase === 'cancelling' };
   }, [busy, savingCount, closingCount, navigationAvailability]);
   const commandAvailability: AppCommandState = {
+    formatReason: current && !formatLanguage(current.languageId, current.displayPath) ? '当前语言没有格式化器，Java仅提供高亮。' : null,
     hasDocument: !!current, readOnlyReason: current?.readOnlyReason ?? null, canSaveAs: current?.canSaveAs ?? false,
     hasDirty: snapshot.documents.some(document => document.dirty), isPreview: !!current && tabState.previewId === current.id,
     tabCount: snapshot.documents.length,
@@ -1035,6 +1040,7 @@ export function App() {
     'file.close': async () => { const id = documents.getSnapshot().activeId; if (id) await requestClose(id); },
     'editor.find': openFind,
     'search.workspace': () => setWorkspaceSearchOpen(true),
+    'tools.format': () => setFormatDocumentId(documents.getSnapshot().activeId),
     'editor.toggleComment': () => runEditingCommand('toggleComment'),
     'editor.toggleBlockComment': () => runEditingCommand('toggleBlockComment'),
     'editor.moveLineUp': () => runEditingCommand('moveLineUp'),
@@ -1073,7 +1079,7 @@ export function App() {
     'commands.open': () => openPalette('commands'), 'files.quickOpen': () => openPalette('files'),
   }), [newFile, openFile, openFolder, saveCurrent, saveDestination, requestClose, requestCloseBatch,
     openFind, runEditingCommand, navigateBack, navigateForward, openPalette, openSettings, dark, zoomEditor,
-    setGoToOpen, setOutlineOpen, setSidebarOpen, setWorkspaceSearchOpen]);
+    setGoToOpen, setOutlineOpen, setSidebarOpen, setWorkspaceSearchOpen, setFormatDocumentId]);
 
   const executeCommand = useCallback(async (id: string, targetId?: DocumentId) => {
     const actions = targetId ? { ...commandActions, 'file.close': () => requestClose(targetId), 'tabs.pin': () => tabs.pin(targetId) } : commandActions;
@@ -1234,6 +1240,7 @@ export function App() {
               {languageOptions.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}
             </select>
           </label>
+          <button type="button" className="plain-button" {...commandProps('tools.format')} onClick={() => void executeCommand('tools.format')}>格式化…</button>
           <label className="toolbar-check"><input type="checkbox" checked={current.bracketMatching}
             onChange={event => documents.setBracketMatching(current.id, event.currentTarget.checked)} />匹配括号</label>
           <label className="toolbar-check"><input type="checkbox" checked={current.closeBrackets}
@@ -1306,6 +1313,9 @@ export function App() {
         }}
         onBind={(id, value) => commands.setBinding(id, value)} onResetBindings={() => commands.resetBindings()}
         onImportBindings={text => commands.importBindings(text)} onExportBindings={() => commands.exportBindings()} />}
+      {formatDocumentId && documents.getDocument(formatDocumentId) && <FormatDialog key={formatDocumentId} registry={documents} id={formatDocumentId} onClose={() => {
+        setFormatDocumentId(null); requestAnimationFrame(() => documents.focus(formatDocumentId));
+      }} />}
       {goToOpen && current && (() => {
         const managed = documents.getDocument(current.id);
         if (!managed) return null;

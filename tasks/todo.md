@@ -1,6 +1,6 @@
 # 开发任务清单
 
-当前阶段：**M0/G0、M1/G1、M2/G2 已通过（2026-11-03）；用户已确认继续，M3/T307进行中**。完整 v1 需要 M0–M5 全部 86 项必需功能，M1 只是可试用 MVP，不是成品。
+当前阶段：**M0/G0、M1/G1、M2/G2 已通过（2026-11-03）；用户已确认继续，M3/T308进行中**。完整 v1 需要 M0–M5 全部 86 项必需功能，M1 只是可试用 MVP，不是成品。
 
 2026-11-03 用户修订验收粒度：**以 M 为验收单元**。M 内各 T 只做实现和最小自检，不再每个 T 跑一遍大量测试；整个 M 的 T 全部完成后，统一执行一次全量回归、真实 Release 验收和矩阵证据汇总，通过后打勾并停止，等待用户确认后再推进下一阶段。M0 与 M1 的已完成任务产生于旧的逐任务策略，其逐项证据仍然有效，保存在 [PROGRESS](PROGRESS.md) 和 [M0验收](../docs/acceptance/M0.md)、[M1验收](../docs/acceptance/M1.md)（按 `T1xx` 检索即可定位）。
 
@@ -167,8 +167,8 @@ pnpm test:desktop:all
 | [x] T304 目录与同步滚动 | T302 | F-MD-005,F-MD-008 | H1-6 稳定锚点、源映射、版本取消，大文档降级 | src/features/markdown/Outline.tsx、src/features/markdown/source-map.ts、src/features/markdown/scroll-sync.ts |
 | [x] T305 HTML导出 | T303,T304 | F-MD-009 | 实际离线独立 HTML，安全资源内嵌、覆盖确认与失败保护 | src/features/markdown/export-html.ts、src-tauri/src/services/export.rs |
 | [x] T306 PDF导出spike和实现 | T305 | F-MD-010 | WebView2 生成真 PDF，纸张方向边距，中文分页/取消失败 | src-tauri/src/platform/windows/pdf.rs、src/features/markdown/ExportDialog.tsx |
-| [~] T307 JSON/XML/Web格式化 | T216 | F-SEARCH-010 | Worker 按需 parser、JSONC 注释、格式一次 undo、解析错定位且不执行代码 | src/workers/format.worker.ts、src/features/search-tools/formatters.ts、src/features/search-tools/format.ts |
-| [ ] T308 SQL/YAML格式化 | T307 | F-SEARCH-011 | SQL 显式方言；YAML 注释锚点多文档保真，Java 无伪 formatter | src/features/search-tools/formatters-sql.ts、src/features/search-tools/formatters-yaml.ts |
+| [x] T307 JSON/XML/Web格式化 | T216 | F-SEARCH-010 | Worker 按需 parser、JSONC 注释、格式一次 undo、解析错定位且不执行代码 | src/workers/format.worker.ts、src/features/search-tools/formatters.ts、src/features/search-tools/format.ts |
+| [~] T308 SQL/YAML格式化 | T307 | F-SEARCH-011 | SQL 显式方言；YAML 注释锚点多文档保真，Java 无伪 formatter | src/features/search-tools/formatters-sql.ts、src/features/search-tools/formatters-yaml.ts |
 | [ ] T309 文本变换 | T208,T307 | F-SEARCH-012 | 排序去重大小写清尾空白等，选区明确、预览 undo、不隐式改编码 | src/features/search-tools/text-transforms.ts、src/features/search-tools/TransformPreview.tsx |
 | [ ] T310 双文件diff与安全预览 | T203,T303 | F-EDIT-019..020 | 只读 diff 差异导航；图像尺寸/缩放、安全 SVG 和解码上限；HTML 静态隔离预览不执行脚本/联网/IPC 且不改源码 | src/features/editor/DiffView.tsx、src/features/editor/ImageView.tsx、src/features/editor/HtmlPreview.tsx、src-tauri/src/services/images.rs |
 | [ ] T311 G3内容体验验收 | T301..310 | M3全部 | 原型体验落到真实文件，安全/导出/格式化证据完整 | tasks/PROGRESS.md、docs/acceptance/M3.md |

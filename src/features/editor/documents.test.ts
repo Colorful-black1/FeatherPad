@@ -5,8 +5,29 @@ import { isOpenDocument } from '../../bridge/files';
 import { DocumentRegistry } from './documents';
 import type { DiskRevision, DocumentId, OpenDocument, SaveAck, SaveAsAck } from '../../shared/contracts/files';
 import { createEditorState, reconfigureIndentation, reconfigureReadOnly } from './editor-state';
+import { documentFormat } from './line-endings';
 
 type RegularOpenDocument = Extract<OpenDocument, { mode: 'normal' | 'degraded' }>;
+
+it('applies a versioned text-tool result once, keeps encoding/mixed endings and rejects a late result', () => {
+  const registry = new DocumentRegistry();
+  const opened = fixture({ encoding: 'utf-16le', lineEnding: 'mixed' });
+  opened.format.bom = 'utf16le';
+  opened.content = { kind: 'text', text: 'a\nb\nc\n', newlineMap: { documentVersion: 0, endings: ['cr', 'lf', 'crlf'] } };
+  const id = registry.openDocument(opened);
+  const original = registry.getDocument(id)!;
+  const beforeVersion = original.summary.version;
+  expect(registry.applyTextResult(id, beforeVersion, 'A\nB\nC\nD\n')).toMatchObject({ ok: true });
+  const changed = registry.getDocument(id)!;
+  expect(changed.state.field(documentFormat).endings).toEqual(['cr', 'lf', 'crlf', 'cr']);
+  expect(changed.summary.format).toEqual(opened.format);
+  expect(registry.applyTextResult(id, beforeVersion, 'late')).toMatchObject({ ok: false, error: { code: 'CONFLICT' } });
+  let state = changed.state;
+  expect(undo({ state, dispatch: transaction => { registry.commit(id, [transaction]); state = transaction.state; } })).toBe(true);
+  expect(state.doc.toString()).toBe('a\nb\nc\n');
+  expect(state.field(documentFormat).endings).toEqual(['cr', 'lf', 'crlf']);
+  expect(registry.getDocument(id)!.summary.dirty).toBe(false);
+});
 
 function fixture(options: { id?: string; readOnly?: boolean; encoding?: string; lineEnding?: string; displayPath?: string } = {}): RegularOpenDocument {
   const value: unknown = {
