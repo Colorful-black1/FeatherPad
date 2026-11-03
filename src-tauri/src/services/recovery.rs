@@ -1,5 +1,5 @@
 use super::{
-    encode::encode_snapshot,
+    encode::validate_snapshot,
     save::MAX_SNAPSHOT_BYTES,
     save_journal::{digest, write_new_verified},
     save_requests::payload_hash,
@@ -196,7 +196,7 @@ impl RecoveryStore {
         };
         payload_hash(&request)?;
         // Reuse the canonical snapshot validator, including per-line map/version/BOM checks.
-        encode_snapshot(&request)?;
+        validate_snapshot(&request)?;
         let (source_path, source_revision) = snapshot.source.map_or((None, None), |source| {
             (Some(source.path), Some(source.revision))
         });
@@ -385,7 +385,7 @@ impl RecoveryStore {
         if uuid::Uuid::parse_str(&request.document_id).is_err() {
             return Err(invalid());
         }
-        encode_snapshot(&request)?;
+        validate_snapshot(&request)?;
         require_recoverable(&root, &request.document_id, request.document_version)?;
         Ok(RecoveredDraft { manifest, text })
     }

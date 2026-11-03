@@ -1,6 +1,6 @@
 use crate::models::{AppError, ErrorCode, Newline, SaveRequest};
 
-pub fn encode_snapshot(request: &SaveRequest) -> Result<Vec<u8>, AppError> {
+fn newline_policy(request: &SaveRequest) -> Result<Option<Newline>, AppError> {
     if request.document_version > 9_007_199_254_740_991 || request.text.contains('\r') {
         return Err(invalid_snapshot());
     }
@@ -23,6 +23,19 @@ pub fn encode_snapshot(request: &SaveRequest) -> Result<Vec<u8>, AppError> {
         None if default.is_none() => return Err(invalid_snapshot()),
         None => {}
     }
+    Ok(default)
+}
+
+// Recovery bodies are UTF-8, independent of whether the intended destination encoding
+// can currently represent unsaved edits. All metadata/map invariants still apply.
+pub fn validate_snapshot(request: &SaveRequest) -> Result<(), AppError> {
+    newline_policy(request)?;
+    super::encoding::encode_text("", &request.format.encoding, &request.format.bom)?;
+    Ok(())
+}
+
+pub fn encode_snapshot(request: &SaveRequest) -> Result<Vec<u8>, AppError> {
+    let default = newline_policy(request)?;
     let mut expanded = String::with_capacity(request.text.len());
     for (index, part) in request.text.split('\n').enumerate() {
         if index > 0 {

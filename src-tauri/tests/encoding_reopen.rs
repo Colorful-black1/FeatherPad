@@ -4,7 +4,7 @@ use featherpad_lib::{
         encoding::encode_text,
         files::{FileService, OpenRequestMode},
         grants::GrantKind,
-        recovery::RecoveryStore,
+        recovery::{RecoverySnapshot, RecoveryStore, SnapshotReason},
         save::{HardLinkPolicy, PreparedSave},
         startup_storage::{load_save_transaction, scan_save_transactions},
     },
@@ -223,4 +223,41 @@ fn real_save_conversion_retains_active_encoding_and_unfinished_legacy_body_is_re
         ErrorCode::LossyEncoding
     );
     assert_eq!(fs::read(path).unwrap(), before);
+}
+
+#[test]
+fn recovery_preserves_unrepresentable_unsaved_text_and_still_rejects_invalid_maps() {
+    let recovery = RecoveryStore::new(root().join("unicode-drafts"));
+    let snapshot = || RecoverySnapshot {
+        document_id: uuid::Uuid::new_v4().to_string(),
+        buffer_version: 3,
+        text: "中文😀\nprivate".into(),
+        format: TextFormat {
+            encoding: "gbk".into(),
+            bom: "none".into(),
+            line_ending: "mixed".into(),
+        },
+        newline_map: Some(NewlineMap {
+            document_version: 3,
+            endings: vec![featherpad_lib::models::Newline::Cr],
+        }),
+        source: None,
+        reason: SnapshotReason::Periodic,
+    };
+    let saved = recovery.persist_snapshot(snapshot()).unwrap();
+    let loaded = recovery.load(&saved.manifest.receipt_id).unwrap();
+    assert_eq!(loaded.text, "中文😀\nprivate");
+    assert_eq!(loaded.manifest.format.encoding, "gbk");
+    let mut invalid = snapshot();
+    invalid.newline_map.as_mut().unwrap().document_version = 2;
+    assert_eq!(
+        recovery.persist_snapshot(invalid).unwrap_err().code,
+        ErrorCode::InvalidInput
+    );
+    let mut invalid = snapshot();
+    invalid.format.bom = "utf8".into();
+    assert_eq!(
+        recovery.persist_snapshot(invalid).unwrap_err().code,
+        ErrorCode::InvalidInput
+    );
 }

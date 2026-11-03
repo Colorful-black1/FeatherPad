@@ -21,6 +21,7 @@
 - T201.b：CodeMirror新增逐行格式StateField与undo反向效果，保留未改换行、新增行用主导类型（平手取首个），格式转换增加版本/dirty并能撤销；保存Ack记录捕获格式，新格式不被旧Ack清clean。仅在换行变化时复制映射，普通逐键输入复用映射。相关3文件41项与`tsc --noEmit`均exit 0；界面、编码重开和混合/UTF16可写入口尚待接通，T201保持进行中。
 - T201.c原生：文件服务支持显式编码打开/按revision安全重开；比较、重载、身份别名、保存/另存后的当前编码均保留，未完成传统编码保存事务可读成恢复副本。定向Rust encoding_reopen/open_document共14项通过，后续编码保存/另存/事务读取3文件16项通过（均exit 0）；实际源字节与有损拒绝已核对。测试首次编译因DTO无PartialEq改用完整序列化内容比较后通过。当前尚未接新的IPC/UI，不记T201完成。
 - T201.d接口：新增严格schema的`check_encoding`/`reopen_with_encoding`及精确capability、typed bridge和响应校验；预检查返回完整计数/最多32个UTF16位置及未应用的替代候选，不接受任意路径。编码Rust7项、IPC schema1项、bridge1项与TS类型均exit 0。下一步接UI与转换协调器，并保证传统编码暂不能表示的未保存正文仍能独立UTF8恢复；尚未构建Release或运行阶段回归。
+- T201.e恢复：将规范快照元数据/逐行校验与目标编码可表示性分开；恢复/回收保护允许GBK等缓冲包含emoji，正文仍以校验过的UTF8持久化，真正保存仍拒绝有损。相关encoding_reopen/recovery/recovery_snapshot共21项通过/exit 0，保留非法格式/陈旧映射/配额/摘要/来源检查。下一转换协调器与UI；T201未完成。
 
 ### 2026-11-03 T115完成：M1/G1统一验收通过并停止
 

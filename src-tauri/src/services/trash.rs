@@ -1,7 +1,7 @@
 use super::{
     directories::revision_from_metadata,
     documents::DocumentLease,
-    encode::encode_snapshot,
+    encode::validate_snapshot,
     file_ops::{
         validate_request_id, validate_revision, CompletedEntryOperation, EntryOperationKind,
     },
@@ -237,7 +237,7 @@ fn validate_documents(request: &TrashEntryRequest, impact: &TrashImpact) -> Resu
     }
     // Validate the whole set before storing the first body. Only the canonical encoder validates maps.
     for snapshot in &request.snapshots {
-        encode_snapshot(snapshot)?;
+        validate_snapshot(snapshot)?;
     }
     Ok(())
 }
