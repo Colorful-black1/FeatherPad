@@ -1,6 +1,6 @@
 # SPEC-search-tools：查找、受保护替换与格式工具
 
-> 轻羽 FeatherPad；模块 `search-tools`；业务依赖仅 `editor`、`workspace`、`file-core`。状态：M1 F-SEARCH-001–003与M2 F-SEARCH-004–009已通过G1/G2；M3的T307–T308实现完成，T309进行中，F-SEARCH-010–012统一验收仍待G3。详见 [矩阵](../FEATURE-MATRIX.md)。
+> 轻羽 FeatherPad；模块 `search-tools`；业务依赖仅 `editor`、`workspace`、`file-core`。状态：M1 F-SEARCH-001–003与M2 F-SEARCH-004–009已通过G1/G2；M3的T307–T309实现完成，F-SEARCH-010–012统一验收仍待G3。详见 [矩阵](../FEATURE-MATRIX.md)。
 
 ## Objective 与提供方契约
 
@@ -112,6 +112,8 @@ T307决策：锁定jsonc-parser3.3.1、Prettier3.9.10、@prettier/plugin-xml3.4.
 T308实现：锁定sql-formatter15.9.0（MIT）与yaml2.9.1（ISC），禁脚本安装、生产audit零已知漏洞；锁变化仅新依赖与Vite可选yaml peer绑定，未升级既有版本。[SQL后端](https://github.com/sql-formatter-org/sql-formatter)只暴露通用/SQLite/PostgreSQL/MySQL四种方言，关键字/标识符/字符串/参数保留，不代参、不连接数据库，显式拒绝过程/函数/触发器/DELIMITER及未选方言的反引号，仍非语义验证。YAML用本地Prettier源感知printer排版前后，独立[yaml CST/AST](https://eemeli.org/yaml/)核对全部注释、映射顺序、原数值字面量、锚点/别名、tag、多文档/指令和块scalar header/chomp及语义值；不转原生对象dump、不展开别名，无法保真拒绝。YAML禁Tab缩进；所有作业沿用T307版本/预算/预览/undo协议。
 
 ## 文本工具（F-SEARCH-012）
+
+T309实现：精确主选区优先，否则全文，其他选区不参与且多选时明确提示；不扩展首尾行。预览列出行列范围与变化行位置数，40k字符截断仅限展示，2秒Worker/版本fence后一次undo提交正文与EOL map。排序按Unicode码点（含非BMP），自然排序数字段按长度/字典比较避免数值精度损失，相等稳定；大小写忽略固定Unicode小写规则，无系统locale。去重保首条，空行保留/移除显式可选；移除末尾全部换行、仅空格/Tab尾空白和仅真实行首缩进均在名称/提示中明确。换行token优先随保留行移动，缺失时复用闲置token，再用原insertionEnding，保留原末尾换行意图；选区外文本/token不变。Markdown给空格敏感提示，代理对内部的选区边界拒绝，编码不变、无自动保存。
 
 选区优先，否则全文且显示范围：行字典序排序（默认Unicode codepoint，可选自然排序、升降序、区分大小写）、稳定去重（保留首条）、大小写转换、尾空白清理、补/移除末尾换行、Tab/空格缩进转换（依据tabSize）。先显示变更数量与范围，可预览；一次事务一次undo，不自动保存。空行保留规则显式开关；只排序文本不跨行解析语法，Markdown代码/表格空格敏感时提示，禁止保存时偷偷清尾空白。操作保持原换行token或显式标示重排的换行意图。
 

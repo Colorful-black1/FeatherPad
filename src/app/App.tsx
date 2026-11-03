@@ -51,6 +51,7 @@ import { autoSaves } from '../features/editor/autosave';
 import { AutoSaveStatus } from '../features/editor/AutoSaveStatus';
 import { FindBar } from '../features/search-tools/FindBar';
 import { FormatDialog } from '../features/search-tools/FormatDialog';
+import { TransformPreview } from '../features/search-tools/TransformPreview';
 import { formatLanguage } from '../features/search-tools/formatters';
 import type { SearchScope } from '../features/search-tools/search-query';
 import { Explorer } from '../features/workspace/Explorer';
@@ -122,6 +123,7 @@ export function App() {
   const navigationAvailability = useSyncExternalStore(navigationHistory.subscribe, navigationHistory.getSnapshot);
   const [goToOpen, setGoToOpen] = useState(false);
   const [formatDocumentId, setFormatDocumentId] = useState<DocumentId | null>(null);
+  const [transformDocumentId, setTransformDocumentId] = useState<DocumentId | null>(null);
   const [outlineOpen, setOutlineOpen] = useState(false);
   const [startupPending, setStartupPending] = useState(() => !!Reflect.get(window, '__TAURI_INTERNALS__'));
   const [autoFocus, setAutoFocus] = useState(true);
@@ -1041,6 +1043,7 @@ export function App() {
     'editor.find': openFind,
     'search.workspace': () => setWorkspaceSearchOpen(true),
     'tools.format': () => setFormatDocumentId(documents.getSnapshot().activeId),
+    'tools.transform': () => setTransformDocumentId(documents.getSnapshot().activeId),
     'editor.toggleComment': () => runEditingCommand('toggleComment'),
     'editor.toggleBlockComment': () => runEditingCommand('toggleBlockComment'),
     'editor.moveLineUp': () => runEditingCommand('moveLineUp'),
@@ -1079,7 +1082,7 @@ export function App() {
     'commands.open': () => openPalette('commands'), 'files.quickOpen': () => openPalette('files'),
   }), [newFile, openFile, openFolder, saveCurrent, saveDestination, requestClose, requestCloseBatch,
     openFind, runEditingCommand, navigateBack, navigateForward, openPalette, openSettings, dark, zoomEditor,
-    setGoToOpen, setOutlineOpen, setSidebarOpen, setWorkspaceSearchOpen, setFormatDocumentId]);
+    setGoToOpen, setOutlineOpen, setSidebarOpen, setWorkspaceSearchOpen, setFormatDocumentId, setTransformDocumentId]);
 
   const executeCommand = useCallback(async (id: string, targetId?: DocumentId) => {
     const actions = targetId ? { ...commandActions, 'file.close': () => requestClose(targetId), 'tabs.pin': () => tabs.pin(targetId) } : commandActions;
@@ -1241,6 +1244,7 @@ export function App() {
             </select>
           </label>
           <button type="button" className="plain-button" {...commandProps('tools.format')} onClick={() => void executeCommand('tools.format')}>格式化…</button>
+          <button type="button" className="plain-button" {...commandProps('tools.transform')} onClick={() => void executeCommand('tools.transform')}>文本工具…</button>
           <label className="toolbar-check"><input type="checkbox" checked={current.bracketMatching}
             onChange={event => documents.setBracketMatching(current.id, event.currentTarget.checked)} />匹配括号</label>
           <label className="toolbar-check"><input type="checkbox" checked={current.closeBrackets}
@@ -1315,6 +1319,9 @@ export function App() {
         onImportBindings={text => commands.importBindings(text)} onExportBindings={() => commands.exportBindings()} />}
       {formatDocumentId && documents.getDocument(formatDocumentId) && <FormatDialog key={formatDocumentId} registry={documents} id={formatDocumentId} onClose={() => {
         setFormatDocumentId(null); requestAnimationFrame(() => documents.focus(formatDocumentId));
+      }} />}
+      {transformDocumentId && documents.getDocument(transformDocumentId) && <TransformPreview key={transformDocumentId} registry={documents} id={transformDocumentId} onClose={() => {
+        setTransformDocumentId(null); requestAnimationFrame(() => documents.focus(transformDocumentId));
       }} />}
       {goToOpen && current && (() => {
         const managed = documents.getDocument(current.id);
