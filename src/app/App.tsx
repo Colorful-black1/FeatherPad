@@ -7,6 +7,8 @@ import { EditorDocument } from '../features/editor/EditorDocument';
 import { ReadOnlyOpenChoices } from '../features/editor/ReadOnlyOpenChoices';
 import { offerReadOnlyOpen, type ReadOnlyOpenCandidate } from '../features/editor/read-only-open';
 import { EditorStatus } from '../features/editor/EditorStatus';
+import { EncodingMenu } from '../features/editor/EncodingMenu';
+import type { EncodingId } from '../shared/contracts/encoding';
 import { fontSizeAfterZoom, listenEditorFontWheel, type FontZoomAction } from '../features/editor/view-settings';
 import { languageLabel, languageOptions, type LanguageId } from '../features/editor/editor-language';
 import { documents } from '../features/editor/documents';
@@ -328,14 +330,15 @@ export function App() {
     } finally { setBusy(false); }
   }, [openOne, setBusy, setError]);
 
-  const openReadOnlyPreview = useCallback(async (candidate: ReadOnlyOpenCandidate) => {
+  const openReadOnlyPreview = useCallback(async (candidate: ReadOnlyOpenCandidate, encoding?: EncodingId) => {
     if (opening.current) return;
     opening.current = true;
     setError(null);
     setBusy(true);
     setAutoFocus(true);
     try {
-      const result = await tabs.open(candidate.ref, 'pinned', candidate.mode);
+      const mode = encoding && candidate.mode === 'text-preview' ? undefined : candidate.mode;
+      const result = await tabs.open(candidate.ref, 'pinned', mode, encoding);
       if (result.ok) {
         await rememberRecentFile(result.value.id);
         setPreviewCandidates(candidates => candidates.filter(item => item !== candidate));
@@ -659,6 +662,7 @@ export function App() {
       <ReadOnlyOpenChoices candidates={previewCandidates}
         busy={busy || savingCount > 0 || batchBusy || closingCount > 0 || exitState.phase !== 'idle'}
         onOpen={candidate => void openReadOnlyPreview(candidate)}
+        onOpenEncoding={(candidate, encoding) => void openReadOnlyPreview(candidate, encoding)}
         onCancel={mode => setPreviewCandidates(candidates => candidates.filter(candidate => candidate.mode !== mode))} />
       {current && snapshot.activeId ? <>
         <div className="document-toolbar" aria-label="文件操作">
@@ -670,6 +674,8 @@ export function App() {
           <button id="save-all-button" className="plain-button" {...commandProps('file.saveAll')} onClick={() => void executeCommand('file.saveAll')}>全部保存</button>
           <button className="plain-button" {...commandProps('file.saveAs')} onClick={() => void executeCommand('file.saveAs')}>另存为</button>
           <button className="plain-button" {...commandProps('file.saveCopy')} onClick={() => void executeCommand('file.saveCopy')}>保存副本</button>
+          <EncodingMenu key={current.id} registry={documents} summary={current}
+            blocked={busy || savingCount > 0 || batchBusy || closingCount > 0 || exitState.phase !== 'idle'} onMessage={setNotice} />
           <button type="button" className="plain-button tab-pin-control" {...commandProps('tabs.pin')} onClick={() => void executeCommand('tabs.pin')}>{tabState.previewId === current.id ? '固定标签' : '已固定'}</button>
           <label className="toolbar-field">缩进
             <select aria-label="缩进宽度" value={current.indentWidth} onChange={event => {

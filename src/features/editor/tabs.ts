@@ -1,4 +1,5 @@
 import { files } from '../../bridge/files';
+import type { EncodingId } from '../../shared/contracts/encoding';
 import type { DocumentId, FileRef, OpenMode, ResultEnvelope } from '../../shared/contracts/files';
 import { documents, type DocumentRegistry } from './documents';
 import { closes, type CloseChoice, type CloseCoordinator, type CloseResult } from './close';
@@ -91,9 +92,10 @@ export class TabController {
     this.publish(document.summary.dirty ? null : id, this.snapshot.warning);
   }
 
-  open(reference: FileRef, intent: 'preview' | 'pinned' = 'pinned', mode?: Exclude<OpenMode, 'normal'>): Promise<ResultEnvelope<OpenTabResult>> {
+  open(reference: FileRef, intent: 'preview' | 'pinned' = 'pinned', mode?: Exclude<OpenMode, 'normal'>,
+    encoding?: EncodingId): Promise<ResultEnvelope<OpenTabResult>> {
     return this.enqueue(async () => {
-      const result = await this.openFile(reference, mode);
+      const result = encoding ? await this.openFile(reference, mode, undefined, encoding) : await this.openFile(reference, mode);
       if (!result.ok) return result;
       const existing = this.registry.getDocument(result.value.documentId);
       const previousId = this.snapshot.previewId;

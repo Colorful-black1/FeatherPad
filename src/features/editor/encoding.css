@@ -1,0 +1,7 @@
+.encoding-fields { display: grid; grid-template-columns: 2fr 1fr; gap: 12px; margin-block: 16px; }
+.encoding-fields label { display: grid; gap: 4px; min-width: 0; }
+.encoding-fields label:last-child { grid-column: 1 / -1; }
+.encoding-fields select { width: 100%; min-width: 0; padding: 6px; background: var(--bg-editor); color: var(--text-primary); border: 1px solid var(--border); }
+.encoding-dialog h3 { font-size: 14px; }
+.encoding-dialog ul { max-height: 150px; overflow: auto; padding-inline-start: 24px; }
+@media (max-width: 600px) { .encoding-fields { grid-template-columns: 1fr; } }

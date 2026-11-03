@@ -65,7 +65,7 @@ export class FormatCoordinator {
     }
     return this.saving.exclusive(id, async save => {
       let document = this.registry.getDocument(id);
-      if (!document?.source || document.fragment || document.summary.version !== version) return conflict();
+      if (!document?.source || document.source.mode === 'text-preview' || document.summary.version !== version) return conflict();
       if (document.summary.dirty && choice === 'save') {
         const saved = await save();
         if (!saved.ok) return saved;
