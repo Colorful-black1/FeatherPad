@@ -259,6 +259,10 @@ M2搜索与替换实现契约（2026-11-03，G2通过）：`search_workspace {re
 
 T310图片variant：`open_document`自动识别PNG/JPEG/GIF/WebP/SVG，返回`mode:'image-readonly',format:{encoding:'binary',bom:'none',lineEnding:'lf'},content:{kind:'image',image:ResourceImage}`。metadata.sizeBytes必须等于image.sizeBytes；原生读取≤20MiB并在像素解码前验证≤40MP，SVG等待宿主白名单清洗/viewport验证，浏览器解码后再复核。图片持有同一canonical identity/DocumentId，原生mark_fragment禁止文本保存；前端正文状态为空且图片payload单独保存，不创建伪文本恢复快照。binary不是文本编码且不能写入session.encodingOverride；显式UTF8源码重开SVG走既有reopen/expectedRevision/adopt，同一DocumentId转为真实可编辑文本；该SVG会话显式保留UTF8 override，以免重启改回图片。普通二进制仅可显式只读试开。
 
+T310比较快照：`read_comparison_snapshot {ref:FileRef,encoding:string|null}`只读取既有grant授权的完整文本，返回`{text,metadata,format}`。独立FileService读者复用grant校验但不注册或重绑活动文档写所有权；返回规范LF，拒绝图片/限量内容及≥20MiB文本。显式encoding可将SVG作为文本读取。前端记录读取时间/revision与缓冲version，通过Worker比较原文并映射行差异；忽略空白只影响比较，磁盘watch仅提示变化，重新读取必须显式操作。没有合并或写入IPC。
+
+T310 HTML静态预览使用低层shared/preview结构白名单和相同资源读取契约。用户脚本/样式/表单/链接导航不进入结果，iframe sandbox为空且CSP禁止脚本/网络/对象/嵌套框架；图片仅为原生已验证且宿主清洗过的dataURL。Wry Windows主框架脚本与其底层ipc包装均受top-frame条件保护，子框架不能得到应用bridge。HTML超过2MiB需按需生成、≥20MiB拒绝完整预览，版本或来源变化丢弃旧结果，源码和undo不受影响。
+
 T305导出契约：`export_html {documentId,requestId,documentVersion,html}`不接受目标路径或编码，返回SaveAsAck但宿主不得把此回执当源文档保存回执。HTML为≤64MiB、LF、完整独立快照；Rust强制UTF8/no-BOM/Copy，原生路径选择及覆盖确认后复用既有save_as事务、身份/版本重验和临时写/替换。不能覆盖活动源文档或其他打开文档。前端冻结导出版本，经同一Worker、HTML清洗、资源授权/预算构建独立文件，剥离固定运行时与应用data动作、相对文件链接；仅保留安全外链/锚点和内嵌图片。缺图显式占位继续或取消，不猜cwd。T305只完成HTML，PDF留T306。
 
 T306：`export_pdf {documentId,requestId,documentVersion,html,options:{paper:'a4'|'letter',landscape,marginsMm:{top,right,bottom,left}}}`返回`{displayPath,sizeBytes,sha256}`，不改变源绑定或清dirty；每边0–50mm、默认15mm，HTML沿用64MiB快照预算。原生只允许一个PDF作业，`cancel_pdf_export {requestId}`只取消匹配活动作业。无IPC的raw Wry子视图禁文档脚本/宿主对象/Web消息及外部请求；原生内存页面与data图片例外，固定探针等待图片/本地字体，ICoreWebView2_16.PrintToPdfStream生成≤100MiB，60秒终止。校验PDF头/EOF/非零页面后交不接受路径IPC的ExportTarget事务；原生选择/覆盖确认、打开文档所有权和revision重验、同目录临时写/sync/校验/原子提交。私有pdf-exports事务记录与失败侧文件保留；不把PDF交文本编码器或文本恢复入口。后端缺失返回UNSUPPORTED，取消/错误不谎报成功。T306真实7页Letter横向已验证，完整故障矩阵待G3。

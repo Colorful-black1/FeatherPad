@@ -4,6 +4,7 @@ pub mod models;
 use tauri::Manager;
 pub mod services {
     pub mod assets;
+    pub mod comparison;
     pub mod create_file;
     pub mod directories;
     pub mod documents;
@@ -79,6 +80,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::assets::read_preview_resource,
+            commands::comparison::read_comparison_snapshot,
             commands::export::export_html,
             commands::export::export_pdf,
             commands::export::cancel_pdf_export,

@@ -20,6 +20,7 @@ use tauri::{
 };
 use tauri_plugin_dialog::DialogExt;
 pub mod assets;
+pub mod comparison;
 pub mod encoding;
 pub mod export;
 pub mod external;

@@ -18,6 +18,7 @@ export default defineConfig({
     { name: 'reliability', testMatch: 'reliability.spec.ts' },
     { name: 'g2-special', testMatch: 'g2-special.spec.ts' },
     { name: 'markdown', testMatch: 'markdown.spec.ts' },
+    { name: 'content', testMatch: 'content.spec.ts' },
   ],
   workers: 1,
   forbidOnly: true,

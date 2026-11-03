@@ -52,6 +52,7 @@ import { AutoSaveStatus } from '../features/editor/AutoSaveStatus';
 import { FindBar } from '../features/search-tools/FindBar';
 import { FormatDialog } from '../features/search-tools/FormatDialog';
 import { TransformPreview } from '../features/search-tools/TransformPreview';
+import { DiffView } from '../features/editor/DiffView';
 import { formatLanguage } from '../features/search-tools/formatters';
 import type { SearchScope } from '../features/search-tools/search-query';
 import { Explorer } from '../features/workspace/Explorer';
@@ -124,6 +125,7 @@ export function App() {
   const [goToOpen, setGoToOpen] = useState(false);
   const [formatDocumentId, setFormatDocumentId] = useState<DocumentId | null>(null);
   const [transformDocumentId, setTransformDocumentId] = useState<DocumentId | null>(null);
+  const [comparisonOpen, setComparisonOpen] = useState(false);
   const [outlineOpen, setOutlineOpen] = useState(false);
   const [startupPending, setStartupPending] = useState(() => !!Reflect.get(window, '__TAURI_INTERNALS__'));
   const [autoFocus, setAutoFocus] = useState(true);
@@ -1046,6 +1048,7 @@ export function App() {
     'search.workspace': () => setWorkspaceSearchOpen(true),
     'tools.format': () => setFormatDocumentId(documents.getSnapshot().activeId),
     'tools.transform': () => setTransformDocumentId(documents.getSnapshot().activeId),
+    'tools.compare': () => setComparisonOpen(true),
     'editor.toggleComment': () => runEditingCommand('toggleComment'),
     'editor.toggleBlockComment': () => runEditingCommand('toggleBlockComment'),
     'editor.moveLineUp': () => runEditingCommand('moveLineUp'),
@@ -1084,7 +1087,7 @@ export function App() {
     'commands.open': () => openPalette('commands'), 'files.quickOpen': () => openPalette('files'),
   }), [newFile, openFile, openFolder, saveCurrent, saveDestination, requestClose, requestCloseBatch,
     openFind, runEditingCommand, navigateBack, navigateForward, openPalette, openSettings, dark, zoomEditor,
-    setGoToOpen, setOutlineOpen, setSidebarOpen, setWorkspaceSearchOpen, setFormatDocumentId, setTransformDocumentId]);
+    setGoToOpen, setOutlineOpen, setSidebarOpen, setWorkspaceSearchOpen, setFormatDocumentId, setTransformDocumentId, setComparisonOpen]);
 
   const executeCommand = useCallback(async (id: string, targetId?: DocumentId) => {
     const actions = targetId ? { ...commandActions, 'file.close': () => requestClose(targetId), 'tabs.pin': () => tabs.pin(targetId) } : commandActions;
@@ -1247,6 +1250,7 @@ export function App() {
           </label>
           <button type="button" className="plain-button" {...commandProps('tools.format')} onClick={() => void executeCommand('tools.format')}>格式化…</button>
           <button type="button" className="plain-button" {...commandProps('tools.transform')} onClick={() => void executeCommand('tools.transform')}>文本工具…</button>
+          <button type="button" className="plain-button" {...commandProps('tools.compare')} onClick={() => void executeCommand('tools.compare')}>比较文件…</button>
           <label className="toolbar-check"><input type="checkbox" checked={current.bracketMatching}
             onChange={event => documents.setBracketMatching(current.id, event.currentTarget.checked)} />匹配括号</label>
           <label className="toolbar-check"><input type="checkbox" checked={current.closeBrackets}
@@ -1297,6 +1301,7 @@ export function App() {
             <button className="plain-button" {...commandProps('file.new')} onClick={() => void executeCommand('file.new')}>新建文本</button>
             <button className="primary-button" {...commandProps('file.open')} onClick={() => void executeCommand('file.open')}>打开文件</button>
             <button className="plain-button" {...commandProps('workspace.open')} onClick={() => void executeCommand('workspace.open')}>打开文件夹</button>
+            <button className="plain-button" {...commandProps('tools.compare')} onClick={() => void executeCommand('tools.compare')}>比较文件…</button>
           </div>
         </div>
       </div>}
@@ -1325,6 +1330,7 @@ export function App() {
       {transformDocumentId && documents.getDocument(transformDocumentId) && <TransformPreview key={transformDocumentId} registry={documents} id={transformDocumentId} onClose={() => {
         setTransformDocumentId(null); requestAnimationFrame(() => documents.focus(transformDocumentId));
       }} />}
+      {comparisonOpen && <DiffView registry={documents} onClose={() => { setComparisonOpen(false); requestAnimationFrame(() => { const id = documents.getSnapshot().activeId; if (id) documents.focus(id); }); }} />}
       {goToOpen && current && (() => {
         const managed = documents.getDocument(current.id);
         if (!managed) return null;

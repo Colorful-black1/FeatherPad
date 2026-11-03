@@ -16,6 +16,7 @@ import { Outline } from './Outline';
 import { useMarkdownScroll } from './scroll-sync';
 import { ExportDialog } from './ExportDialog';
 import { ImageView } from '../editor/ImageView';
+import { HtmlPreview } from '../editor/HtmlPreview';
 
 interface DocumentContentProps {
   registry: DocumentRegistry; id: DocumentId; autoFocus: boolean;
@@ -31,6 +32,7 @@ type MarkdownMode = 'source' | 'read' | 'split';
 export function DocumentContent(props: DocumentContentProps) {
   const record = props.registry.getDocument(props.id);
   if (record?.fragment?.kind === 'image') return <ImageView {...props} />;
+  if (record?.summary.languageId === 'html' && !record.fragment) return <HtmlPreview {...props} />;
   return record?.summary.languageId === 'markdown' && !record.fragment
     ? <MarkdownView {...props} /> : <EditorDocument {...props} />;
 }

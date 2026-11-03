@@ -5,7 +5,7 @@ import { createEditorState } from './editor-state';
 import { diffLines, type DiffRange } from './line-diff';
 import type { TextFormat } from '../../shared/contracts/files';
 
-function SnapshotPane({ label, text, ranges, active, format }: {
+export function SnapshotPane({ label, text, ranges, active, format }: {
   label: string; text: string; ranges: readonly DiffRange[]; active: number; format: TextFormat | undefined;
 }) {
   const parent = useRef<HTMLDivElement>(null);

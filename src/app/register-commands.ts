@@ -2,7 +2,7 @@ import { CommandRegistry, type CommandDefinition } from '../shared/commands/regi
 
 export const appCommandIds = ['file.new', 'file.open', 'workspace.open', 'file.save', 'file.saveAs', 'file.saveCopy',
   'file.saveAll', 'file.close', 'editor.find', 'editor.toggleComment', 'editor.toggleBlockComment',
-  'search.workspace', 'tools.format', 'tools.transform',
+  'search.workspace', 'tools.format', 'tools.transform', 'tools.compare',
   'editor.moveLineUp', 'editor.moveLineDown', 'editor.copyLineUp', 'editor.copyLineDown', 'editor.insertBlankLine',
   'editor.complete', 'editor.selectNextOccurrence', 'editor.selectAllOccurrences', 'editor.toggleFold',
   'navigation.goToLine', 'navigation.back', 'navigation.forward', 'navigation.outline',
@@ -48,6 +48,7 @@ const commandInfo: CommandInfo[] = [
   ['search.workspace', '在文件和工作区中查找', 'workspace search find in files 目录搜索', 'Ctrl+Shift+F', state => state.hasWorkspace ? null : '请先打开至少一个文件夹。'],
   ['tools.format', '格式化文档', 'format json xml html css javascript typescript yaml sql 格式', 'Shift+Alt+F', state => hasDocument(state) ?? state.readOnlyReason ?? state.formatReason ?? (state.closing ? '正在关闭文档。' : null)],
   ['tools.transform', '文本工具', 'sort unique uppercase lowercase trim tab space 排序 去重 大小写 空白 缩进', null, state => hasDocument(state) ?? state.readOnlyReason ?? (state.closing ? '正在关闭文档。' : null)],
+  ['tools.compare', '双文件对比', 'diff compare files buffers 比较 差异', null, state => state.opening || state.closing ? '请等待当前文件操作。' : null],
   ['editor.toggleComment', '切换行注释', 'comment line annotation 注释', 'Ctrl+/', state => hasDocument(state) ?? state.readOnlyReason ?? (state.closing ? '正在关闭文档。' : null)],
   ['editor.toggleBlockComment', '切换块注释', 'block comment annotation 注释', 'Shift+Alt+A', state => hasDocument(state) ?? state.readOnlyReason ?? (state.closing ? '正在关闭文档。' : null)],
   ['editor.moveLineUp', '上移当前行', 'move line up 行', 'Alt+ArrowUp', state => hasDocument(state) ?? state.readOnlyReason ?? (state.closing ? '正在关闭文档。' : null)],

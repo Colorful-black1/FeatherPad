@@ -5,7 +5,7 @@
 - 产品名称：**轻羽 FeatherPad**。
 - 当前交付：完整产品方案、86项功能矩阵、模块规格、UI规范与离线交互原型、技术/本机环境文档、M0–M5实现计划、57个开发任务、agent执行入口。
 - 产品代码：**M0/G0、M1/G1、M2/G2均已通过（2026-11-03）**。M1提供真实文件打开/编辑/保存/恢复闭环；M2补齐编码与换行、多根/收藏/工作区文件、安全遍历与监听、拖放移动、分栏/多光标/折叠/导航、全文搜索、跨文件替换、全局唤起与隐私清理。完整v1仍需M3–M5。
-- 当前：**用户已于2026-11-03确认继续，M3/T301–T309实现完成，当前T310**。M2统一验收节点已提交为`a7e8070`。每完成一个M阶段都停止并等待确认，不自动进入下一阶段。
+- 当前：**用户已于2026-11-03确认继续，M3/T301–T309实现完成，当前T311/G3统一验收**。M2统一验收节点已提交为`a7e8070`。每完成一个M阶段都停止并等待确认，不自动进入下一阶段。
 - 本次交付检查：详见 [DELIVERY-CHECK](../docs/DELIVERY-CHECK.md)，不代表产品关卡G0–G5通过。
 
 ## 已核查环境
@@ -13,6 +13,12 @@
 复用本机Node22.13.0、pnpm10.32.1、Rust1.99.1、VS2022 Build Tools C++、Windows SDK10.0.26100.0、WebView2。未安装新开发工具。严格遵守新增安装与缓存仅在E:\Codeing，入口见 [ENVIRONMENT](../docs/ENVIRONMENT.md)。
 
 ## 实施证据（未来逐任务追加）
+
+### 2026-11-03 T310实现完成：图片、静态HTML与双文件diff（G3待验）
+
+- F-EDIT-019/020：图片只读身份/会话、SVG显式UTF8源码重开、10%–800%缩放与GIF暂停；HTML当前缓冲经结构白名单和原生授权图片生成无脚本静态快照；两缓冲/磁盘独立完整快照在Worker只读比较、空白选项/差异导航、watch变化提示与显式重读，不注册活动写所有权。
+- 最小自检exit0：类型/受影响ESLint、Rust lib clippy与图片/独立比较各1项、相关TS43项及diff2项；Web图片2/HTML2/diff2均通过。真实Release内容1 passed/10.2秒（总11.2秒），日志`.artifacts/T310/logs/native-content-r4.log`，原生证据包含动画多帧采样、暂停稳定、SVG清洗/源码、HTML无Tauri/Wry桥/零远程请求、比较外部修改与重读、源字节核对。
+- Release17,102,336 bytes，SHA256 `474F9A9AF4D0369B3A970E76EC99E85B11ADAAC610FF05F3B9A6719772629685`，WebView2 156.0.4314.58，构建日志`release-build-scope.log`。真实断言发现Wry仍向子frame注入底层ipc，补丁已收窄到主frame，HTML与Markdown均保留严格断言；早期失败日志/截图未删除。G3完整回归继续T311，完成后停止等待M4确认。
 
 - T310.a图片切片：原生image-readonly variant、同DocumentId只读标签/会话、共享SVG清洗、10%–800%缩放/GIF暂停与显式SVG源码重开。类型/受影响ESLint/Rust lib clippy、原生图片身份/源码1项与相关TS43项exit0；Web2 passed（17.5秒），日志`.artifacts/T310/logs/web-images.log`。T310的HTML/diff及相关真实Release冒烟仍待完成，G3待验。
 

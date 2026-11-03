@@ -87,9 +87,9 @@ test('real Release reads a shared Markdown buffer offline in an isolated preview
     const isolation = await frame.locator('body').evaluate(() => {
       let isolated = false;
       try { void window.parent.document; } catch { isolated = true; }
-      return { isolated, ipc: '__TAURI_INTERNALS__' in window };
+      return { isolated, ipc: '__TAURI_INTERNALS__' in window, wryIpc: 'ipc' in window };
     });
-    expect(isolation).toEqual({ isolated: true, ipc: false });
+    expect(isolation).toEqual({ isolated: true, ipc: false, wryIpc: false });
     await frame.getByRole('checkbox').uncheck({ timeout: 5000 });
     await expect(page.locator('.cm-line').nth(6)).toHaveText('- [ ] 完成');
     await expect(frame.getByRole('checkbox')).not.toBeChecked();

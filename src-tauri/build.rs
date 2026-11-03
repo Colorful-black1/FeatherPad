@@ -3,6 +3,7 @@ fn main() {
         tauri_build::Attributes::new().app_manifest(tauri_build::AppManifest::new().commands(&[
             "choose_files",
             "read_preview_resource",
+            "read_comparison_snapshot",
             "export_html",
             "export_pdf",
             "cancel_pdf_export",
