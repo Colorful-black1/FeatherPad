@@ -9,6 +9,18 @@ import { documentFormat } from './line-endings';
 
 type RegularOpenDocument = Extract<OpenDocument, { mode: 'normal' | 'degraded' }>;
 
+it('keeps image payloads out of the text editor, marks them readonly and rejects text saves', () => {
+  const base = fixture();
+  const image: OpenDocument = { ...base, metadata: { ...base.metadata, sizeBytes: 42 }, format: { encoding: 'binary', bom: 'none', lineEnding: 'lf' },
+    mode: 'image-readonly', content: { kind: 'image', image: { mime: 'image/gif', dataBase64: 'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', sizeBytes: 42, width: 1, height: 1 } } };
+  expect(isOpenDocument(image)).toBe(true);
+  const registry = new DocumentRegistry(); const id = registry.openDocument(image);
+  expect(registry.getDocument(id)!.state.doc.length).toBe(0);
+  expect(registry.getDocument(id)!.summary).toMatchObject({ dirty: false, canSaveAs: false, readOnlyReason: expect.stringContaining('图片只读') });
+  expect(registry.captureSave(id)).toMatchObject({ ok: false, error: { code: 'READ_ONLY' } });
+  expect(registry.applyTextResult(id, 0, 'cannot-write')).toMatchObject({ ok: false });
+});
+
 it('applies a versioned text-tool result once, keeps encoding/mixed endings and rejects a late result', () => {
   const registry = new DocumentRegistry();
   const opened = fixture({ encoding: 'utf-16le', lineEnding: 'mixed' });

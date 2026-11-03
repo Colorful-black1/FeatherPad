@@ -1,3 +1,4 @@
+import type { ResourceImage } from '../shared/contracts/files';
 import type { ChosenFiles, ChosenFolder, CreateEntryRequest, DirectoryEntry, DirectoryPage, DiscardRecoveryRequest, DiscardRecoveryResult, DocumentId, FileRef, ListDirectoryRequest, LoadedRecoveryEntry, LoadRecoveryEntryRequest, LoadSessionRequest, OpenDocument, ReadChunkRequest, RecoveryEntry, RecoveryInventory, RecoverySnapshotAck, ReleaseDocumentResult, RenameEntryRequest, RenameEntryResult, SaveAck, SaveAsAck, SaveAsRequest, SaveRequest, SessionClearResult, SessionLoadResult, SessionManifest, SessionSaveResult, TextChunk, TextFormat, TransferEntryRequest, TransferEntryResult, TrashEntryRequest, TrashEntryResult, TrashImpact, TrashImpactRequest, WriteRecoverySnapshotRequest } from '../shared/contracts/files';
 import { callCommand, isAppError, isRecord } from './invoke';
 import type { LoadedSaveTransaction, SaveTransactionCandidate } from '../shared/contracts/files';
@@ -11,6 +12,21 @@ const revision = (value: unknown): value is string => typeof value === 'string' 
 const uuid = (value: unknown): value is string =>
   typeof value === 'string'
   && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(value);
+
+export function isResourceImage(value: unknown): value is ResourceImage {
+  if (!isRecord(value) || typeof value.mime !== 'string'
+    || !['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml'].includes(value.mime)
+    || typeof value.dataBase64 !== 'string' || value.dataBase64.length > 28 * 1024 * 1024 || value.dataBase64.length % 4 !== 0
+    || !/^[a-z\d+/]*={0,2}$/i.test(value.dataBase64)
+    || typeof value.sizeBytes !== 'number' || !Number.isSafeInteger(value.sizeBytes)
+    || value.sizeBytes <= 0 || value.sizeBytes > 20 * 1024 * 1024) return false;
+  const decodedLength = value.dataBase64.length / 4 * 3 - (value.dataBase64.endsWith('==') ? 2 : value.dataBase64.endsWith('=') ? 1 : 0);
+  if (decodedLength !== value.sizeBytes) return false;
+  if (value.mime === 'image/svg+xml') return value.width === null && value.height === null;
+  return typeof value.width === 'number' && Number.isSafeInteger(value.width) && value.width > 0
+    && typeof value.height === 'number' && Number.isSafeInteger(value.height) && value.height > 0
+    && value.width * value.height <= 40_000_000;
+}
 
 function isSelectionFailure(value: unknown): value is ChosenFiles['failures'][number] {
   return isRecord(value) && safeCount(value.selectionIndex) && isAppError(value.error);
@@ -151,6 +167,8 @@ export function isOpenDocument(value: unknown): value is OpenDocument {
     for (let i = 0; i < content.text.length; i++) if (content.text.charCodeAt(i) === 10) newlineCount++;
     return content.newlineMap.endings.length === newlineCount;
   }
+  if (value.mode === 'image-readonly' && content.kind === 'image') return isResourceImage(content.image)
+    && content.image.sizeBytes === metadata.sizeBytes && format.encoding === 'binary' && format.bom === 'none';
   if (value.mode === 'large-readonly' && content.kind === 'chunked') {
     return nonemptyString(content.handleId) && safeCount(content.totalBytes)
       && content.totalBytes === metadata.sizeBytes && isTextChunk(content.initialChunk);

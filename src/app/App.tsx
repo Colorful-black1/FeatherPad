@@ -842,6 +842,7 @@ export function App() {
     const batch = saveAll.getSnapshot();
     return { hasDocument: !!active, readOnlyReason: active?.readOnlyReason ?? null, canSaveAs: active?.canSaveAs ?? false,
       formatReason: active && !formatLanguage(active.languageId, active.displayPath) ? '当前语言没有格式化器，Java仅提供高亮。' : null,
+      textViewReason: active?.format.encoding === 'binary' ? '图片视图没有文本位置。' : null,
       hasDirty: snapshot.documents.some(document => document.dirty), isPreview: !!active && tabs.getSnapshot().previewId === active.id,
       tabCount: snapshot.documents.length,
       cleanTabCount: snapshot.documents.filter(document => !document.dirty && !document.closing).length,
@@ -853,6 +854,7 @@ export function App() {
       batchBusy: batch.phase === 'running' || batch.phase === 'cancelling' };
   }, [busy, savingCount, closingCount, navigationAvailability]);
   const commandAvailability: AppCommandState = {
+    textViewReason: current?.format.encoding === 'binary' ? '图片视图没有文本位置。' : null,
     formatReason: current && !formatLanguage(current.languageId, current.displayPath) ? '当前语言没有格式化器，Java仅提供高亮。' : null,
     hasDocument: !!current, readOnlyReason: current?.readOnlyReason ?? null, canSaveAs: current?.canSaveAs ?? false,
     hasDirty: snapshot.documents.some(document => document.dirty), isPreview: !!current && tabState.previewId === current.id,
@@ -1172,7 +1174,7 @@ export function App() {
             void applyPathMappings(renamed);
           }} />
       </div>}
-      status={<><span>{closingCount > 0 || current?.closing ? '正在关闭…' : batchBusy ? '正在全部保存…' : savingCount > 0 ? '正在保存…' : busy ? '正在打开…' : current ? current.readOnlyReason ? '只读' : current.dirty ? '未保存修改' : current.displayPath ? '未修改' : '未命名' : '就绪'}</span>{current && <><span role="group" aria-label="光标与字数" aria-live="off"><EditorStatus registry={documents} id={current.id} summary={current} /></span><span aria-label="编辑字号">{settingsState.settings.fontSize}px</span></>}<span className="status-end">{current ? `${current.format.encoding.toUpperCase()}${current.format.bom === 'none' ? '' : ' BOM'} · ${current.format.lineEnding.toUpperCase()}` : '轻羽 FeatherPad'}</span></>}
+      status={<><span>{closingCount > 0 || current?.closing ? '正在关闭…' : batchBusy ? '正在全部保存…' : savingCount > 0 ? '正在保存…' : busy ? '正在打开…' : current ? current.readOnlyReason ? '只读' : current.dirty ? '未保存修改' : current.displayPath ? '未修改' : '未命名' : '就绪'}</span>{current && current.format.encoding !== 'binary' && <><span role="group" aria-label="光标与字数" aria-live="off"><EditorStatus registry={documents} id={current.id} summary={current} /></span><span aria-label="编辑字号">{settingsState.settings.fontSize}px</span></>}<span className="status-end">{current?.format.encoding === 'binary' ? '图片 · 只读' : current ? `${current.format.encoding.toUpperCase()}${current.format.bom === 'none' ? '' : ' BOM'} · ${current.format.lineEnding.toUpperCase()}` : '轻羽 FeatherPad'}</span></>}
     >
       {error && <div className="notice error-notice" role="alert"><span>{error}</span><button onClick={() => setError(null)}>关闭提示</button></div>}
       {notice && <div className="notice error-notice" aria-live="polite"><span>{notice}</span><button onClick={() => setNotice(null)}>关闭提示</button></div>}
@@ -1212,8 +1214,8 @@ export function App() {
           <button id="save-all-button" className="plain-button" {...commandProps('file.saveAll')} onClick={() => void executeCommand('file.saveAll')}>全部保存</button>
           <button className="plain-button" {...commandProps('file.saveAs')} onClick={() => void executeCommand('file.saveAs')}>另存为</button>
           <button className="plain-button" {...commandProps('file.saveCopy')} onClick={() => void executeCommand('file.saveCopy')}>保存副本</button>
-          <EncodingMenu key={current.id} registry={documents} summary={current}
-            blocked={busy || savingCount > 0 || batchBusy || closingCount > 0 || exitState.phase !== 'idle'} onMessage={setNotice} />
+          {current.format.encoding !== 'binary' && <EncodingMenu key={current.id} registry={documents} summary={current}
+            blocked={busy || savingCount > 0 || batchBusy || closingCount > 0 || exitState.phase !== 'idle'} onMessage={setNotice} />}
           <button type="button" className="plain-button tab-pin-control" {...commandProps('tabs.pin')} onClick={() => void executeCommand('tabs.pin')}>{tabState.previewId === current.id ? '固定标签' : '已固定'}</button>
           <button type="button" className="plain-button" {...commandProps('tabs.split')}
             onClick={() => void executeCommand('tabs.split')}>向右拆分</button>
@@ -1236,7 +1238,7 @@ export function App() {
             </select>
           </label>
           <label className="toolbar-field">语言
-            <select aria-label="语言模式" disabled={currentSource?.mode === 'text-preview'}
+            <select aria-label="语言模式" disabled={currentSource?.mode === 'text-preview' || currentSource?.mode === 'image-readonly'}
               value={current.languageSource === 'auto' ? 'auto' : current.languageId}
               onChange={event => { void languagePreferences.choose(current.id, event.currentTarget.value as 'auto' | LanguageId); }}>
               <option value="auto">自动（{languageLabel(current.languageId)}）</option>

@@ -160,7 +160,9 @@ impl DocumentRegistry {
     }
 
     pub(super) fn is_head_preview(&self, id: &str) -> bool {
-        self.is_fragment(id) && !self.chunk_handles.values().any(|owner| owner == id)
+        self.is_fragment(id)
+            && self.encoding(id) != Some("binary")
+            && !self.chunk_handles.values().any(|owner| owner == id)
     }
 
     pub fn issue_chunk_handle(&mut self, id: &str) -> Option<String> {

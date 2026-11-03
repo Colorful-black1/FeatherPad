@@ -71,7 +71,7 @@ function failure(code: 'NOT_FOUND' | 'CONFLICT' | 'READ_ONLY' | 'UNSUPPORTED' | 
   return { ok: false, error: { code, message, retryable: false } };
 }
 
-const isPlainTextMode = (mode: OpenDocument['mode'] | undefined) => mode === 'degraded' || mode === 'text-preview';
+const isPlainTextMode = (mode: OpenDocument['mode'] | undefined) => mode === 'degraded' || mode === 'text-preview' || mode === 'image-readonly';
 const textPreviewReason = '只读文本试开仅供查看，显示内容不能保存、另存、保存副本或覆盖源文件。';
 
 function previewPreferences(state: EditorState, mode: OpenDocument['mode'] | undefined, preferences: EditorPreferences): EditorPreferences {
@@ -230,7 +230,7 @@ export class DocumentRegistry {
     const id = document.documentId;
     if (!this.documents.has(id)) {
       const fragment = document.content.kind === 'text' ? null : document.content;
-      const reason = document.mode === 'text-preview' ? textPreviewReason : fragment
+      const reason = document.mode === 'image-readonly' ? '图片只读查看；不会把二进制内容保存为文本。' : document.mode === 'text-preview' ? textPreviewReason : fragment
         ? document.content.kind === 'chunked'
           ? '大文件以只读分块方式打开，无法保存完整文件'
           : '内容为前1MiB截断预览，无法保存'
@@ -239,7 +239,7 @@ export class DocumentRegistry {
         ? document.content.text
         : document.content.kind === 'chunked'
           ? document.content.initialChunk.text
-          : document.content.text;
+          : document.content.kind === 'image' ? '' : document.content.text;
       const languageId = isPlainTextMode(document.mode) ? 'plaintext' : detectLanguage(document.metadata.displayPath);
       const initialState = createEditorState(initialText, this.hotExitFrozen || reason !== null,
         { ...this.editorPreferences, languageId, commandBindings: this.commandBindings,
@@ -683,9 +683,9 @@ export class DocumentRegistry {
     }
     if (!Number.isSafeInteger(expectedVersion + 1)) return failure('INVALID_INPUT', '文档版本超出可用范围，请另存。');
     const text = opened.content.kind === 'text' ? opened.content.text
-      : opened.content.kind === 'chunked' ? opened.content.initialChunk.text : opened.content.text;
+      : opened.content.kind === 'chunked' ? opened.content.initialChunk.text : opened.content.kind === 'image' ? '' : opened.content.text;
     const fragment = opened.content.kind === 'text' ? null : opened.content;
-    const reason = opened.mode === 'text-preview' ? textPreviewReason : fragment ? '磁盘文件以只读预览方式打开，无法保存完整文件'
+    const reason = opened.mode === 'image-readonly' ? '图片只读查看；不会把二进制内容保存为文本。' : opened.mode === 'text-preview' ? textPreviewReason : fragment ? '磁盘文件以只读预览方式打开，无法保存完整文件'
       : readOnlyReason(opened.metadata, opened.format);
     const previousSelection = document.state.selection.ranges;
     const version = expectedVersion + 1;

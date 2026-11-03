@@ -14,6 +14,8 @@
 
 ## 实施证据（未来逐任务追加）
 
+- T310.a图片切片：原生image-readonly variant、同DocumentId只读标签/会话、共享SVG清洗、10%–800%缩放/GIF暂停与显式SVG源码重开。类型/受影响ESLint/Rust lib clippy、原生图片身份/源码1项与相关TS43项exit0；Web2 passed（17.5秒），日志`.artifacts/T310/logs/web-images.log`。T310的HTML/diff及相关真实Release冒烟仍待完成，G3待验。
+
 ### 2026-11-03 T309实现完成：有范围预览的文本工具（G3待验）
 
 - F-SEARCH-012：精确主选区或全文，Unicode码点/自然升降稳定排序、去重保首、空行开关、大小写、尾空白、补/移末尾换行与Tab/空格缩进。2秒Worker、明确范围/变更数/预览、版本fence，一次undo，不保存或改编码。EOL token随行、复用或原主导补足，范围外文本/token不变；Markdown敏感提示，拒绝拆代理对。

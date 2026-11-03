@@ -76,7 +76,12 @@ export interface OpenDocumentBase {
   format: TextFormat;
   warnings: string[];
 }
+export interface ResourceImage {
+  mime: 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp' | 'image/svg+xml';
+  dataBase64: string; sizeBytes: number; width: number | null; height: number | null;
+}
 export type OpenDocument = OpenDocumentBase & (
+  | { mode: 'image-readonly'; content: { kind: 'image'; image: ResourceImage } }
   | {
     mode: 'normal' | 'degraded';
     content: {

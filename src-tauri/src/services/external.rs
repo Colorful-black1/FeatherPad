@@ -28,7 +28,11 @@ impl FileService {
         self.reopen_with_encoding(
             id,
             expected_revision,
-            self.documents.encoding(id).map(str::to_owned).as_deref(),
+            self.documents
+                .encoding(id)
+                .filter(|encoding| *encoding != "binary")
+                .map(str::to_owned)
+                .as_deref(),
         )
     }
 
@@ -58,7 +62,12 @@ impl FileService {
     }
 
     fn disk_document(&self, id: &str) -> Result<(OpenDocument, DocumentRegistry), AppError> {
-        self.disk_document_with_encoding(id, self.documents.encoding(id))
+        self.disk_document_with_encoding(
+            id,
+            self.documents
+                .encoding(id)
+                .filter(|encoding| *encoding != "binary"),
+        )
     }
 
     fn disk_document_with_encoding(

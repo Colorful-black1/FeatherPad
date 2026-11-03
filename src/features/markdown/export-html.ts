@@ -4,7 +4,7 @@ import { safePreviewUrl } from './links';
 import { markdownFrame } from './frame';
 import { escapeHtml, type RenderReply, type RenderRequest } from './parser';
 import { prepareRawHtml } from './raw-html';
-import { safeImageData } from './sanitize';
+import { safeImageData } from '../../shared/preview/image-data';
 import type { PreviewImage } from './use-markdown-resources';
 
 export type ReadyMarkdown = Extract<RenderReply, { ok: true }>;

@@ -1,7 +1,7 @@
 use super::{files::FileService, grants::opened_file_path, windows_file};
 use crate::models::{io_error, AppError, ErrorCode, FileRef};
 use base64::{engine::general_purpose::STANDARD, Engine};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::{fs::File, io::Read, path::PathBuf};
 
 pub const MAX_IMAGE_BYTES: u64 = 20 * 1024 * 1024;
@@ -16,15 +16,7 @@ pub struct ResourceRequest {
     pub max_bytes: u64,
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ResourceImage {
-    pub mime: String,
-    pub data_base64: String,
-    pub size_bytes: u64,
-    pub width: Option<usize>,
-    pub height: Option<usize>,
-}
+pub use crate::models::ResourceImage;
 
 struct ScopedResource {
     file: File,

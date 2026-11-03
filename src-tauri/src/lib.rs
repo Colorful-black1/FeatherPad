@@ -17,6 +17,7 @@ pub mod services {
     pub mod fonts;
     pub mod grants;
     pub mod identity;
+    pub mod images;
     pub mod open_policy;
     pub mod preview_links;
     pub mod recovery;

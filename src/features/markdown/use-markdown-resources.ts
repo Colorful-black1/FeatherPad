@@ -4,7 +4,7 @@ import { previewBridge } from '../../bridge/preview';
 import type { DocumentRegistry } from '../editor/documents';
 import { safePreviewUrl } from './links';
 import type { RenderReply } from './parser';
-import { safeImageData } from './sanitize';
+import { safeImageData } from '../../shared/preview/image-data';
 
 export interface PreviewImage { dataUrl: string; width: number; height: number }
 interface ResourceState {

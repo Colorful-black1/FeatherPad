@@ -274,7 +274,8 @@ export class SessionCoordinator {
           : null,
         fileRef: record?.source?.ref ?? null,
         diskRevision: record?.source?.metadata.diskRevision ?? null,
-        ...(record?.source && record.source.mode !== 'text-preview' && record.source.format.encoding !== 'utf-8'
+        ...(record?.source && record.source.mode !== 'text-preview' && record.source.mode !== 'image-readonly'
+          && (record.source.format.encoding !== 'utf-8' || /\.svg$/i.test(record.summary.displayPath ?? ''))
           ? { encodingOverride: record.source.format.encoding } : {}),
         openMode: record?.source?.mode === 'text-preview' ? 'text-preview'
           : record?.fragment && (record.source?.metadata.sizeBytes ?? 0) > 100 * 1024 * 1024

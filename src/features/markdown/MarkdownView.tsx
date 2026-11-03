@@ -15,6 +15,7 @@ import { prepareRawHtml } from './raw-html';
 import { Outline } from './Outline';
 import { useMarkdownScroll } from './scroll-sync';
 import { ExportDialog } from './ExportDialog';
+import { ImageView } from '../editor/ImageView';
 
 interface DocumentContentProps {
   registry: DocumentRegistry; id: DocumentId; autoFocus: boolean;
@@ -29,6 +30,7 @@ type MarkdownMode = 'source' | 'read' | 'split';
 // Markdown; both groups continue sharing the same registry and undo history.
 export function DocumentContent(props: DocumentContentProps) {
   const record = props.registry.getDocument(props.id);
+  if (record?.fragment?.kind === 'image') return <ImageView {...props} />;
   return record?.summary.languageId === 'markdown' && !record.fragment
     ? <MarkdownView {...props} /> : <EditorDocument {...props} />;
 }

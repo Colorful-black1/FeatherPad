@@ -67,6 +67,7 @@ export function TabStrip({ documents, activeId, previewId, busy, onSelect, onPin
           onClick={() => onSelect(document.id)} onDoubleClick={() => onPin(document.id)}
           onKeyDown={event => navigate(event, index)}>
           <span className={`tab-label ${preview ? 'tab-preview' : ''}`}>
+            {document.format.encoding === 'binary' && <span aria-hidden="true">▧ </span>}
             <span>{document.title}</span>{parent && <small>{parent}</small>}
           </span>
           {document.dirty && <span className="dirty-marker" aria-label="有未保存修改">●</span>}

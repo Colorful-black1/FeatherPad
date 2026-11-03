@@ -203,6 +203,11 @@ impl FileService {
             .get(id)
             .ok_or_else(|| AppError::new(ErrorCode::NotFound, "此文档未打开。"))?;
         let (file, _) = self.grants.open_file(&document.reference)?;
+        if self.documents.encoding(id) == Some("binary") {
+            return Ok(
+                super::snapshot::read_snapshot(file, super::assets::MAX_IMAGE_BYTES)?.metadata,
+            );
+        }
         let limit = if self.documents.is_head_preview(id) {
             u64::MAX
         } else {

@@ -94,8 +94,18 @@ impl FileService {
         let retained_encoding = existing_id
             .as_deref()
             .and_then(|id| self.documents.encoding(id))
+            .filter(|encoding| *encoding != "binary")
             .map(str::to_owned);
         let encoding = retained_encoding.as_deref().or(encoding);
+        if requested_mode == OpenRequestMode::Auto && encoding.is_none() {
+            if let Some(image) = self.try_open_image(
+                reference.clone(),
+                file.try_clone().map_err(crate::models::io_error)?,
+                preferred_document_id,
+            )? {
+                return Ok(image);
+            }
+        }
         if preferred_document_id.is_none() {
             if let Some(id) = existing_id.as_deref() {
                 // A path reopened between an external replacement and its notification

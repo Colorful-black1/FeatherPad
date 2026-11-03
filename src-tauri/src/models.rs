@@ -242,6 +242,9 @@ pub struct TextChunk {
     rename_all_fields = "camelCase"
 )]
 pub enum OpenDocumentContent {
+    Image {
+        image: ResourceImage,
+    },
     Text {
         text: String,
         newline_map: NewlineMap,
@@ -262,10 +265,21 @@ pub enum OpenDocumentContent {
 impl OpenDocumentContent {
     pub fn text(&self) -> Option<&str> {
         match self {
+            Self::Image { .. } => None,
             Self::Text { text, .. } | Self::Head { text, .. } => Some(text),
             Self::Chunked { initial_chunk, .. } => Some(&initial_chunk.text),
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResourceImage {
+    pub mime: String,
+    pub data_base64: String,
+    pub size_bytes: u64,
+    pub width: Option<usize>,
+    pub height: Option<usize>,
 }
 
 #[derive(Debug, Serialize)]

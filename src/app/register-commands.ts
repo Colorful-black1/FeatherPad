@@ -12,6 +12,7 @@ export const appCommandIds = ['file.new', 'file.open', 'workspace.open', 'file.s
 export type AppCommandId = typeof appCommandIds[number];
 export interface AppCommandState {
   formatReason?: string | null;
+  textViewReason?: string | null;
   hasDocument: boolean;
   readOnlyReason: string | null;
   canSaveAs: boolean;
@@ -43,7 +44,7 @@ const commandInfo: CommandInfo[] = [
   ['file.saveCopy', '保存副本', 'save copy', null, state => hasDocument(state) ?? saveBusy(state) ?? (state.canSaveAs ? null : '此文档不能保存副本。')],
   ['file.saveAll', '全部保存', 'save all', null, state => saveBusy(state) ?? (state.hasDirty ? null : '没有未保存修改。')],
   ['file.close', '关闭当前标签', 'close tab', 'Ctrl+W', state => hasDocument(state) ?? (state.batchBusy || state.closing ? '请等待当前操作结束。' : null)],
-  ['editor.find', '文件内查找与替换', 'find search replace 搜索', 'Ctrl+F', state => hasDocument(state) ?? (state.closing ? '正在关闭文档。' : null)],
+  ['editor.find', '文件内查找与替换', 'find search replace 搜索', 'Ctrl+F', state => hasDocument(state) ?? state.textViewReason ?? (state.closing ? '正在关闭文档。' : null)],
   ['search.workspace', '在文件和工作区中查找', 'workspace search find in files 目录搜索', 'Ctrl+Shift+F', state => state.hasWorkspace ? null : '请先打开至少一个文件夹。'],
   ['tools.format', '格式化文档', 'format json xml html css javascript typescript yaml sql 格式', 'Shift+Alt+F', state => hasDocument(state) ?? state.readOnlyReason ?? state.formatReason ?? (state.closing ? '正在关闭文档。' : null)],
   ['tools.transform', '文本工具', 'sort unique uppercase lowercase trim tab space 排序 去重 大小写 空白 缩进', null, state => hasDocument(state) ?? state.readOnlyReason ?? (state.closing ? '正在关闭文档。' : null)],
@@ -57,11 +58,11 @@ const commandInfo: CommandInfo[] = [
   ['editor.complete', '触发单词补全', 'completion autocomplete word 补全', 'Ctrl+Space', state => hasDocument(state) ?? state.readOnlyReason ?? (state.closing ? '正在关闭文档。' : null)],
   ['editor.selectNextOccurrence', '选择下一个相同词', 'select occurrence multi cursor 多光标 同词', 'Ctrl+D', state => hasDocument(state) ?? state.readOnlyReason ?? (state.closing ? '正在关闭文档。' : null)],
   ['editor.selectAllOccurrences', '选择全部相同词', 'select all occurrences 多光标 同词', 'Ctrl+Shift+L', state => hasDocument(state) ?? state.readOnlyReason ?? (state.closing ? '正在关闭文档。' : null)],
-  ['editor.toggleFold', '切换代码折叠', 'fold unfold collapse 折叠', null, state => hasDocument(state) ?? (state.closing ? '正在关闭文档。' : null)],
-  ['navigation.goToLine', '跳转到行列', 'goto line column 行 列', 'Ctrl+G', state => hasDocument(state) ?? (state.closing ? '正在关闭文档。' : null)],
+  ['editor.toggleFold', '切换代码折叠', 'fold unfold collapse 折叠', null, state => hasDocument(state) ?? state.textViewReason ?? (state.closing ? '正在关闭文档。' : null)],
+  ['navigation.goToLine', '跳转到行列', 'goto line column 行 列', 'Ctrl+G', state => hasDocument(state) ?? state.textViewReason ?? (state.closing ? '正在关闭文档。' : null)],
   ['navigation.back', '导航后退', 'navigation back previous location 后退', 'Alt+ArrowLeft', state => state.canNavigateBack ? null : '没有可后退的导航位置。'],
   ['navigation.forward', '导航前进', 'navigation forward next location 前进', 'Alt+ArrowRight', state => state.canNavigateForward ? null : '没有可前进的导航位置。'],
-  ['navigation.outline', '打开当前文档大纲', 'outline symbols 大纲', null, state => hasDocument(state) ?? (state.closing ? '正在关闭文档。' : null)],
+  ['navigation.outline', '打开当前文档大纲', 'outline symbols 大纲', null, state => hasDocument(state) ?? state.textViewReason ?? (state.closing ? '正在关闭文档。' : null)],
   ['editor.fontIncrease', '放大编辑字号', 'font zoom in 字体 放大', 'Ctrl+=', state => hasDocument(state) ?? (state.closing ? '正在关闭文档。' : null)],
   ['editor.fontDecrease', '缩小编辑字号', 'font zoom out 字体 缩小', 'Ctrl+-', state => hasDocument(state) ?? (state.closing ? '正在关闭文档。' : null)],
   ['editor.fontReset', '恢复默认编辑字号', 'font zoom reset 14px 默认 字体', 'Ctrl+0', state => hasDocument(state) ?? (state.closing ? '正在关闭文档。' : null)],

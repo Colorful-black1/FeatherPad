@@ -1,5 +1,5 @@
 import DOMPurify from 'dompurify';
-import type { ResourceImage } from '../../bridge/preview';
+import type { ResourceImage } from '../contracts/files';
 
 const svgTags = ['svg', 'g', 'defs', 'path', 'rect', 'circle', 'ellipse', 'line', 'polyline', 'polygon',
   'text', 'tspan', 'title', 'desc', 'linearGradient', 'radialGradient', 'stop', 'clipPath'];
