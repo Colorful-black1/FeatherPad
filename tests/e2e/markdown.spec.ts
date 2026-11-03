@@ -48,7 +48,8 @@ test('Markdown preview isolates scripts and IPC, blocks remote images, and repla
   await modes.getByRole('button', { name: '分屏', exact: true }).click();
   const frame = page.frameLocator('iframe[title*="Markdown阅读"]');
   await expect(frame.getByRole('heading', { name: '原版本' })).toBeVisible();
-  await expect(frame.locator('script, img, [onclick], [onerror], a[href]')).toHaveCount(0);
+  await expect(frame.locator('script:not([data-featherpad-runtime]), img, [onclick], [onerror], a[href]')).toHaveCount(0);
+  await expect(frame.locator('script[data-featherpad-runtime][nonce]')).toHaveCount(1);
   await expect(frame.getByText('[图片未加载：远程]', { exact: true })).toBeVisible();
   expect(await frame.locator('body').evaluate(() => {
     let isolated = false;
@@ -80,4 +81,36 @@ test('Markdown mode belongs to each editor group and narrow layouts retain acces
   await expect(page.getByText('空间不足，分屏暂以阅读显示；可切换源码或扩大编辑区域。')).toBeVisible();
   await secondary.getByRole('button', { name: '源码', exact: true }).click();
   await expect(page.locator('.cm-content')).toHaveCount(2);
+});
+
+test('Markdown tasks edit exact duplicate positions in one undo and code copy stays literal', async ({ page }) => {
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.goto('/');
+  await page.getByRole('button', { name: '新建文本', exact: true }).click();
+  await page.getByRole('combobox', { name: '语言模式' }).selectOption('markdown');
+  const editor = page.locator('.cm-content');
+  await editor.focus();
+  await page.keyboard.insertText('- [ ] 重复\n- [ ] 重复\n  - [x] 嵌套\n\n```json\n{"中文": true}\n```');
+  const modes = page.getByRole('group', { name: '主编辑组 Markdown视图' });
+  await modes.getByRole('button', { name: '分屏', exact: true }).click();
+  const frame = page.frameLocator('iframe[title*="Markdown阅读"]');
+  await expect(frame.getByRole('checkbox')).toHaveCount(3);
+  await expect(frame.locator('code .tok-propertyName')).toBeVisible();
+  await frame.getByRole('button', { name: '复制代码', exact: true }).click();
+  await expect(page.getByText('代码已复制。', { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('{"中文": true}');
+  await frame.getByRole('checkbox').nth(1).check();
+  await expect(page.locator('.cm-line').nth(0)).toHaveText('- [ ] 重复');
+  await expect(page.locator('.cm-line').nth(1)).toHaveText('- [x] 重复');
+  await expect(frame.getByRole('checkbox').nth(1)).toBeChecked();
+  await modes.getByRole('button', { name: '阅读', exact: true }).click();
+  await frame.getByRole('checkbox').nth(1).focus();
+  await page.keyboard.press('Control+z');
+  await expect(page.locator('.cm-line').nth(1)).toHaveText('- [ ] 重复');
+  await expect(page.locator('.cm-line').nth(2)).toHaveText('  - [x] 嵌套');
+  await expect(frame.getByRole('checkbox').nth(1)).not.toBeChecked();
+  const channel = await frame.locator('body').getAttribute('data-channel');
+  const before = await page.locator('.cm-line').allTextContents();
+  await page.evaluate(value => window.postMessage({ channel: value, kind: 'task', index: 0 }, '*'), channel);
+  await expect(page.locator('.cm-line')).toHaveText(before);
 });

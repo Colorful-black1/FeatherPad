@@ -1263,14 +1263,16 @@ export function App() {
             onMouseDown={() => { if (primaryEditorId) tabs.focusPrimary(primaryEditorId); }}>
             {secondaryEditorId && <div className="editor-group-label">主编辑组</div>}
             {primaryEditorId && <DocumentContent key={`primary-${primaryEditorId}`} registry={documents}
-              id={primaryEditorId} group="primary" dark={dark} autoFocus={autoFocus && tabState.focusedGroup === 'primary'} />}
+              id={primaryEditorId} group="primary" dark={dark} autoFocus={autoFocus && tabState.focusedGroup === 'primary'}
+              onActivate={() => tabs.focusPrimary(primaryEditorId)} />}
           </div>
           {secondaryEditorId && <div className={`editor-group ${tabState.focusedGroup === 'secondary' ? 'editor-group-focused' : ''}`}
             onMouseDown={() => tabs.focusSecondary(secondaryEditorId)}>
             <div className="editor-group-label">第二编辑组<button type="button" className="plain-button"
               onClick={() => tabs.closeSplit()}>关闭</button></div>
             <DocumentContent key={`secondary-${secondaryEditorId}`} registry={documents}
-              id={secondaryEditorId} group="secondary" dark={dark} autoFocus={autoFocus && tabState.focusedGroup === 'secondary'} />
+              id={secondaryEditorId} group="secondary" dark={dark} autoFocus={autoFocus && tabState.focusedGroup === 'secondary'}
+              onActivate={() => tabs.focusSecondary(secondaryEditorId)} />
           </div>}
         </div>
       </> : <div className="welcome">

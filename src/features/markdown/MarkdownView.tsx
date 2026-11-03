@@ -4,10 +4,13 @@ import type { DocumentRegistry } from '../editor/documents';
 import { EditorDocument } from '../editor/EditorDocument';
 import { markdownFrame } from './frame';
 import { useMarkdownRender } from './use-markdown-render';
+import { toggleMarkdownTask } from './task-mapping';
+import { redo, undo } from '@codemirror/commands';
 
 interface DocumentContentProps {
   registry: DocumentRegistry; id: DocumentId; autoFocus: boolean;
   group: 'primary' | 'secondary'; dark: boolean;
+  onActivate?: () => void;
 }
 type MarkdownMode = 'source' | 'read' | 'split';
 
@@ -19,17 +22,55 @@ export function DocumentContent(props: DocumentContentProps) {
     ? <MarkdownView {...props} /> : <EditorDocument {...props} />;
 }
 
-function MarkdownView({ registry, id, autoFocus, group, dark }: DocumentContentProps) {
+function MarkdownView({ registry, id, autoFocus, group, dark, onActivate }: DocumentContentProps) {
   const root = useRef<HTMLDivElement>(null);
   const [mode, setMode] = useState<MarkdownMode>('source');
   const [ratio, setRatio] = useState(50);
   const [compact, setCompact] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const previewFrame = useRef<HTMLIFrameElement>(null);
+  const restorePreviewFocus = useRef(false);
   const record = registry.getDocument(id)!;
   const version = record.summary.version;
+  const channel = useMemo(() => `${crypto.randomUUID().replaceAll('-', '')}${version.toString(36)}${id.replaceAll('-', '')}`, [id, version]);
   const effectiveMode = mode === 'split' && compact ? 'read' : mode;
   const render = useMarkdownRender(registry, id, version, effectiveMode !== 'source');
-  const frame = useMemo(() => render.state?.reply ? markdownFrame(render.state.reply.html, dark) : '',
-    [render.state, dark]);
+  const readOnly = !!record.summary.readOnlyReason || record.summary.closing || record.summary.hotExitFrozen;
+  const frame = useMemo(() => render.state?.reply ? markdownFrame(render.state.reply.html, dark, channel, readOnly) : '',
+    [render.state, dark, channel, readOnly]);
+  useEffect(() => {
+    const reply = render.state?.reply;
+    if (!reply) return;
+    const receive = (event: MessageEvent<unknown>) => {
+      if (!previewFrame.current || event.source !== previewFrame.current.contentWindow || event.origin !== 'null'
+        || !event.data || typeof event.data !== 'object' || Reflect.get(event.data, 'channel') !== channel
+        || document.querySelector('dialog[open]')
+        || registry.getDocument(id)?.summary.version !== reply.bufferVersion) return;
+      const index: unknown = Reflect.get(event.data, 'index');
+      if (typeof index !== 'number' || !Number.isSafeInteger(index) || index < 0) return;
+      const kind: unknown = Reflect.get(event.data, 'kind');
+      if (kind === 'task' && !readOnly) {
+        const task = reply.tasks[index];
+        if (!task) return;
+        onActivate?.();
+        restorePreviewFocus.current = true;
+        const result = toggleMarkdownTask(registry, id, reply.bufferVersion, task);
+        if (!result.ok) setNotice(result.error.message);
+      } else if (kind === 'copy') {
+        const block = reply.codeBlocks[index];
+        if (!block) return;
+        onActivate?.();
+        void navigator.clipboard.writeText(block.text).then(() => setNotice('代码已复制。'),
+          () => setNotice('无法写入剪贴板，请在源码中复制。'));
+      } else if (kind === 'history' && !readOnly && index <= 1) {
+        onActivate?.();
+        restorePreviewFocus.current = true;
+        registry.runEditorCommand(id, index === 0 ? undo : redo);
+      }
+    };
+    window.addEventListener('message', receive);
+    return () => window.removeEventListener('message', receive);
+  }, [render.state, channel, id, registry, readOnly, onActivate]);
   useEffect(() => {
     if (!root.current) return;
     const observer = new ResizeObserver(entries => setCompact((entries[0]?.contentRect.width ?? 0) < 650));
@@ -53,6 +94,7 @@ function MarkdownView({ registry, id, autoFocus, group, dark }: DocumentContentP
       </div>
       <span>{effectiveMode === 'source' ? 'Markdown · 同一正文缓冲' : `阅读快照 · v${version}`}</span>
     </header>
+    {notice && <p className="notice" role="status">{notice}</p>}
     {mode === 'split' && compact && <p className="notice" role="note">空间不足，分屏暂以阅读显示；可切换源码或扩大编辑区域。</p>}
     <div className={`markdown-panes markdown-${effectiveMode}`} style={{ '--markdown-ratio': `${ratio}%` } as CSSProperties}>
       <div className="markdown-source" hidden={effectiveMode === 'read'}>
@@ -78,7 +120,13 @@ function MarkdownView({ registry, id, autoFocus, group, dark }: DocumentContentP
           ? <div className="markdown-render-status"><p role="status">正在生成阅读快照…</p>
             <button type="button" className="plain-button" onClick={render.cancel}>取消渲染</button></div>
           : render.state.status === 'ready'
-            ? <><iframe title={`${record.summary.title} Markdown阅读 · ${group}`} sandbox="" srcDoc={frame} />
+            ? <><iframe ref={previewFrame} title={`${record.summary.title} Markdown阅读 · ${group}`} sandbox="allow-scripts" srcDoc={frame}
+              onLoad={() => {
+                if (!restorePreviewFocus.current) return;
+                restorePreviewFocus.current = false;
+                previewFrame.current?.focus();
+                previewFrame.current?.contentWindow?.focus();
+              }} />
               {Boolean(render.state.reply?.blockedResources) && <p className="notice" role="note">
                 {render.state.reply?.blockedResources}张图片未加载；预览不会自动访问网络或本地路径。</p>}</>
             : <div className="markdown-render-status"><p role={render.state.status === 'error' ? 'alert' : 'status'}>{render.state.message}</p>

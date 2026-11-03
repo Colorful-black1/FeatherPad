@@ -6,6 +6,8 @@
 
 原生边界补正：真实Release证实Wry0.57.1在Windows忽略`for_main_frame_only`。工程复用本机已锁定的Wry源码至`src-tauri/vendor/wry`，仅在Windows对标记为main-frame-only的初始化脚本添加顶层窗口判断，显式all-frame脚本保持原行为。许可证与补丁说明一并保留；不升级工具链、不修改共享Cargo缓存。真实测试必须继续断言子frame无Tauri桥，不能仅靠HTML清洗或Web mock证明此边界。
 
+T302交互边界：任务与代码复制需要固定的应用预览运行时。frame仅增加`allow-scripts`，继续禁止same-origin/导航/弹窗/表单；用户HTML脚本仍全部转义/清除。运行时规范化字节内嵌入快照，父CSP以SHA256精确锁定、内层以每快照nonce再次限制，构建前校验哈希，避免离线时额外加载脚本。文档不能提供脚本或nonce。运行时没有IPC，不能联网，只向父页面提交`task`/`copy`及整数索引或受限undo/redo索引；父页面同时校验精确source Window、opaque origin、通道nonce、documentId/current bufferVersion和对应任务/代码表，不能由消息传入正文/路径/命令，模态期间拒绝操作。任务通过Lezer GFM实际TaskMarker源区间与Marked列表首行交叉匹配，只改一个标记字符；过期、只读、关闭或映射不一致均拒绝。每个编辑隔离为一次undo，阅读模式键盘undo/redo也操作同一缓冲；编辑后恢复预览焦点并激活正确编辑组。Lezer/highlight复用现有锁定MIT版本，代码块只使用本地CodeMirror解析器。
+
 ## Objective 与技术边界
 
 让用户在一个正文模型上进行源码编辑、舒适阅读和双视图预览，并离线导出可分享的HTML/PDF。Markdown是editor扩展，editor不反向依赖本模块；使用editor快照/版本化applyEdits和file-core资源/导出写入。采用本地GFM解析器、代码高亮器、HTML sanitizer和隔离渲染；具体库实施前验证许可证/大小/安全维护，禁止依赖CDN。

@@ -499,6 +499,7 @@ export class DocumentRegistry {
     const view = this.views.get(id)?.values().next().value;
     if (!document || !view) return failure('NOT_FOUND', '文档已关闭。');
     if (document.summary.readOnlyReason) return failure('READ_ONLY', document.summary.readOnlyReason);
+    if (document.summary.closing || document.summary.hotExitFrozen) return failure('BUSY', '文档正在安全关闭，当前内容保留。');
     if (document.summary.version !== expectedVersion) return failure('CONFLICT', '文档已变化，请重新查找后再替换。');
     let previousTo = -1;
     for (const change of changes) {
@@ -508,7 +509,7 @@ export class DocumentRegistry {
       }
       previousTo = change.to;
     }
-    view.dispatch({ changes: changes.map(change => ({ ...change })) });
+    view.dispatch({ changes: changes.map(change => ({ ...change })), annotations: isolateHistory.of('full') });
     const latest = this.documents.get(id);
     return latest ? { ok: true, value: { version: latest.summary.version } } : failure('NOT_FOUND', '文档已关闭。');
   }

@@ -10,25 +10,38 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "windows": [{
-      "label": "main",
-      "title": "轻羽 FeatherPad",
-      "width": 1200,
-      "height": 800,
-      "minWidth": 800,
-      "minHeight": 560
-    }],
+    "windows": [
+      {
+        "label": "main",
+        "title": "轻羽 FeatherPad",
+        "width": 1200,
+        "height": 800,
+        "minWidth": 800,
+        "minHeight": 560
+      }
+    ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src ipc: http://ipc.localhost; object-src 'none'; frame-src 'self'; base-uri 'none'; form-action 'none'",
-      "devCsp": "default-src 'self'; script-src 'self'; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src ipc: http://ipc.localhost http://127.0.0.1:1420 ws://127.0.0.1:1420; object-src 'none'; frame-src 'self'; base-uri 'none'; form-action 'none'",
-      "capabilities": ["main"]
+      "csp": "default-src 'self'; script-src 'self' 'sha256-O/X/m7z6aoetfJeP9RsY+qa/dfkk8hJ0hnGjxl48l3g='; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src ipc: http://ipc.localhost; object-src 'none'; frame-src 'self'; base-uri 'none'; form-action 'none'",
+      "devCsp": "default-src 'self'; script-src 'self' 'sha256-O/X/m7z6aoetfJeP9RsY+qa/dfkk8hJ0hnGjxl48l3g='; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src ipc: http://ipc.localhost http://127.0.0.1:1420 ws://127.0.0.1:1420; object-src 'none'; frame-src 'self'; base-uri 'none'; form-action 'none'",
+      "capabilities": [
+        "main"
+      ]
     }
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
+    "targets": [
+      "nsis"
+    ],
     "useLocalToolsDir": true,
-    "icon": ["icons/icon.png", "icons/icon.ico"],
-    "windows": { "webviewInstallMode": { "type": "skip" } }
+    "icon": [
+      "icons/icon.png",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "skip"
+      }
+    }
   }
 }

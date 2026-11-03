@@ -38,6 +38,7 @@ test('real Release reads a shared Markdown buffer offline in an isolated preview
     WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port} --remote-debugging-address=127.0.0.1`,
   } });
   let browser: Awaited<ReturnType<typeof chromium.connectOverCDP>> | undefined;
+  const diagnostics: string[] = [];
   try {
     await expect.poll(async () => {
       if (child.exitCode !== null) throw new Error(`Native child exited ${child.exitCode}`);
@@ -48,6 +49,8 @@ test('real Release reads a shared Markdown buffer offline in an isolated preview
     await context.setOffline(true);
     await expect.poll(() => context.pages().length).toBeGreaterThan(0);
     const page = context.pages()[0]!;
+    page.on('console', entry => { if (entry.type() === 'error' || entry.type() === 'warning') diagnostics.push(entry.text()); });
+    page.on('pageerror', error => diagnostics.push(error.message));
     const requests: string[] = [];
     page.on('request', request => { if (request.url().startsWith('https://example.com/')) requests.push(request.url()); });
     await expect(page.getByRole('button', { name: '打开文件', exact: true })).toBeVisible();
@@ -62,13 +65,21 @@ test('real Release reads a shared Markdown buffer offline in an isolated preview
     const frame = page.frameLocator('iframe[title*="Markdown阅读"]');
     await expect(frame.getByRole('heading', { name: '原生阅读' })).toBeVisible();
     await expect(frame.locator('table')).toBeVisible();
-    await expect(frame.locator('script,img,[onerror],[onclick]')).toHaveCount(0);
+    await expect(frame.locator('script:not([data-featherpad-runtime]),img,[onerror],[onclick]')).toHaveCount(0);
+    await expect(frame.locator('script[data-featherpad-runtime][nonce]')).toHaveCount(1);
     const isolation = await frame.locator('body').evaluate(() => {
       let isolated = false;
       try { void window.parent.document; } catch { isolated = true; }
       return { isolated, ipc: '__TAURI_INTERNALS__' in window };
     });
     expect(isolation).toEqual({ isolated: true, ipc: false });
+    await frame.getByRole('checkbox').uncheck({ timeout: 5000 });
+    await expect(page.locator('.cm-line').nth(6)).toHaveText('- [ ] 完成');
+    await expect(frame.getByRole('checkbox')).not.toBeChecked();
+    await frame.getByRole('checkbox').focus();
+    await page.keyboard.press('Control+z');
+    await expect(page.locator('.cm-line')).toHaveText(lines);
+    await expect(frame.getByRole('checkbox')).toBeChecked();
     await modes.getByRole('button', { name: '阅读', exact: true }).click();
     await expect(page.locator('.cm-content')).toBeHidden();
     await modes.getByRole('button', { name: '源码', exact: true }).click();
@@ -92,6 +103,7 @@ test('real Release reads a shared Markdown buffer offline in an isolated preview
       originalHash, afterHash: sha(await readFile(source)), isolation, remoteRequests: requests.length,
       realChooser: true, sharedBufferAndUndo: true, browserOffline: true, sourceBytesUnchanged: true }, null, 2));
   } finally {
+    await writeFile(path.join(evidence, 'diagnostics.json'), JSON.stringify(diagnostics, null, 2));
     if (child.exitCode === null) child.kill();
     await browser?.close();
   }

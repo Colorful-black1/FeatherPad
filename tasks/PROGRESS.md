@@ -5,7 +5,7 @@
 - 产品名称：**轻羽 FeatherPad**。
 - 当前交付：完整产品方案、86项功能矩阵、模块规格、UI规范与离线交互原型、技术/本机环境文档、M0–M5实现计划、57个开发任务、agent执行入口。
 - 产品代码：**M0/G0、M1/G1、M2/G2均已通过（2026-11-03）**。M1提供真实文件打开/编辑/保存/恢复闭环；M2补齐编码与换行、多根/收藏/工作区文件、安全遍历与监听、拖放移动、分栏/多光标/折叠/导航、全文搜索、跨文件替换、全局唤起与隐私清理。完整v1仍需M3–M5。
-- 当前：**用户已于2026-11-03确认继续，M3/T301实现完成，当前T302**。M2统一验收节点已提交为`a7e8070`。每完成一个M阶段都停止并等待确认，不自动进入下一阶段。
+- 当前：**用户已于2026-11-03确认继续，M3/T301–T302实现完成，当前T303**。M2统一验收节点已提交为`a7e8070`。每完成一个M阶段都停止并等待确认，不自动进入下一阶段。
 - 本次交付检查：详见 [DELIVERY-CHECK](../docs/DELIVERY-CHECK.md)，不代表产品关卡G0–G5通过。
 
 ## 已核查环境
@@ -13,6 +13,12 @@
 复用本机Node22.13.0、pnpm10.32.1、Rust1.99.1、VS2022 Build Tools C++、Windows SDK10.0.26100.0、WebView2。未安装新开发工具。严格遵守新增安装与缓存仅在E:\Codeing，入口见 [ENVIRONMENT](../docs/ENVIRONMENT.md)。
 
 ## 实施证据（未来逐任务追加）
+
+### 2026-11-03 T302实现完成：代码块与位置绑定任务（G3待验）
+
+- F-MD-003/011：本地CodeMirror高亮与字面代码复制；Lezer TaskMarker与Marked首行交叉匹配，重复/嵌套任务只改准确标记，版本/只读/关闭/模态fence，一次undo；阅读模式undo/redo作用于同一缓冲并恢复预览焦点、激活对应编辑组。
+- 最小自检exit0：Markdown及文档/搜索受影响TS共6文件50项，类型与受影响ESLint，Web三模式/隔离/任务/复制4 passed/15.3秒。固定预览运行时改为内嵌且由父CSP SHA256+内层nonce双重限制，构建前验证哈希；无same-origin/IPC/网络，消息只接受已知frame、nonce与快照版本下的受限索引。
+- 真实Release最终1 passed/4.0秒（总4.9秒）/exit0，阅读内CtrlZ恢复真实文件对应缓冲、源SHA仍不变；此前内嵌运行时相同边界连续2 passed。Release16,074,240 bytes，SHA256 `F4B6E33F585D62319A77AC486AA512813AF0F1A399AC961AE2EB43D58E2A1F03`，日志`.artifacts/T302/logs/native-markdown-history-final.log`及`release-build-history-final.log`。首轮Worker IIFE不支持分块和离线复选框未启用的日志保留；ES Worker与内嵌运行时已修正，未扩大超时或降低安全断言。下一T303，完整G3待验。
 
 ### 2026-11-03 T301实现完成：Markdown三模式（G3待验）
 
