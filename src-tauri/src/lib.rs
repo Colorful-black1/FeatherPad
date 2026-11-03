@@ -32,6 +32,7 @@ pub mod services {
     pub mod watch;
     pub mod windows_file;
     pub mod windows_trash;
+    pub mod workspace;
     pub mod workspace_settings;
 }
 
@@ -50,6 +51,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::choose_files,
             commands::choose_folder,
+            commands::workspace::inspect_workspace_root,
+            commands::workspace::release_workspace_root,
             commands::list_directory,
             commands::file_ops::create_entry,
             commands::file_ops::rename_entry,

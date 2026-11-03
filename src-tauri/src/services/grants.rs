@@ -86,7 +86,10 @@ impl GrantRegistry {
         }
         let identity_sha256 = grant_identity(&target, kind)?;
         if let Some(existing) = self.grants.iter().find_map(|(grant_id, grant)| {
-            (grant.kind == kind && grant.target == target).then(|| grant_id.clone())
+            (grant.kind == kind
+                && (grant.target == target
+                    || (kind == GrantKind::Directory && grant.identity_sha256 == identity_sha256)))
+                .then(|| grant_id.clone())
         }) {
             // A fresh native selection explicitly authorizes the currently selected object.
             self.grants
@@ -286,6 +289,65 @@ impl GrantRegistry {
             || grant.target.to_string_lossy().into_owned(),
             |name| name.to_string_lossy().into_owned(),
         ))
+    }
+
+    pub(crate) fn pin_open_file(
+        &mut self,
+        reference: &FileRef,
+        file: &File,
+        path: &Path,
+    ) -> Result<FileRef, AppError> {
+        validate_reference(reference)?;
+        let grant = self
+            .grants
+            .get(&reference.grant_id)
+            .ok_or_else(out_of_scope)?;
+        if grant.kind != GrantKind::Directory
+            || !grant.contains(path)
+            || opened_file_path(file)? != path
+        {
+            return Err(out_of_scope());
+        }
+        let identity_sha256 = format!(
+            "{:x}",
+            Sha256::digest(super::identity::identify(file, path).revision_tag())
+        );
+        if let Some((id, _)) = self.grants.iter().find(|(_, candidate)| {
+            candidate.kind == GrantKind::File
+                && candidate.target == path
+                && candidate.identity_sha256 == identity_sha256
+        }) {
+            return Ok(FileRef {
+                grant_id: id.clone(),
+                relative_path: String::new(),
+            });
+        }
+        let grant_id = uuid::Uuid::new_v4().to_string();
+        self.grants.insert(
+            grant_id.clone(),
+            Grant {
+                target: path.to_owned(),
+                kind: GrantKind::File,
+                identity_sha256,
+            },
+        );
+        Ok(FileRef {
+            grant_id,
+            relative_path: String::new(),
+        })
+    }
+
+    pub(crate) fn revoke_directory(&mut self, reference: &FileRef) -> Result<(), AppError> {
+        validate_reference(reference)?;
+        let grant = self
+            .grants
+            .get(&reference.grant_id)
+            .ok_or_else(out_of_scope)?;
+        if !reference.relative_path.is_empty() || grant.kind != GrantKind::Directory {
+            return Err(out_of_scope());
+        }
+        self.grants.remove(&reference.grant_id);
+        Ok(())
     }
 }
 

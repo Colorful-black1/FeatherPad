@@ -3,6 +3,8 @@ fn main() {
         tauri_build::Attributes::new().app_manifest(tauri_build::AppManifest::new().commands(&[
             "choose_files",
             "choose_folder",
+            "inspect_workspace_root",
+            "release_workspace_root",
             "list_directory",
             "create_entry",
             "rename_entry",

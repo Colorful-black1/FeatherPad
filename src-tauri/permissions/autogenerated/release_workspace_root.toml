@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-release-workspace-root"
+description = "Enables the release_workspace_root command without any pre-configured scope."
+commands.allow = ["release_workspace_root"]
+
+[[permission]]
+identifier = "deny-release-workspace-root"
+description = "Denies the release_workspace_root command without any pre-configured scope."
+commands.deny = ["release_workspace_root"]

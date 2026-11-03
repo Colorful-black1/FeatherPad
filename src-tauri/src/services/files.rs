@@ -30,6 +30,8 @@ pub struct FileService {
     pub(super) saves: super::save_requests::SaveHistory,
     pub(super) directory_cursors: super::directories::DirectoryCursors,
     pub(super) entry_operations: super::file_ops::EntryOperationHistory,
+    pub(super) released_roots:
+        std::collections::HashMap<String, Vec<crate::models::RenamedDocument>>,
 }
 
 impl FileService {

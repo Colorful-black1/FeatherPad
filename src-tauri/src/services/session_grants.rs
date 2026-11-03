@@ -20,6 +20,8 @@ const MAX_PERSISTED_GRANTS: usize = 4096;
 struct GrantFile {
     schema_version: u32,
     grants: Vec<PersistedGrant>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    revoked_grant_ids: Vec<String>,
 }
 
 struct LoadedGrantFile {
@@ -95,23 +97,38 @@ impl SessionGrantStore {
     }
 
     pub(crate) fn save_merged(&self, grants: &[PersistedGrant]) -> Result<(), AppError> {
+        self.save_with_revocations(grants, &[])
+    }
+
+    pub(crate) fn save_with_revocations(
+        &self,
+        grants: &[PersistedGrant],
+        revoke: &[String],
+    ) -> Result<(), AppError> {
         self.ensure_root()?;
         let root = self.root.canonicalize().map_err(io_error)?;
         let target = root.join("grants.json");
         let _parents = windows_file::lock_parent_chain(&target)?;
         let _lock = store_guard(&root)?;
-        let mut merged = self
-            .load_file_locked(&root)?
-            .file
-            .map(|file| {
-                file.grants
-                    .into_iter()
-                    .map(|grant| (grant.grant_id.clone(), grant))
-                    .collect::<HashMap<_, _>>()
-            })
-            .unwrap_or_default();
+        let previous = self.load_file_locked(&root)?.file.unwrap_or_default();
+        let mut revoked = previous
+            .revoked_grant_ids
+            .into_iter()
+            .collect::<HashSet<_>>();
+        revoked.extend(revoke.iter().cloned());
+        if revoked.len() > MAX_PERSISTED_GRANTS {
+            return Err(invalid());
+        }
+        let mut merged = previous
+            .grants
+            .into_iter()
+            .filter(|grant| !revoked.contains(&grant.grant_id))
+            .map(|grant| (grant.grant_id.clone(), grant))
+            .collect::<HashMap<_, _>>();
         for grant in grants {
-            merged.insert(grant.grant_id.clone(), grant.clone());
+            if !revoked.contains(&grant.grant_id) {
+                merged.insert(grant.grant_id.clone(), grant.clone());
+            }
         }
         if merged.len() > MAX_PERSISTED_GRANTS {
             return Err(AppError::new(
@@ -121,9 +138,12 @@ impl SessionGrantStore {
         }
         let mut values = merged.into_values().collect::<Vec<_>>();
         values.sort_by(|left, right| left.grant_id.cmp(&right.grant_id));
+        let mut revoked_grant_ids = revoked.into_iter().collect::<Vec<_>>();
+        revoked_grant_ids.sort();
         let bytes = serde_json::to_vec(&GrantFile {
             schema_version: 1,
             grants: values,
+            revoked_grant_ids,
         })
         .map_err(|_| invalid())?;
         if bytes.len() as u64 > MAX_GRANT_STORE_BYTES {
@@ -224,10 +244,24 @@ impl SessionGrantStore {
 }
 
 fn validate_file(file: GrantFile) -> Result<GrantFile, AppError> {
-    if file.schema_version != 1 || file.grants.len() > MAX_PERSISTED_GRANTS {
+    if file.schema_version != 1
+        || file.grants.len() > MAX_PERSISTED_GRANTS
+        || file.revoked_grant_ids.len() > MAX_PERSISTED_GRANTS
+    {
         return Err(invalid());
     }
     let mut ids = HashSet::new();
+    for id in &file.revoked_grant_ids {
+        if uuid::Uuid::parse_str(id)
+            .ok()
+            .map(|value| value.to_string())
+            .as_deref()
+            != Some(id.as_str())
+            || !ids.insert(id.clone())
+        {
+            return Err(invalid());
+        }
+    }
     for grant in &file.grants {
         if uuid::Uuid::parse_str(&grant.grant_id)
             .ok()
@@ -526,6 +560,47 @@ mod tests {
                 .unwrap()
                 .code,
             ErrorCode::SessionIncomplete
+        );
+    }
+
+    #[test]
+    fn revoked_root_cannot_be_reintroduced_by_a_late_session_save() {
+        let root = fixture();
+        let folder = root.join("revoked");
+        fs::create_dir(&folder).unwrap();
+        let mut registry = GrantRegistry::default();
+        let reference = registry
+            .register_selection(&folder, GrantKind::Directory)
+            .unwrap();
+        let stale_record = registry.persistent_grant(&reference.grant_id).unwrap();
+        let store = SessionGrantStore::new(root.join("session"));
+        store
+            .save_merged(std::slice::from_ref(&stale_record))
+            .unwrap();
+        store
+            .save_with_revocations(&[], std::slice::from_ref(&reference.grant_id))
+            .unwrap();
+        store.save_merged(&[stale_record]).unwrap();
+        assert!(store
+            .load_for(&HashSet::from([reference.grant_id.clone()]))
+            .unwrap()
+            .grants
+            .is_empty());
+        registry.revoke_directory(&reference).unwrap();
+        let reselected = registry
+            .register_selection(&folder, GrantKind::Directory)
+            .unwrap();
+        assert_ne!(reselected.grant_id, reference.grant_id);
+        store
+            .save_merged(&[registry.persistent_grant(&reselected.grant_id).unwrap()])
+            .unwrap();
+        assert_eq!(
+            store
+                .load_for(&HashSet::from([reference.grant_id, reselected.grant_id]))
+                .unwrap()
+                .grants
+                .len(),
+            1
         );
     }
 }

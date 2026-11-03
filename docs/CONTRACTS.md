@@ -128,6 +128,8 @@ export interface SaveAck {
 | `open_document` | `{ref,encodingOverride?,mode?:normal或head-preview或text-preview,documentId?}` | `OpenDocument` | 常规打开严格识别；显式试开只读；同一文件复用DocumentId，documentId用于会话恢复 |
 | `save_document` | `SaveRequest` | `SaveAck` | 同一文档串行，冲突不覆盖；超时结果可能未知 |
 | `auto_save_document` | `SaveRequest` | `SaveAck` | T202后台保存只写既有lease；共用版本/事务/请求缓存，不弹另存/硬链接/覆盖确认，需确认或冲突时失败并暂停 |
+| `inspect_workspace_root` | `{root:FileRef}` | `{ref,displayName,displayPath,canonicalIdentity}` | 只接受已授权目录根，返回身份摘要与显示路径，不扩大授权 |
+| `release_workspace_root` | `{root:FileRef}` | `{renamedDocuments:RenamedDocument[]}` | 撤销该目录grant前，原生将使用此grant的打开文档逐项绑定独立文件grant；保留DocumentId/句柄/编码/分块状态，不删除文件；会话内最多256个移除回执可幂等重取 |
 | `read_document_chunk` | `{documentId,handleId,expectedDiskRevision,byteOffset,maxBytes}` | `TextChunk` | maxBytes默认64KiB最大1MiB；编码边界对齐、行位置正确，磁盘变化返回CONFLICT，绝不把片段作为可保存全文 |
 | `save_document_as` | `{documentId,requestId,documentVersion,text,format,newlineMap?,intent?:'save-as'|'copy'}` | `{documentId,ref,metadata:FileMetadata,ack:SaveAck}` | 原生保存选择器；取消CANCELLED；覆盖确认绑定目标revision；copy不改源绑定 |
 | `stat_document` | `{documentId}` | `FileMetadata` | 核对未知保存结果或磁盘变化 |
@@ -135,6 +137,8 @@ export interface SaveAck {
 | `check_encoding` | `{text,encoding,documentVersion}` | `{encoding,documentVersion,lossCount,samples:{offset,length}[],replacementText:string|null}` | 无磁盘写入；64MiB上限；位置为UTF16偏移，最多32例；有损时仅生成问号替代候选，须版本绑定确认后形成可撤销变更 |
 
 T201恢复边界（2026-11-03）：恢复正文始终是UTF8逻辑文本，目标编码是意图；GBK等目标暂不能表示的新输入仍必须可恢复。恢复/回收前快照严格校验编码/BOM组合、版本和逐行映射，但不要求正文已能按目标编码落盘；真正保存仍完整严格编码，不使用替代字符。未知编码、错误映射、摘要/配额/授权断言保持不变。
+
+T204授权持久化：schema1授权文件增加可选`revokedGrantIds`（最多4096个UUID，旧文件缺省为空）；撤销与独立文件grant同一次受保护写入，成功后才更新内存根/lease。合并旧会话授权时过滤撤销ID，不能因迟到会话或最近/收藏引用恢复原目录权限。用户重新选择会产生新的grant ID。
 
 T201会话补充：schema1的`SessionView`增加可选`encodingOverride`（限8个受支持canonical label），旧清单缺省仍按BOM/严格UTF8读取。记录来源磁盘的编码而非尚未保存的转换意图；恢复正文的目标格式继续来自校验过的恢复manifest。编码字段不授予文件权限，仍使用既有FileRef/identity/revision恢复流程。
 | `release_document` | `{documentId}` | `{released:boolean}` | 仅释放资源，不删除文件/恢复快照 |

@@ -32,6 +32,36 @@ pub struct DocumentRegistry {
 }
 
 impl DocumentRegistry {
+    pub(super) fn release_root(
+        &mut self,
+        reference: &FileRef,
+        grants: &mut super::grants::GrantRegistry,
+        persist: impl FnOnce(&super::grants::GrantRegistry, &[RenamedDocument]) -> Result<(), AppError>,
+    ) -> Result<Vec<RenamedDocument>, AppError> {
+        let mut staged = grants.clone();
+        let mut renamed = Vec::new();
+        for (id, lease) in &self.documents {
+            if lease.reference.grant_id != reference.grant_id {
+                continue;
+            }
+            renamed.push(RenamedDocument {
+                document_id: id.clone(),
+                reference: staged.pin_open_file(&lease.reference, &lease.file, &lease.path)?,
+                display_path: lease.path.to_string_lossy().into_owned(),
+            });
+        }
+        staged.revoke_directory(reference)?;
+        persist(&staged, &renamed)?;
+        for item in &renamed {
+            self.documents
+                .get_mut(&item.document_id)
+                .expect("document staged under exclusive service lock")
+                .reference = item.reference.clone();
+        }
+        *grants = staged;
+        Ok(renamed)
+    }
+
     pub(super) fn adopt(&mut self, id: &str, mut source: Self) -> Result<(), AppError> {
         let lease = source
             .documents

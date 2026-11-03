@@ -646,3 +646,4 @@ pub async fn read_document_chunk(
     .unwrap_or_else(|_| Err(internal_error()));
     Ok(result.into())
 }
+pub mod workspace;
