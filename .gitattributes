@@ -1,0 +1,2 @@
+# Preserve upstream license bytes verified by packaging/licenses/sources.json.
+packaging/licenses/*.txt -text

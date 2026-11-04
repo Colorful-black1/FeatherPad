@@ -7,7 +7,10 @@ export default defineConfig({
   metadata: { evidenceRunId: testRunId },
   forbidOnly: true,
   retries: 0,
-  workers: 4,
+  // Worker-backed editor tests enforce real millisecond budgets. Two browser
+  // contexts keep those budgets meaningful without four concurrent apps
+  // starving each other on a developer machine.
+  workers: 2,
   use: {
     baseURL: 'http://127.0.0.1:1420',
     channel: 'msedge',

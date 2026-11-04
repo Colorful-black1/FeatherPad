@@ -82,6 +82,12 @@ pub(crate) fn create_window(
         .title("轻羽 FeatherPad")
         .inner_size(1200.0, 800.0)
         .min_inner_size(800.0, 560.0)
+        .additional_browser_args(
+            "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection \
+             --disable-background-networking --disable-component-update \
+             --disable-domain-reliability --disable-sync --disable-gpu --no-first-run \
+             --no-default-browser-check",
+        )
         .build()
         .map_err(|_| AppError::new(ErrorCode::Internal, "无法创建新窗口，请重试"))?;
     focus(&window)?;

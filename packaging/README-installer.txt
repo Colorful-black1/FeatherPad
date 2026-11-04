@@ -22,3 +22,7 @@ Windows 文件关联和 Explorer 右键菜单默认关闭，可在“设置 -> �
 非便携安装版与 portable.flag 启用的便携版使用彼此隔离的数据目录。
 
 本安装包是未签名内部试用版。Windows SmartScreen 可能提示未知发布者。
+
+M5候选版安装目录附带 docs/ 用户指南、恢复指南、候选说明和第三方许可证。
+内部交付另附 THIRD-PARTY-SOURCES.zip。G5未通过前不称完整v1；
+Win10和4核/8GB目标环境尚未实测。

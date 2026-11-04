@@ -13,6 +13,64 @@ use std::{
 const FILE_COUNT: usize = 100_000;
 const FIRST_PAGE_BUDGET: Duration = Duration::from_millis(300);
 
+#[test]
+#[ignore = "M5 ten-sample directory benchmark; retains its controlled corpus and raw evidence"]
+fn ten_samples_of_100k_direct_children_keep_the_existing_budget() {
+    let evidence = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join(".artifacts/T501")
+        .join(format!("directory-{}", uuid::Uuid::new_v4()));
+    let root = evidence.join("corpus");
+    fs::create_dir_all(&root).unwrap();
+    for index in 0..FILE_COUNT {
+        File::create(root.join(format!("item-{index:06}.txt"))).unwrap();
+    }
+    assert_eq!(fs::read_dir(&root).unwrap().count(), FILE_COUNT);
+    let mut samples = Vec::new();
+    for _ in 0..10 {
+        let mut service = FileService::default();
+        let reference = service
+            .grants
+            .register_selection(&root, GrantKind::Directory)
+            .unwrap();
+        let started = Instant::now();
+        let page = service
+            .list_directory(ListDirectoryRequest {
+                reference,
+                cursor: None,
+                limit: None,
+                show_hidden: false,
+            })
+            .unwrap();
+        samples.push(started.elapsed().as_secs_f64() * 1000.0);
+        assert_eq!(page.items.len(), 200);
+        assert!(page.next_cursor.is_some());
+        assert_eq!(page.items.first().unwrap().name, "item-000000.txt");
+        assert_eq!(page.items.last().unwrap().name, "item-000199.txt");
+    }
+    let mut ordered = samples.clone();
+    ordered.sort_by(f64::total_cmp);
+    let p95 = ordered[(0.95_f64 * ordered.len() as f64).ceil() as usize - 1];
+    let report = serde_json::json!({
+        "scope": "Release native service, fresh FileService for each sample, OS cache not cleared; excludes GUI paint",
+        "fixtureFileCount": FILE_COUNT, "pageItemCount": 200, "nextCursorIssued": true,
+        "samplesMs": samples, "p50Ms": ordered[4], "p95Ms": p95,
+        "maxMs": ordered.last().unwrap(), "budgetMs": FIRST_PAGE_BUDGET.as_millis(),
+        "corpusRetained": true,
+    });
+    fs::write(
+        evidence.join("directory.json"),
+        serde_json::to_vec_pretty(&report).unwrap(),
+    )
+    .unwrap();
+    println!("Directory evidence: {}", evidence.display());
+    assert!(
+        p95 < FIRST_PAGE_BUDGET.as_secs_f64() * 1000.0,
+        "100k first-page p95 {p95:.3}ms exceeds the existing 300ms budget"
+    );
+}
+
 struct ControlledRoot {
     artifact_root: PathBuf,
     path: PathBuf,

@@ -124,6 +124,24 @@ impl FileService {
         request: WalkWorkspaceRequest,
         coordinator: Arc<WalkCoordinator>,
     ) -> Result<WalkWorkspaceResult, AppError> {
+        let mut entries = Vec::new();
+        let mut result = self.visit_workspace(request, coordinator, |entry| {
+            entries.push(entry);
+            true
+        })?;
+        result.entries = entries;
+        Ok(result)
+    }
+
+    // Shared traversal preserves the same grant, identity and ignore checks.
+    // A consumer can stop at its own result budget without materializing an
+    // entire workspace before it processes the first eligible file.
+    pub(crate) fn visit_workspace(
+        &self,
+        request: WalkWorkspaceRequest,
+        coordinator: Arc<WalkCoordinator>,
+        mut visit: impl FnMut(WalkEntry) -> bool,
+    ) -> Result<WalkWorkspaceResult, AppError> {
         validate_request(&request)?;
         let include = glob_set(&request.include)?;
         let exclude = glob_set(&request.exclude)?;
@@ -138,7 +156,7 @@ impl FileService {
                 roots.push((reference.clone(), path));
             }
         }
-        let mut entries = Vec::new();
+        let mut entry_count = 0usize;
         let mut skipped = BTreeMap::<String, u64>::new();
         let mut seen = HashSet::new();
         let mut truncated = false;
@@ -260,7 +278,8 @@ impl FileService {
                     .filter_map(|component| component.as_os_str().to_str())
                     .collect::<Vec<_>>()
                     .join("/");
-                entries.push(WalkEntry {
+                entry_count += 1;
+                let keep_going = visit(WalkEntry {
                     reference: FileRef {
                         grant_id: reference.grant_id.clone(),
                         relative_path,
@@ -270,7 +289,10 @@ impl FileService {
                     size_bytes: metadata.len(),
                     is_symlink: false,
                 });
-                if entries.len() >= limit as usize {
+                if !keep_going {
+                    break 'roots;
+                }
+                if entry_count >= limit as usize {
                     truncated = true;
                     break 'roots;
                 }
@@ -279,7 +301,7 @@ impl FileService {
 
         Ok(WalkWorkspaceResult {
             request_id: request.request_id,
-            entries,
+            entries: Vec::new(),
             skipped: skipped
                 .into_iter()
                 .map(|(reason, count)| WalkSkip { reason, count })

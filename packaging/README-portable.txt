@@ -27,3 +27,7 @@ Explorer 右键菜单；不会修改 Windows 默认应用或 UserChoice。
 https://developer.microsoft.com/microsoft-edge/webview2/#download-section
 
 本包是未签名内部试用版。Windows SmartScreen 可能提示未知发布者。
+
+M5候选包附带 docs/USER-GUIDE.md、docs/RECOVERY.md、docs/RELEASE-NOTES.md、
+THIRD-PARTY-NOTICES.md、packaging/LICENSE-TEXTS.txt 与第三方源码归档。
+G5未通过前不称完整v1；Win10和4核/8GB目标环境尚未实测。

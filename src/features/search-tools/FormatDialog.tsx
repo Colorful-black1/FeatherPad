@@ -53,7 +53,10 @@ export function FormatDialog({ registry, id, onClose }: { registry: DocumentRegi
   function apply() {
     if (!reply?.ok) return;
     const result = registry.applyTextResult(id, snapshot.version, reply.text);
-    if (result.ok) onClose(); else setMessage(result.error.message);
+    if (result.ok) {
+      dialog.current?.close();
+      onClose();
+    } else setMessage(result.error.message);
   }
   return <dialog className="text-tool-dialog" ref={dialog} aria-label="格式化文档"
     onCancel={event => { event.preventDefault(); stop(); onClose(); }}>

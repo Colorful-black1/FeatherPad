@@ -11,7 +11,7 @@ import { FavoriteList } from '../features/workspace/FavoriteList';
 import { favoriteGrantIds, favoritesSetting, mutateFavorites, readFavorites } from '../features/workspace/favorites';
 import { useFavorites } from './use-favorites';
 import { useWorkspaceFile } from './use-workspace-file';
-import { DocumentContent } from '../features/markdown/MarkdownView';
+import { DocumentContent } from './DocumentContent';
 import { ReadOnlyOpenChoices } from '../features/editor/ReadOnlyOpenChoices';
 import { offerReadOnlyOpen, type ReadOnlyOpenCandidate } from '../features/editor/read-only-open';
 import { EditorStatus } from '../features/editor/EditorStatus';
@@ -42,7 +42,6 @@ import { fitSessionBounds } from '../features/desktop/window-restore';
 import { RecoveryPanel } from '../features/desktop/RecoveryPanel';
 import { settings } from '../features/desktop/settings';
 import { mergeSettings } from '../features/desktop/settings-schema';
-import { SettingsDialog } from '../features/desktop/SettingsDialog';
 import { applySettingsToEditors } from '../features/desktop/settings-effects';
 import { languagePreferences } from '../features/desktop/language-preferences';
 import { inactiveRecoveryGroups } from '../features/desktop/privacy';
@@ -51,9 +50,7 @@ import { SaveAllResults } from '../features/editor/SaveAllResults';
 import { autoSaves } from '../features/editor/autosave';
 import { AutoSaveStatus } from '../features/editor/AutoSaveStatus';
 import { FindBar } from '../features/search-tools/FindBar';
-import { FormatDialog } from '../features/search-tools/FormatDialog';
-import { TransformPreview } from '../features/search-tools/TransformPreview';
-import { DiffView } from '../features/editor/DiffView';
+import { SettingsDialog, FormatDialog, TransformPreview, DiffView } from './DeferredDialogs';
 import { formatLanguage } from '../features/search-tools/formatters';
 import type { SearchScope } from '../features/search-tools/search-query';
 import { Explorer } from '../features/workspace/Explorer';
@@ -129,6 +126,7 @@ export function App() {
   const [comparisonOpen, setComparisonOpen] = useState(false);
   const [outlineOpen, setOutlineOpen] = useState(false);
   const [startupPending, setStartupPending] = useState(() => !!Reflect.get(window, '__TAURI_INTERNALS__'));
+  const [workspacePanelsReady, setWorkspacePanelsReady] = useState(() => !Reflect.get(window, '__TAURI_INTERNALS__'));
   const [autoFocus, setAutoFocus] = useState(true);
   const [openingCount, setOpeningCount] = useState(0);
   const busy = openingCount > 0;
@@ -214,6 +212,16 @@ export function App() {
   }, [dark, settingsState.settings.fontFamily, settingsState.settings.fontSize, settingsState.settings.lineHeight]);
 
   useEffect(() => {
+    if (startupPending || workspacePanelsReady) return;
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => {
+        frame = requestAnimationFrame(() => setWorkspacePanelsReady(true));
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [startupPending, workspacePanelsReady]);
+
+  useEffect(() => {
     const media = window.matchMedia('(prefers-color-scheme: dark)');
     const sync = () => setSystemDark(media.matches);
     media.addEventListener('change', sync);
@@ -276,6 +284,7 @@ export function App() {
     let stopSession: (() => void) | null = null;
     let stopExternal: (() => void) | null = null;
     let unlistenClose: (() => void) | null = null;
+    let deferredWindowRestore: (() => Promise<string[]>) | null = null;
     let releaseStartup!: () => void;
     const currentId = currentWindowId();
     const startupReady = new Promise<void>(resolve => { releaseStartup = resolve; });
@@ -308,34 +317,47 @@ export function App() {
         else {
           if (loaded.value.warning) notices.push(loaded.value.warning);
           if (loaded.value.session) {
-            const savedWindow = loaded.value.session.windows.find(window => window.windowId === currentId)
-              ?? (currentId === 'main' ? loaded.value.session.windows[0] : undefined);
-            if (savedWindow) {
-              try {
-                const [monitors, outer, inner, scale] = await Promise.all([
-                  availableMonitors(), appWindow.outerSize(), appWindow.innerSize(), appWindow.scaleFactor(),
-                ]);
-                const frame = { width: (outer.width - inner.width) / scale,
-                  height: (outer.height - inner.height) / scale };
-                const fitted = fitSessionBounds(savedWindow.bounds, monitors.map(monitor => {
-                  const position = monitor.workArea.position.toLogical(monitor.scaleFactor);
-                  const size = monitor.workArea.size.toLogical(monitor.scaleFactor);
-                  return { x: position.x, y: position.y, width: size.width, height: size.height };
-                }), frame);
-                if (fitted) {
-                  await appWindow.setSize(new LogicalSize(fitted.width, fitted.height));
-                  await appWindow.setPosition(new LogicalPosition(fitted.x, fitted.y));
-                }
-              } catch {
-                notices.push('窗口位置未能恢复，已使用系统提供的当前位置。');
-              }
-            }
             const restored = await session.restoreSources(
               loaded.value.session,
               loaded.value.restoredGrantIds,
             );
             sources = restored.sources;
             notices.push(...restored.warnings);
+            deferredWindowRestore = async () => {
+              const warnings: string[] = [];
+              const savedWindow = loaded.value.session!.windows.find(window => window.windowId === currentId)
+                ?? (currentId === 'main' ? loaded.value.session!.windows[0] : undefined);
+              if (savedWindow) {
+                try {
+                  const [monitors, outer, inner, scale] = await Promise.all([
+                    availableMonitors(), appWindow.outerSize(), appWindow.innerSize(), appWindow.scaleFactor(),
+                  ]);
+                  const frame = { width: (outer.width - inner.width) / scale,
+                    height: (outer.height - inner.height) / scale };
+                  const fitted = fitSessionBounds(savedWindow.bounds, monitors.map(monitor => {
+                    const position = monitor.workArea.position.toLogical(monitor.scaleFactor);
+                    const size = monitor.workArea.size.toLogical(monitor.scaleFactor);
+                    return { x: position.x, y: position.y, width: size.width, height: size.height };
+                  }), frame);
+                  if (fitted) {
+                    await appWindow.setSize(new LogicalSize(fitted.width, fitted.height));
+                    await appWindow.setPosition(new LogicalPosition(fitted.x, fitted.y));
+                  }
+                } catch {
+                  warnings.push('窗口位置未能恢复，已使用系统提供的当前位置。');
+                }
+              }
+              if (currentId === 'main') {
+                const primaryWindow = loaded.value.session!.windows.find(window => window.windowId === 'main')
+                  ?? loaded.value.session!.windows[0];
+                for (const savedWindow of loaded.value.session!.windows) {
+                  if (savedWindow.windowId === primaryWindow?.windowId) continue;
+                  const created = await desktopBridge.createWindow(savedWindow.windowId);
+                  if (!created.ok) warnings.push(`无法恢复窗口 ${savedWindow.windowId}：${created.error.message}`);
+                }
+              }
+              return warnings;
+            };
           }
         }
         const recovery = await restoreRecoveryOnce(sources, loaded.ok ? loaded.value.session ?? undefined : undefined, currentId);
@@ -350,21 +372,9 @@ export function App() {
           }
           notices.push(...recovery.value.warnings);
         }
-        if (active) await refreshRecoveryInventory();
         if (loaded.ok && loaded.value.session) {
           const applied = session.apply(loaded.value.session);
           notices.push(...applied.warnings);
-          if (currentId === 'main') {
-            const primaryWindow = loaded.value.session.windows.find(window => window.windowId === 'main')
-              ?? loaded.value.session.windows[0];
-            for (const savedWindow of loaded.value.session.windows) {
-              if (savedWindow.windowId === primaryWindow?.windowId) continue;
-              const created = await desktopBridge.createWindow(savedWindow.windowId);
-              if (!created.ok) {
-                notices.push(`无法恢复窗口 ${savedWindow.windowId}：${created.error.message}`);
-              }
-            }
-          }
         }
       } catch {
         setError(previous => previous
@@ -379,6 +389,14 @@ export function App() {
         }
         if (active) setStartupPending(false);
         releaseStartup();
+        if (active) void refreshRecoveryInventory();
+        if (active && deferredWindowRestore) {
+          void deferredWindowRestore().then(warnings => {
+            if (active && warnings.length > 0) setNotice(warnings.join(' '));
+          }).catch(() => {
+            if (active) setNotice('窗口位置或其他窗口未能恢复，当前编辑仍可继续。');
+          });
+        }
       }
     })();
     return () => {
@@ -1249,6 +1267,9 @@ export function App() {
     <p>正在恢复本地会话…</p>
   </main>;
 
+  if (performance.getEntriesByName('featherpad:shell-render').length === 0) {
+    performance.mark('featherpad:shell-render');
+  }
   return (
     <Shell
       railActions={<button className="icon-button" aria-label="打开设置" {...commandProps('settings.open')}
@@ -1271,25 +1292,30 @@ export function App() {
       sidebarShortcut={ariaShortcut(commands.binding('view.sidebar'))}
       themeShortcut={ariaShortcut(commands.binding('view.theme'))}
       sidebar={<div className="sidebar-stack">
-        <RecentList entries={recentEntries} availableGrantIds={sessionState.availableGrantIds}
-          enabled={settingsState.settings.recentHistoryEnabled}
-          busy={busy || savingCount > 0 || batchBusy || closingCount > 0}
-          onOpen={openRecent} onRepair={repairRecent} onRemove={removeRecent} onClear={clearRecent} />
-        <RootList busy={busy || savingCount > 0 || batchBusy || closingCount > 0}
-          workspaceFile={workspaceFile.document?.displayPath ?? null}
-          onAdd={() => void addRoot()} onRemove={root => void removeRoot(root)}
-          onOpenFile={() => void workspaceFile.open().then(error => { if (error) setError(error); })}
-            onSaveFile={() => void workspaceFile.save().then(error => { if (error) setError(error); })}
-            onRenamed={renamed => { void applyPathMappings(renamed); }} />
-        <FavoriteList entries={favorites.entries} problem={favorites.problem} availableGrantIds={sessionState.availableGrantIds}
-          busy={busy || savingCount > 0 || batchBusy || closingCount > 0} canAddFile={!!currentSource} canAddRoot={!!workspaceState.root}
-          onAddFile={favorites.addFile} onAddRoot={favorites.addRoot} onOpen={favorites.open} onRepair={favorites.repair}
-          onChange={favorites.change} onClear={favorites.clear} />
-        <Explorer currentReference={currentReference} onOpen={(reference, intent) => void openTreeFile(reference, intent ?? 'preview')}
-          onTrash={setTrashEntry} mutationBlocked={busy || savingCount > 0 || batchBusy || closingCount > 0}
-          onRenamed={renamed => {
-            void applyPathMappings(renamed);
-          }} />
+        {workspacePanelsReady ? <>
+          <RecentList entries={recentEntries} availableGrantIds={sessionState.availableGrantIds}
+            enabled={settingsState.settings.recentHistoryEnabled}
+            busy={busy || savingCount > 0 || batchBusy || closingCount > 0}
+            onOpen={openRecent} onRepair={repairRecent} onRemove={removeRecent} onClear={clearRecent} />
+          <RootList busy={busy || savingCount > 0 || batchBusy || closingCount > 0}
+            workspaceFile={workspaceFile.document?.displayPath ?? null}
+            onAdd={() => void addRoot()} onRemove={root => void removeRoot(root)}
+            onOpenFile={() => void workspaceFile.open().then(error => { if (error) setError(error); })}
+              onSaveFile={() => void workspaceFile.save().then(error => { if (error) setError(error); })}
+              onRenamed={renamed => { void applyPathMappings(renamed); }} />
+          <FavoriteList entries={favorites.entries} problem={favorites.problem} availableGrantIds={sessionState.availableGrantIds}
+            busy={busy || savingCount > 0 || batchBusy || closingCount > 0} canAddFile={!!currentSource} canAddRoot={!!workspaceState.root}
+            onAddFile={favorites.addFile} onAddRoot={favorites.addRoot} onOpen={favorites.open} onRepair={favorites.repair}
+            onChange={favorites.change} onClear={favorites.clear} />
+          <Explorer currentReference={currentReference} onOpen={(reference, intent) => void openTreeFile(reference, intent ?? 'preview')}
+            onTrash={setTrashEntry} mutationBlocked={busy || savingCount > 0 || batchBusy || closingCount > 0}
+            onRenamed={renamed => {
+              void applyPathMappings(renamed);
+            }} />
+        </> : <section className="sidebar-loading" aria-busy="true">
+          <h2 className="sidebar-title">资源管理器</h2>
+          <p className="sidebar-empty">正在载入最近记录、收藏和目录树…</p>
+        </section>}
       </div>}
       status={<><span>{closingCount > 0 || current?.closing ? '正在关闭…' : batchBusy ? '正在全部保存…' : savingCount > 0 ? '正在保存…' : busy ? '正在打开…' : current ? current.readOnlyReason ? '只读' : current.dirty ? '未保存修改' : current.displayPath ? '未修改' : '未命名' : '就绪'}</span>{current && current.format.encoding !== 'binary' && <><span role="group" aria-label="光标与字数" aria-live="off"><EditorStatus registry={documents} id={current.id} summary={current} /></span><span aria-label="编辑字号">{settingsState.settings.fontSize}px</span></>}<span className="status-end">{current?.format.encoding === 'binary' ? '图片 · 只读' : current ? `${current.format.encoding.toUpperCase()}${current.format.bom === 'none' ? '' : ' BOM'} · ${current.format.lineEnding.toUpperCase()}` : '轻羽 FeatherPad'}</span></>}
     >

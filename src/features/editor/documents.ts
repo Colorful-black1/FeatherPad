@@ -506,16 +506,21 @@ export class DocumentRegistry {
     if (document.summary.closing || document.summary.hotExitFrozen) return failure('BUSY', '文档正在安全关闭，当前内容保留。');
     if (document.summary.version !== expectedVersion) return failure('CONFLICT', '文档已变化，请重新生成预览。');
     if (text.includes('\r') || text.length >= 20 * 1024 * 1024) return failure('INVALID_INPUT', '结果换行无效或超过编辑工具预算。');
-    const current = document.state.field(documentFormat);
+    const view = this.views.get(id)?.values().next().value;
+    // Asynchronous language loading can advance registry facets before React
+    // remounts the view. Build the transaction from the same view state that
+    // will dispatch it so CodeMirror never receives a transaction from an
+    // older state version.
+    const transactionState = view && view.state.doc.eq(document.state.doc) ? view.state : document.state;
+    const current = transactionState.field(documentFormat);
     const count = text.split('\n').length - 1;
     const endings = mappedEndings ? [...mappedEndings] : Array.from({ length: count }, (_, index) => current.endings[index] ?? current.insertionEnding);
     if (endings.length !== count || endings.some(ending => !['lf', 'crlf', 'cr'].includes(ending))) return failure('INVALID_INPUT', '结果逐行换行映射无效。');
     if (document.state.doc.toString() === text && endings.every((ending, index) => ending === current.endings[index])) return { ok: true, value: { version: expectedVersion } };
-    const selection = document.state.selection;
-    const transaction = document.state.update({ changes: { from: 0, to: document.state.doc.length, insert: text },
+    const selection = transactionState.selection;
+    const transaction = transactionState.update({ changes: { from: 0, to: transactionState.doc.length, insert: text },
       selection: EditorSelection.create(selection.ranges.map(range => EditorSelection.range(Math.min(range.anchor, text.length), Math.min(range.head, text.length))), selection.mainIndex),
       effects: setDocumentFormat.of({ ...current, endings }), annotations: isolateHistory.of('full') });
-    const view = this.views.get(id)?.values().next().value;
     if (view) {
       view.dispatch(transaction);
       return document.state === transaction.state ? { ok: true, value: { version: document.summary.version } }
@@ -935,6 +940,7 @@ export class DocumentRegistry {
       const current = this.documents.get(id);
       if (!current || this.languageGenerations.get(id) !== generation || current.summary.languageId !== languageId) return;
       current.state = reconfigureLanguage(current.state, language, languageId, this.editorPreferences.folding);
+      for (const view of this.views.get(id) ?? []) view.setState(current.state);
       current.summary = { ...current.summary, languageRevision: current.summary.languageRevision + 1 };
       this.publish(this.snapshot.activeId);
     }).catch(() => {

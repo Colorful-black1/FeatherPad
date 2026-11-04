@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import type { DocumentId, FileRef } from '../../shared/contracts/files';
 import type { DocumentRegistry } from '../editor/documents';
 import { EditorDocument } from '../editor/EditorDocument';
-import { markdownFrame } from './frame';
+import { markdownBody, markdownFrameShell } from './frame';
 import { useMarkdownRender } from './use-markdown-render';
 import { toggleMarkdownTask } from './task-mapping';
 import { redo, undo } from '@codemirror/commands';
@@ -15,10 +15,8 @@ import { prepareRawHtml } from './raw-html';
 import { Outline } from './Outline';
 import { useMarkdownScroll } from './scroll-sync';
 import { ExportDialog } from './ExportDialog';
-import { ImageView } from '../editor/ImageView';
-import { HtmlPreview } from '../editor/HtmlPreview';
 
-interface DocumentContentProps {
+export interface MarkdownViewProps {
   registry: DocumentRegistry; id: DocumentId; autoFocus: boolean;
   group: 'primary' | 'secondary'; dark: boolean;
   allowHtml: boolean;
@@ -27,17 +25,7 @@ interface DocumentContentProps {
 }
 type MarkdownMode = 'source' | 'read' | 'split';
 
-// App composition owns this adapter. The generic editor has no dependency on
-// Markdown; both groups continue sharing the same registry and undo history.
-export function DocumentContent(props: DocumentContentProps) {
-  const record = props.registry.getDocument(props.id);
-  if (record?.fragment?.kind === 'image') return <ImageView {...props} />;
-  if (record?.summary.languageId === 'html' && !record.fragment) return <HtmlPreview {...props} />;
-  return record?.summary.languageId === 'markdown' && !record.fragment
-    ? <MarkdownView {...props} /> : <EditorDocument {...props} />;
-}
-
-function MarkdownView({ registry, id, autoFocus, group, dark, allowHtml, onActivate, onOpenFile }: DocumentContentProps) {
+export function MarkdownView({ registry, id, autoFocus, group, dark, allowHtml, onActivate, onOpenFile }: MarkdownViewProps) {
   const root = useRef<HTMLDivElement>(null);
   const [mode, setMode] = useState<MarkdownMode>('source');
   const [ratio, setRatio] = useState(50);
@@ -46,44 +34,54 @@ function MarkdownView({ registry, id, autoFocus, group, dark, allowHtml, onActiv
   const [directory, setDirectory] = useState<FileRef | null>(null);
   const [syncScroll, setSyncScroll] = useState(true);
   const [exportOpen, setExportOpen] = useState(false);
+  const [loadedFrame, setLoadedFrame] = useState<string | null>(null);
   const previewFrame = useRef<HTMLIFrameElement>(null);
   const restorePreviewFocus = useRef(false);
   const record = registry.getDocument(id)!;
   const version = record.summary.version;
-  const channel = useMemo(() => `${crypto.randomUUID().replaceAll('-', '')}${version.toString(36)}${id.length.toString(36)}`, [id, version]);
+  const channel = useMemo(() => `${crypto.randomUUID().replaceAll('-', '')}${id.length.toString(36)}`, [id]);
   const effectiveMode = mode === 'split' && compact ? 'read' : mode;
   const render = useMarkdownRender(registry, id, version, effectiveMode !== 'source', allowHtml);
   const rawReply = effectiveMode === 'source' ? undefined : render.state?.reply;
   const reply = useMemo(() => rawReply ? prepareRawHtml(rawReply) : undefined, [rawReply]);
-  const resources = useMarkdownResources(registry, id, reply, directory);
-  const links = usePreviewLinks({ registry, id, directory, reply,
+  const displayedReply = reply;
+  const resources = useMarkdownResources(registry, id, displayedReply, directory);
+  const links = usePreviewLinks({ registry, id, directory, reply: displayedReply,
     frame: previewFrame, channel, onNotice: setNotice, onOpenFile });
   const openPreviewLink = links.openIndex;
-  const scroll = useMarkdownScroll({ registry, id, root, frame: previewFrame, reply, channel,
+  const scroll = useMarkdownScroll({ registry, id, root, frame: previewFrame, reply: displayedReply, channel,
     enabled: syncScroll, split: effectiveMode === 'split', previewAction: restorePreviewFocus });
   const previewScroll = scroll.previewScroll;
   const readOnly = !!record.summary.readOnlyReason || record.summary.closing || record.summary.hotExitFrozen;
-  const frame = useMemo(() => reply ? markdownFrame(reply.html, dark, channel, readOnly,
-    resources.images, reply.images) : '', [reply, dark, channel, readOnly, resources.images]);
+  const frameKey = `${channel}:${dark}:${readOnly}`;
+  const frameShell = useMemo(() => markdownFrameShell(dark, channel, readOnly),
+    [dark, channel, readOnly]);
+  const frameBody = useMemo(() => displayedReply
+    ? markdownBody(displayedReply.html, resources.images, displayedReply.images) : '',
+  [displayedReply, resources.images]);
   useEffect(() => {
-    if (!reply) return;
+    if (loadedFrame !== frameKey || !frameBody) return;
+    previewFrame.current?.contentWindow?.postMessage({ channel, kind: 'render', html: frameBody }, '*');
+  }, [channel, frameBody, frameKey, loadedFrame]);
+  useEffect(() => {
+    if (!displayedReply) return;
     const receive = (event: MessageEvent<unknown>) => {
       if (!previewFrame.current || event.source !== previewFrame.current.contentWindow || event.origin !== 'null'
         || !event.data || typeof event.data !== 'object' || Reflect.get(event.data, 'channel') !== channel
-        || document.querySelector('dialog[open]')
-        || registry.getDocument(id)?.summary.version !== reply.bufferVersion) return;
+        || document.querySelector('dialog[open]')) return;
       const index: unknown = Reflect.get(event.data, 'index');
       if (typeof index !== 'number' || !Number.isSafeInteger(index) || index < 0) return;
       const kind: unknown = Reflect.get(event.data, 'kind');
+      if (registry.getDocument(id)?.summary.version !== displayedReply.bufferVersion && kind !== 'history') return;
       if (kind === 'task' && !readOnly) {
-        const task = reply.tasks[index];
+        const task = displayedReply.tasks[index];
         if (!task) return;
         onActivate?.();
         restorePreviewFocus.current = true;
-        const result = toggleMarkdownTask(registry, id, reply.bufferVersion, task);
+        const result = toggleMarkdownTask(registry, id, displayedReply.bufferVersion, task);
         if (!result.ok) setNotice(result.error.message);
       } else if (kind === 'copy') {
-        const block = reply.codeBlocks[index];
+        const block = displayedReply.codeBlocks[index];
         if (!block) return;
         onActivate?.();
         void navigator.clipboard.writeText(block.text).then(() => setNotice('代码已复制。'),
@@ -101,7 +99,7 @@ function MarkdownView({ registry, id, autoFocus, group, dark, allowHtml, onActiv
     };
     window.addEventListener('message', receive);
     return () => window.removeEventListener('message', receive);
-  }, [reply, channel, id, registry, readOnly, onActivate, openPreviewLink, previewScroll]);
+  }, [displayedReply, channel, id, registry, readOnly, onActivate, openPreviewLink, previewScroll]);
   useEffect(() => {
     if (!root.current) return;
     const observer = new ResizeObserver(entries => setCompact((entries[0]?.contentRect.width ?? 0) < 650));
@@ -163,23 +161,32 @@ function MarkdownView({ registry, id, autoFocus, group, dark, allowHtml, onActiv
         }} />}
       {effectiveMode !== 'source' && <section className="markdown-reading" aria-label="Markdown阅读预览"
         aria-busy={!render.state || render.state.status === 'loading'}>
-        {reply && <Outline headings={reply.headings} onGo={scroll.go} />}
-        {!render.state || render.state.status === 'loading'
-          ? <div className="markdown-render-status"><p role="status">正在生成阅读快照…</p>
-            <button type="button" className="plain-button" onClick={render.cancel}>取消渲染</button></div>
-          : render.state.status === 'ready'
-            ? <><iframe ref={previewFrame} title={`${record.summary.title} Markdown阅读 · ${group}`} sandbox="allow-scripts" srcDoc={frame}
-              onLoad={() => {
-                scroll.frameReady();
-                if (!restorePreviewFocus.current) return;
-                restorePreviewFocus.current = false;
-                previewFrame.current?.focus();
-                previewFrame.current?.contentWindow?.focus();
-              }} />
-              <ResourcePanel busy={resources.busy} failures={resources.failures}
-                labels={reply?.images ?? []} onChooseDirectory={chooseDirectory} onOpenUrl={links.openUrl} /></>
-            : <div className="markdown-render-status"><p role={render.state.status === 'error' ? 'alert' : 'status'}>{render.state.message}</p>
-              <button type="button" className="plain-button" onClick={render.retry}>生成一次预览</button></div>}
+        {displayedReply && <Outline headings={displayedReply.headings} onGo={scroll.go} />}
+        <iframe key={`preview-${channel}`} ref={previewFrame} title={`${record.summary.title} Markdown阅读 · ${group}`} sandbox="allow-scripts" srcDoc={frameShell}
+          onLoad={() => {
+            setLoadedFrame(frameKey);
+            previewFrame.current?.contentWindow?.postMessage({ channel, kind: 'render', html: frameBody }, '*');
+            scroll.frameReady();
+            if (!restorePreviewFocus.current) return;
+            restorePreviewFocus.current = false;
+            previewFrame.current?.focus();
+            previewFrame.current?.contentWindow?.focus();
+          }} />
+        {!frameBody && (render.state && !['loading', 'ready'].includes(render.state.status)
+          ? <div className="markdown-render-status"><p role={render.state.status === 'error' ? 'alert' : 'status'}>{render.state.message}</p>
+            <button type="button" className="plain-button" onClick={render.retry}>生成一次预览</button></div>
+          : <div className="markdown-render-status"><p role="status">正在生成阅读快照…</p>
+            <button type="button" className="plain-button" onClick={render.cancel}>取消渲染</button></div>)}
+        {frameBody && (!render.state || render.state.status === 'loading') && <div className="markdown-render-status">
+          <p role="status">正在更新阅读快照…</p>
+          <button type="button" className="plain-button" onClick={render.cancel}>取消渲染</button>
+        </div>}
+        {frameBody && render.state && render.state.status !== 'loading' && render.state.status !== 'ready' && <div className="markdown-render-status">
+          <p role={render.state.status === 'error' ? 'alert' : 'status'}>{render.state.message}</p>
+          <button type="button" className="plain-button" onClick={render.retry}>生成一次预览</button>
+        </div>}
+        {displayedReply && <ResourcePanel busy={resources.busy} failures={resources.failures}
+          labels={displayedReply.images} onChooseDirectory={chooseDirectory} onOpenUrl={links.openUrl} />}
       </section>}
     </div>
   </div>;

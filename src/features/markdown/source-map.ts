@@ -4,9 +4,9 @@ export interface SourceBlock { from: number; to: number }
 export interface MarkdownHeading extends SourceBlock { level: number; text: string; anchor: string }
 export interface HeadingLocation extends SourceBlock { level: number; firstLine: string }
 
-export function headingLocations(source: string): HeadingLocation[] {
+export function headingLocations(source: string, tree = parser.configure(GFM).parse(source)): HeadingLocation[] {
   const result: HeadingLocation[] = [];
-  const cursor = parser.configure(GFM).parse(source).cursor();
+  const cursor = tree.cursor();
   do {
     const heading = /^(?:ATX|Setext)Heading([1-6])$/.exec(cursor.name);
     if (!heading) continue;

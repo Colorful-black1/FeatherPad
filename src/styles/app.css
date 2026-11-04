@@ -648,6 +648,8 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round
 .settings-dialog { width: min(860px, calc(100% - 24px)); max-height: calc(100% - 24px); margin: auto; padding: 0; border: 1px solid var(--border-strong); border-radius: var(--radius-md); background: var(--bg-surface); color: var(--text-primary); box-shadow: var(--shadow); }
 .settings-dialog[open] { display: flex; flex-direction: column; }
 .settings-dialog::backdrop { background: #18201a66; }
+.deferred-dialog { width: min(400px, calc(100% - 24px)); margin: auto; padding: var(--space-4); border: 1px solid var(--border-strong); border-radius: var(--radius-md); background: var(--bg-surface); color: var(--text-primary); box-shadow: var(--shadow); }
+.deferred-dialog::backdrop { background: #18201a66; }
 .settings-dialog header { padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border); }
 .settings-dialog h2 { margin: 0 0 var(--space-2); font-size: 16px; }
 .settings-search { display: flex; align-items: center; gap: var(--space-3); font-size: 12px; }

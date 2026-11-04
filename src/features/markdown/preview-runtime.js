@@ -7,8 +7,12 @@
   let ignoreScrollUntil = 0;
   let scheduledScroll = 0;
   let lastReported = -1;
+  const article = document.querySelector('article[aria-label="Markdown正文"]');
   const send = (kind, index) => parent.postMessage({ channel, kind, index }, '*');
-  for (const input of document.querySelectorAll('input[data-task-id]')) input.disabled = readOnly;
+  const applyReadOnly = () => {
+    for (const input of document.querySelectorAll('input[data-task-id]')) input.disabled = readOnly;
+  };
+  applyReadOnly();
   document.addEventListener('change', event => {
     const input = event.target;
     if (!readOnly && input instanceof HTMLInputElement && input.dataset.taskId !== undefined) {
@@ -34,6 +38,13 @@
   addEventListener('message', event => {
     const data = event.data;
     if (event.source !== parent || !data || data.channel !== channel) return;
+    if (data.kind === 'render' && typeof data.html === 'string' && data.html.length <= 16 * 1024 * 1024 && article) {
+      article.innerHTML = data.html;
+      applyReadOnly();
+      ignoreScrollUntil = 0;
+      lastReported = -1;
+      reportScroll();
+    }
     let target = null;
     if (data.kind === 'anchor' && typeof data.fragment === 'string' && data.fragment.length <= 512) target = document.getElementById(data.fragment);
     if (data.kind === 'sourceScroll' && Number.isSafeInteger(data.from) && data.from >= 0) target = document.querySelector(`[data-source-from="${data.from}"]`);

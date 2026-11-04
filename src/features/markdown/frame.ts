@@ -8,8 +8,8 @@ const tags = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'br', 'hr', 'blockquote',
   'strong', 'em', 'del', 'a', 'span', 'input', 'button', 'div', 'img', 'b', 'i', 's', 'sub', 'sup', 'kbd',
   'details', 'summary', 'dl', 'dt', 'dd', 'tfoot'];
 
-export function markdownFrame(html: string, dark: boolean, channel: string, readOnly: boolean,
-  images: ReadonlyMap<number, PreviewImage>, imageLabels: readonly { alt: string }[]): string {
+export function markdownBody(html: string, images: ReadonlyMap<number, PreviewImage>,
+  imageLabels: readonly { alt: string }[]): string {
   const accepted = new Set<string>();
   for (const [index, image] of images) {
     accepted.add(image.dataUrl);
@@ -21,9 +21,21 @@ export function markdownFrame(html: string, dark: boolean, channel: string, read
   purifier.addHook('uponSanitizeAttribute', (_node, data) => {
     if (data.attrName === 'src' && !accepted.has(data.attrValue)) data.keepAttr = false;
   });
-  const safe = purifier.sanitize(html, { ALLOWED_TAGS: tags,
+  return `${purifier.sanitize(html, { ALLOWED_TAGS: tags,
     ALLOWED_ATTR: ['id', 'data-source-from', 'class', 'title', 'open', 'colspan', 'rowspan', 'aria-label', 'start', 'align', 'type', 'checked', 'disabled', 'data-task-id', 'data-code-id', 'data-copy-id', 'data-image-id', 'data-link-id', 'src', 'alt', 'width', 'height'],
-    ALLOW_DATA_ATTR: false, ALLOW_ARIA_ATTR: false });
+    ALLOW_DATA_ATTR: false, ALLOW_ARIA_ATTR: false })}`;
+}
+
+export function markdownFrame(html: string, dark: boolean, channel: string, readOnly: boolean,
+  images: ReadonlyMap<number, PreviewImage>, imageLabels: readonly { alt: string }[]): string {
+  return markdownDocument(markdownBody(html, images, imageLabels), dark, channel, readOnly);
+}
+
+export function markdownFrameShell(dark: boolean, channel: string, readOnly: boolean): string {
+  return markdownDocument('', dark, channel, readOnly);
+}
+
+function markdownDocument(body: string, dark: boolean, channel: string, readOnly: boolean): string {
   const runtime = runtimeSource.replace(/\r\n/g, '\n').trim();
   return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-${channel}'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
@@ -39,5 +51,5 @@ img{max-width:100%;height:auto}.pending-link{border:0;background:transparent;col
 input{accent-color:#45643b}@media(max-width:400px){body{padding:16px}}@media(forced-colors:active){blockquote,th,td{border-color:CanvasText}}
 .code-caption{display:flex;justify-content:space-between;align-items:center;font-size:12px;gap:8px}.code-caption button{font:inherit;cursor:pointer;padding:4px 8px}
 .tok-keyword,.tok-bool,.tok-null{color:${dark ? '#d9b78b' : '#8a592e'}}.tok-string,.tok-propertyName{color:${dark ? '#b0ca98' : '#45643b'}}.tok-number,.tok-typeName{color:${dark ? '#a4c8d6' : '#346477'}}.tok-comment{opacity:.75}
-</style></head><body data-channel="${channel}" data-read-only="${readOnly}"><article aria-label="Markdown正文">${safe}</article><script data-featherpad-runtime nonce="${channel}">${runtime}</script></body></html>`;
+</style></head><body data-channel="${channel}" data-read-only="${readOnly}"><article aria-label="Markdown正文">${body}</article><script data-featherpad-runtime nonce="${channel}">${runtime}</script></body></html>`;
 }

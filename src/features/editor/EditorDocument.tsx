@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { EditorView } from '@codemirror/view';
+import { isolateHistory } from '@codemirror/commands';
 import type { DocumentId } from '../../shared/contracts/files';
 import type { DocumentRegistry } from './documents';
 import { LargeFileView } from './LargeFileView';
@@ -18,9 +19,12 @@ export function EditorDocument({ registry, id, autoFocus, group }: {
   const closeBrackets = document?.summary.closeBrackets;
   const closing = document?.summary.closing;
   const hotExitFrozen = document?.summary.hotExitFrozen;
-  useEffect(() => {
+  useLayoutEffect(() => {
     const record = registry.getDocument(id);
     if (!parent.current || !record) return;
+    if (performance.getEntriesByName('featherpad:editor-mount-start').length === 0) {
+      performance.mark('featherpad:editor-mount-start');
+    }
     const view = new EditorView({
       parent: parent.current,
       state: record.state,
@@ -35,10 +39,27 @@ export function EditorDocument({ registry, id, autoFocus, group }: {
       },
     });
     const detachView = registry.attachView(id, view);
+    // A delayed viewer can replace the fallback editor within the default
+    // history grouping window. Preserve edits from both views but keep that
+    // replacement as a hard undo boundary so the first undo cannot remove text
+    // typed before the viewer loaded.
+    view.dispatch({ annotations: isolateHistory.of('full') });
+    if (performance.getEntriesByName('featherpad:editor-mount-complete').length === 0) {
+      performance.mark('featherpad:editor-mount-complete');
+    }
     const onScroll = () => registry.setScroll(id, view, view.scrollDOM.scrollTop, view.scrollDOM.scrollLeft);
     view.scrollDOM.addEventListener('scroll', onScroll, { passive: true });
     if (autoFocus) view.focus();
+    let readyFrame = 0;
+    if (autoFocus && !readOnlyReason && performance.getEntriesByName('featherpad:editor-interactive').length === 0) {
+      readyFrame = requestAnimationFrame(() => {
+        readyFrame = requestAnimationFrame(() => {
+          if (view.contentDOM.isConnected && view.hasFocus) performance.mark('featherpad:editor-interactive');
+        });
+      });
+    }
     return () => {
+      cancelAnimationFrame(readyFrame);
       view.scrollDOM.removeEventListener('scroll', onScroll);
       registry.setScroll(id, view, view.scrollDOM.scrollTop, view.scrollDOM.scrollLeft);
       detachView();

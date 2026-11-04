@@ -58,3 +58,32 @@ it('drops a late result after a newer query and cancels the superseded request',
   await first;
   expect(store.getSnapshot()).toMatchObject({ phase: 'complete', requestId: secondId });
 });
+
+it('publishes incremental matches, fences duplicate/old events and shadows even zero-match dirty files', async () => {
+  let finish!: (value: { ok: true; value: WorkspaceSearchResult }) => void;
+  const store = new WorkspaceSearchStore(() => new Promise(resolve => { finish = resolve; }),
+    async id => ({ ok: true, value: { requestId: id } }));
+  const disk = (name: string) => ({
+    ref: { grantId: root.grantId, relativePath: name }, displayName: name, displayPath: `E:/root/${name}`,
+    revision: 'a'.repeat(64), encoding: 'utf-8', truncated: false,
+    matches: [{ line: 1, column: 1, start: 0, end: 5, snippet: 'alpha', prefixTruncated: false, suffixTruncated: false }],
+  });
+  const run = store.start(options(), [{ id: 'dirty' as DocumentId, ref: disk('dirty.txt').ref,
+    displayName: 'dirty.txt', displayPath: 'E:/root/dirty.txt', version: 2, text: 'no match' }]);
+  const batch = { requestId, sequence: 1, files: [disk('first.txt'), disk('dirty.txt')],
+    scannedFiles: 2, matchedFiles: 2, totalMatches: 2, elapsedMs: 3 };
+  store.updateProgress(batch);
+  expect(store.getSnapshot().phase).toBe('running');
+  expect(store.getSnapshot().files.map(file => file.displayName)).toEqual(['first.txt']);
+  store.updateProgress({ ...batch, files: [disk('duplicate.txt')] });
+  store.updateProgress({ ...batch, requestId: 'old', sequence: 2, files: [disk('late.txt')] });
+  expect(store.getSnapshot().files).toHaveLength(1);
+  store.updateProgress({ ...batch, sequence: 2, files: [disk('second.txt')] });
+  expect(store.getSnapshot().files).toHaveLength(2);
+  finish({ ok: true, value: result(requestId, [disk('first.txt'), disk('second.txt'), disk('dirty.txt')]) });
+  await run;
+  expect(store.getSnapshot().phase).toBe('complete');
+  expect(store.getSnapshot().totalMatches).toBe(2);
+  store.updateProgress({ ...batch, sequence: 3, files: [disk('after.txt')] });
+  expect(store.getSnapshot().files).toHaveLength(2);
+});

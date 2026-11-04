@@ -8,17 +8,27 @@ type RenderState = { version: number; htmlEnabled: boolean; status: 'loading' | 
 
 export function useMarkdownRender(registry: DocumentRegistry, id: DocumentId, version: number, enabled: boolean, htmlEnabled: boolean) {
   const [state, setState] = useState<RenderState | null>(null);
+  const [lastReady, setLastReady] = useState<{ id: DocumentId; htmlEnabled: boolean;
+    reply: Extract<RenderReply, { ok: true }> } | null>(null);
   const [manualVersion, setManualVersion] = useState<number | null>(null);
   const [attempt, setAttempt] = useState(0);
   const cancelJob = useRef<(() => void) | null>(null);
+  const idleWorker = useRef<Worker | null>(null);
+  useEffect(() => () => {
+    idleWorker.current?.terminate(); idleWorker.current = null;
+  }, [id]);
   useEffect(() => {
     if (!enabled) return;
     let disposed = false;
     let worker: Worker | null = null;
+    let active = false;
     let deadline: ReturnType<typeof setTimeout> | undefined;
     const dispose = () => {
       disposed = true;
-      worker?.terminate();
+      if (active) {
+        worker?.terminate();
+        if (idleWorker.current === worker) idleWorker.current = null;
+      }
       clearTimeout(deadline);
     };
     cancelJob.current = dispose;
@@ -39,7 +49,9 @@ export function useMarkdownRender(registry: DocumentRegistry, id: DocumentId, ve
       setState({ version, htmlEnabled, status: 'loading' });
       const request: RenderRequest = { requestId: crypto.randomUUID(), documentId: id, bufferVersion: version, source, allowHtml: htmlEnabled };
       try {
-        worker = new Worker(new URL('../../workers/markdown.worker.ts', import.meta.url), { type: 'module' });
+        worker = idleWorker.current ?? new Worker(new URL('../../workers/markdown.worker.ts', import.meta.url), { type: 'module' });
+        idleWorker.current = worker;
+        active = true;
         deadline = setTimeout(() => {
           dispose();
           setState({ version, htmlEnabled, status: 'error', message: '阅读渲染超过2秒预算，已取消；源码仍保留。' });
@@ -48,7 +60,10 @@ export function useMarkdownRender(registry: DocumentRegistry, id: DocumentId, ve
           const reply = event.data;
           if (disposed || reply.requestId !== request.requestId || reply.documentId !== id
             || reply.bufferVersion !== version || registry.getDocument(id)?.summary.version !== version) return;
+          active = false;
+          if (worker) { worker.onmessage = null; worker.onerror = null; }
           dispose();
+          if (reply.ok) setLastReady({ id, htmlEnabled, reply });
           setState(reply.ok ? { version, htmlEnabled, status: 'ready', reply }
             : { version, htmlEnabled, status: 'error', message: reply.message });
         };
@@ -61,11 +76,14 @@ export function useMarkdownRender(registry: DocumentRegistry, id: DocumentId, ve
         dispose();
         setState({ version, htmlEnabled, status: 'error', message: '阅读渲染无法启动，请重试；源码仍保留。' });
       }
-    }, 150);
+    }, 80);
     return () => { clearTimeout(delay); dispose(); cancelJob.current = null; };
   }, [registry, id, version, enabled, htmlEnabled, manualVersion, attempt]);
+  const current = state?.version === version && state.htmlEnabled === htmlEnabled ? state
+    : enabled && lastReady?.id === id && lastReady.htmlEnabled === htmlEnabled
+      ? { version, htmlEnabled, status: 'loading' as const, reply: lastReady.reply } : null;
   return {
-    state: state?.version === version && state.htmlEnabled === htmlEnabled ? state : null,
+    state: current,
     retry: () => { setManualVersion(version); setAttempt(value => value + 1); },
     cancel: () => {
       cancelJob.current?.();

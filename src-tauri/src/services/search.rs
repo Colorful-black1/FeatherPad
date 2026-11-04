@@ -87,6 +87,9 @@ pub struct WorkspaceSearchResult {
 #[serde(rename_all = "camelCase")]
 pub struct SearchProgress {
     pub request_id: String,
+    pub sequence: u64,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub files: Vec<SearchFileResult>,
     pub scanned_files: u32,
     pub matched_files: u32,
     pub total_matches: u32,
@@ -152,7 +155,19 @@ impl FileService {
         validate_search(&request)?;
         let started = Instant::now();
         let regex = compile_pattern(&request)?;
-        let walked = self.walk_workspace(
+        let limit = request.max_matches.unwrap_or(MAX_SEARCH_MATCHES);
+        let mut files = Vec::new();
+        let mut skipped = BTreeMap::<String, u64>::new();
+        let mut total_matches = 0u32;
+        let mut scanned_files = 0u32;
+        let mut result_bytes = 0usize;
+        let mut truncated = false;
+        let mut cancelled = false;
+        let mut last_progress = Instant::now();
+        let mut sequence = 0u64;
+        let mut sent_files = 0usize;
+
+        let walked = self.visit_workspace(
             WalkWorkspaceRequest {
                 request_id: request.request_id.clone(),
                 roots: request.roots.clone(),
@@ -164,142 +179,124 @@ impl FileService {
                 max_files: Some(100_000),
             },
             walker,
+            |entry| {
+                if coordinator.is_cancelled(&request.request_id) {
+                    cancelled = true;
+                    truncated = true;
+                    return false;
+                }
+                if entry.size_bytes >= MAX_SEARCH_FILE_BYTES {
+                    increment(&mut skipped, "文件达到20MiB上限");
+                    return true;
+                }
+                let resolved = match self.grants.resolve_entry(&entry.reference) {
+                    Ok(resolved) => resolved,
+                    Err(_) => {
+                        increment(&mut skipped, "授权或路径已变化");
+                        return true;
+                    }
+                };
+                let bytes = match std::fs::read(&resolved.path) {
+                    Ok(bytes) => bytes,
+                    Err(_) => {
+                        increment(&mut skipped, "无法读取");
+                        return true;
+                    }
+                };
+                scanned_files = scanned_files.saturating_add(1);
+                let decoded = match decode_basic(&bytes) {
+                    Ok(decoded) => decoded,
+                    Err(error) if error.code == ErrorCode::EncodingRequired => {
+                        increment(&mut skipped, "需要其他编码");
+                        return true;
+                    }
+                    Err(_) => {
+                        increment(&mut skipped, "编码有损");
+                        return true;
+                    }
+                };
+                if decoded
+                    .text
+                    .chars()
+                    .take(8 * 1024)
+                    .any(|character| character == '\0')
+                {
+                    increment(&mut skipped, "二进制");
+                    return true;
+                }
+                let mut matches = Vec::new();
+                let mut file_truncated = false;
+                for found in regex.find_iter(&decoded.text) {
+                    if total_matches >= limit
+                        || result_bytes >= MAX_RESULT_BYTES
+                        || matches.len() >= MAX_FILE_MATCHES
+                    {
+                        truncated = true;
+                        file_truncated = true;
+                        break;
+                    }
+                    let detail = match_match(&decoded.text, found.start(), found.end());
+                    result_bytes = result_bytes
+                        .saturating_add(entry.display_path.len())
+                        .saturating_add(detail.snippet.len())
+                        .saturating_add(128);
+                    if result_bytes >= MAX_RESULT_BYTES {
+                        truncated = true;
+                        file_truncated = true;
+                        break;
+                    }
+                    matches.push(detail);
+                    total_matches = total_matches.saturating_add(1);
+                }
+                if !matches.is_empty() {
+                    let matched = SearchFileResult {
+                        reference: entry.reference,
+                        display_name: entry.display_name,
+                        display_path: entry.display_path,
+                        revision: format!("{:x}", Sha256::digest(&bytes)),
+                        encoding: decoded.encoding.to_owned(),
+                        matches,
+                        truncated: file_truncated,
+                    };
+                    files.push(matched);
+                }
+                if total_matches >= limit || result_bytes >= MAX_RESULT_BYTES {
+                    truncated = true;
+                    return false;
+                }
+                if (sent_files == 0 && !files.is_empty())
+                    || last_progress.elapsed() >= Duration::from_millis(150)
+                {
+                    sequence += 1;
+                    let batch_end = files.len().min(sent_files + 25);
+                    progress(SearchProgress {
+                        sequence,
+                        files: files[sent_files..batch_end].to_vec(),
+                        request_id: request.request_id.clone(),
+                        scanned_files,
+                        matched_files: files.len().try_into().unwrap_or(u32::MAX),
+                        total_matches,
+                        elapsed_ms: elapsed(started),
+                    });
+                    sent_files = batch_end;
+                    last_progress = Instant::now();
+                }
+                true
+            },
         )?;
-        if walked.cancelled || coordinator.is_cancelled(&request.request_id) {
-            return Ok(WorkspaceSearchResult {
-                request_id: request.request_id,
-                files: Vec::new(),
-                skipped: walked
-                    .skipped
-                    .into_iter()
-                    .map(|skip| SearchSkip {
-                        reason: skip.reason,
-                        count: skip.count,
-                    })
-                    .collect(),
-                total_matches: 0,
-                scanned_files: 0,
-                truncated: walked.truncated,
-                cancelled: true,
-                elapsed_ms: elapsed(started),
-            });
-        }
-
-        let limit = request.max_matches.unwrap_or(MAX_SEARCH_MATCHES);
-        let mut files = Vec::new();
-        let mut skipped = BTreeMap::<String, u64>::new();
+        cancelled |= walked.cancelled;
+        truncated |= walked.truncated;
         for skip in walked.skipped {
             *skipped.entry(skip.reason).or_default() += skip.count;
         }
         if walked.truncated {
             *skipped.entry("目录条目上限".into()).or_default() += 1;
         }
-        let mut total_matches = 0u32;
-        let mut scanned_files = 0u32;
-        let mut result_bytes = 0usize;
-        let mut truncated = walked.truncated;
-        let mut cancelled = false;
-        let mut last_progress = Instant::now();
 
-        for entry in walked.entries {
-            if coordinator.is_cancelled(&request.request_id) {
-                cancelled = true;
-                truncated = true;
-                break;
-            }
-            if entry.size_bytes >= MAX_SEARCH_FILE_BYTES {
-                increment(&mut skipped, "文件达到20MiB上限");
-                continue;
-            }
-            let resolved = match self.grants.resolve_entry(&entry.reference) {
-                Ok(resolved) => resolved,
-                Err(_) => {
-                    increment(&mut skipped, "授权或路径已变化");
-                    continue;
-                }
-            };
-            let bytes = match std::fs::read(&resolved.path) {
-                Ok(bytes) => bytes,
-                Err(_) => {
-                    increment(&mut skipped, "无法读取");
-                    continue;
-                }
-            };
-            scanned_files = scanned_files.saturating_add(1);
-            let decoded = match decode_basic(&bytes) {
-                Ok(decoded) => decoded,
-                Err(error) if error.code == ErrorCode::EncodingRequired => {
-                    increment(&mut skipped, "需要其他编码");
-                    continue;
-                }
-                Err(_) => {
-                    increment(&mut skipped, "编码有损");
-                    continue;
-                }
-            };
-            if decoded
-                .text
-                .chars()
-                .take(8 * 1024)
-                .any(|character| character == '\0')
-            {
-                increment(&mut skipped, "二进制");
-                continue;
-            }
-            let mut matches = Vec::new();
-            let mut file_truncated = false;
-            for found in regex.find_iter(&decoded.text) {
-                if total_matches >= limit
-                    || result_bytes >= MAX_RESULT_BYTES
-                    || matches.len() >= MAX_FILE_MATCHES
-                {
-                    truncated = true;
-                    file_truncated = true;
-                    break;
-                }
-                let detail = match_match(&decoded.text, found.start(), found.end());
-                result_bytes = result_bytes
-                    .saturating_add(entry.display_path.len())
-                    .saturating_add(detail.snippet.len())
-                    .saturating_add(128);
-                if result_bytes >= MAX_RESULT_BYTES {
-                    truncated = true;
-                    file_truncated = true;
-                    break;
-                }
-                matches.push(detail);
-                total_matches = total_matches.saturating_add(1);
-            }
-            if !matches.is_empty() {
-                files.push(SearchFileResult {
-                    reference: entry.reference,
-                    display_name: entry.display_name,
-                    display_path: entry.display_path,
-                    revision: format!("{:x}", Sha256::digest(&bytes)),
-                    encoding: decoded.encoding.to_owned(),
-                    matches,
-                    truncated: file_truncated,
-                });
-            }
-            if total_matches >= limit || result_bytes >= MAX_RESULT_BYTES {
-                truncated = true;
-                break;
-            }
-            if scanned_files.is_multiple_of(25)
-                || last_progress.elapsed() >= Duration::from_millis(150)
-            {
-                progress(SearchProgress {
-                    request_id: request.request_id.clone(),
-                    scanned_files,
-                    matched_files: files.len().try_into().unwrap_or(u32::MAX),
-                    total_matches,
-                    elapsed_ms: elapsed(started),
-                });
-                last_progress = Instant::now();
-            }
-        }
-
+        sequence += 1;
         progress(SearchProgress {
+            sequence,
+            files: files[sent_files..files.len().min(sent_files + 25)].to_vec(),
             request_id: request.request_id.clone(),
             scanned_files,
             matched_files: files.len().try_into().unwrap_or(u32::MAX),
@@ -426,7 +423,69 @@ fn busy() -> AppError {
 mod tests {
     use super::*;
     use crate::services::{encoding::encode_text, grants::GrantKind};
-    use std::fs;
+    use std::{fs, path::PathBuf};
+
+    #[test]
+    fn first_matching_batch_arrives_before_completion_and_cancel_keeps_it() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../.artifacts/T501")
+            .join(format!("stream-search-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        for index in 0..60 {
+            fs::write(root.join(format!("item-{index:03}.txt")), b"alpha\n").unwrap();
+        }
+        let mut service = FileService::default();
+        let grant = service
+            .grants
+            .register_selection(&root, GrantKind::Directory)
+            .unwrap();
+        let request_id = uuid::Uuid::new_v4().to_string();
+        let coordinator = Arc::new(SearchCoordinator::default());
+        let walker = coordinator.start(&request_id).unwrap();
+        let batches = Mutex::new(Vec::new());
+        let result = service
+            .search_workspace(
+                WorkspaceSearchRequest {
+                    request_id: request_id.clone(),
+                    roots: vec![grant],
+                    pattern: "alpha".into(),
+                    is_regex: false,
+                    is_case_sensitive: true,
+                    is_whole_word: false,
+                    include: vec![],
+                    exclude: vec![],
+                    respect_gitignore: false,
+                    follow_directory_links: false,
+                    include_hidden: false,
+                    max_matches: None,
+                },
+                coordinator.clone(),
+                walker,
+                |batch| {
+                    if !batch.files.is_empty() {
+                        assert_eq!(batch.scanned_files, 1);
+                        coordinator.cancel(&request_id).unwrap();
+                    }
+                    batches.lock().unwrap().push(batch);
+                },
+            )
+            .unwrap();
+        coordinator.finish(&request_id);
+        let batches = batches.lock().unwrap();
+        assert_eq!(batches[0].sequence, 1);
+        assert_eq!(batches[0].files.len(), 1);
+        assert!(batches
+            .windows(2)
+            .all(|pair| pair[1].sequence == pair[0].sequence + 1));
+        assert!(result.cancelled);
+        assert_eq!(result.scanned_files, 1);
+        assert_eq!(result.files.len(), 1);
+        assert_eq!(result.files[0].revision, batches[0].files[0].revision);
+        assert!(!result
+            .skipped
+            .iter()
+            .any(|skip| skip.reason == "目录条目上限"));
+    }
 
     #[test]
     fn searches_unicode_text_with_limits_and_revision() {

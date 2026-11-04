@@ -17,12 +17,20 @@ fn pdf_byte_export_to_full_backing_filesystem_keeps_the_original_and_failure_rec
     let root = PathBuf::from(root);
     let token = std::env::var("FEATHERPAD_EXPORT_FAULT_TOKEN").unwrap();
     assert!(uuid::Uuid::parse_str(&token).is_ok());
-    assert_eq!(
-        fs::read_to_string(root.join("fixture.token")).unwrap(),
-        token
-    );
+    let fixture_token = root.join("fixture.token");
+    let fixture_value = fs::read_to_string(&fixture_token).unwrap_or_else(|error| {
+        panic!(
+            "fault fixture token must be readable at {}: {error}",
+            fixture_token.display()
+        )
+    });
+    assert_eq!(fixture_value, token);
     let original = root.join("original.pdf");
-    assert_eq!(fs::read(&original).unwrap(), b"controlled-original-pdf");
+    assert_eq!(
+        fs::read(&original)
+            .unwrap_or_else(|error| panic!("fault fixture source must be readable: {error}")),
+        b"controlled-original-pdf"
+    );
     let evidence = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../.artifacts/T311/export-faults")
         .join(&token);

@@ -17,12 +17,13 @@
         "width": 1200,
         "height": 800,
         "minWidth": 800,
-        "minHeight": 560
+        "minHeight": 560,
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --disable-background-networking --disable-component-update --disable-domain-reliability --disable-sync --disable-gpu --no-first-run --no-default-browser-check"
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self' 'sha256-IswOGujDph55QbAQkyV4x2gG5a4FQxh7SFwqR9CYy1I='; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src ipc: http://ipc.localhost; object-src 'none'; frame-src 'self'; base-uri 'none'; form-action 'none'",
-      "devCsp": "default-src 'self'; script-src 'self' 'sha256-IswOGujDph55QbAQkyV4x2gG5a4FQxh7SFwqR9CYy1I='; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src ipc: http://ipc.localhost http://127.0.0.1:1420 ws://127.0.0.1:1420; object-src 'none'; frame-src 'self'; base-uri 'none'; form-action 'none'",
+      "csp": "default-src 'self'; script-src 'self' 'sha256-bTYAzVMftKO5XzwhQELScBl/+wA6hq/lm4u12WLWFHQ='; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src ipc: http://ipc.localhost; object-src 'none'; frame-src 'self'; base-uri 'none'; form-action 'none'",
+      "devCsp": "default-src 'self'; script-src 'self' 'sha256-bTYAzVMftKO5XzwhQELScBl/+wA6hq/lm4u12WLWFHQ='; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src ipc: http://ipc.localhost http://127.0.0.1:1420 ws://127.0.0.1:1420; object-src 'none'; frame-src 'self'; base-uri 'none'; form-action 'none'",
       "capabilities": [
         "main"
       ]
@@ -30,6 +31,14 @@
   },
   "bundle": {
     "active": true,
+    "resources": {
+      "../THIRD-PARTY-NOTICES.md": "THIRD-PARTY-NOTICES.md",
+      "../packaging/LICENSE-TEXTS.txt": "packaging/LICENSE-TEXTS.txt",
+      "../packaging/third-party-inventory.json": "packaging/third-party-inventory.json",
+      "../docs/USER-GUIDE.md": "docs/USER-GUIDE.md",
+      "../docs/RECOVERY.md": "docs/RECOVERY.md",
+      "../docs/RELEASE-NOTES.md": "docs/RELEASE-NOTES.md"
+    },
     "targets": [
       "nsis"
     ],

@@ -47,6 +47,8 @@ export interface WorkspaceSearchResult {
 }
 export interface WorkspaceSearchProgress {
   requestId: string;
+  sequence?: number;
+  files?: SearchFileResult[];
   scannedFiles: number;
   matchedFiles: number;
   totalMatches: number;
@@ -81,6 +83,9 @@ const isSearchResult = (value: unknown): value is WorkspaceSearchResult => isRec
 
 function isProgress(value: unknown): value is WorkspaceSearchProgress {
   return isRecord(value) && uuid(value.requestId)
+    && (value.sequence === undefined || (count(value.sequence) && value.sequence > 0))
+    && (value.files === undefined || (count(value.sequence) && Array.isArray(value.files)
+      && value.files.length <= 25 && value.files.every(isFileResult)))
     && count(value.scannedFiles) && count(value.matchedFiles) && count(value.totalMatches) && count(value.elapsedMs);
 }
 

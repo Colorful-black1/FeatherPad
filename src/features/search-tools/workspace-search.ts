@@ -109,6 +109,9 @@ export class WorkspaceSearchStore {
   private readonly listeners = new Set<() => void>();
   private snapshot = initial();
   private generation = 0;
+  private progressSequence = 0;
+  private dirtyKeys = new Set<string>();
+  private dirtyPaths = new Set<string>();
 
   constructor(private readonly runSearch: RunSearch, private readonly cancelSearch: CancelSearch) {}
 
@@ -120,12 +123,22 @@ export class WorkspaceSearchStore {
 
   async start(options: WorkspaceSearchOptions, dirtyDocuments: readonly BufferedWorkspaceDocument[] = []) {
     const generation = ++this.generation;
+    this.progressSequence = 0;
+    const rootIds = new Set(options.roots.map(root => root.grantId));
+    const scopedDirty = dirtyDocuments.filter(document => rootIds.has(document.ref.grantId));
+    // A dirty buffer with zero matches still shadows stale disk matches.
+    const dirtyKeys = new Set(scopedDirty.map(document => resultKey(document.ref)));
+    const dirtyPaths = new Set(scopedDirty.map(document => document.displayPath.toLocaleLowerCase()));
+    this.dirtyKeys = dirtyKeys; this.dirtyPaths = dirtyPaths;
+    const dirty = scopedDirty.map(document => dirtyResult(document, options))
+      .filter((item): item is SearchFileResult => item !== null);
     const previous = this.snapshot.requestId;
     if (this.snapshot.phase === 'running' || this.snapshot.phase === 'cancelling') {
       if (previous) void this.cancelSearch(previous);
     }
     this.snapshot = {
-      ...initial(), phase: 'running', requestId: options.requestId, options,
+      ...initial(), phase: 'running', requestId: options.requestId, options, files: dirty, dirtyFiles: dirty,
+      totalMatches: dirty.reduce((sum, file) => sum + file.matches.length, 0),
     };
     this.publish();
     const result = await this.runSearch({
@@ -154,13 +167,6 @@ export class WorkspaceSearchStore {
       this.publish();
       return;
     }
-    const rootIds = new Set(options.roots.map(root => root.grantId));
-    const dirty = dirtyDocuments
-      .filter(document => rootIds.has(document.ref.grantId))
-      .map(document => dirtyResult(document, options))
-      .filter((item): item is SearchFileResult => item !== null);
-    const dirtyKeys = new Set(dirty.map(item => resultKey(item.ref)));
-    const dirtyPaths = new Set(dirty.map(item => item.displayPath.toLocaleLowerCase()));
     const files = result.value.files.filter(item =>
       !dirtyKeys.has(resultKey(item.ref)) && !dirtyPaths.has(item.displayPath.toLocaleLowerCase()));
     const combined = [...files, ...dirty];
@@ -180,7 +186,19 @@ export class WorkspaceSearchStore {
   updateProgress(progress: WorkspaceSearchProgress) {
     if (progress.requestId !== this.snapshot.requestId
       || (this.snapshot.phase !== 'running' && this.snapshot.phase !== 'cancelling')) return;
-    this.snapshot = { ...this.snapshot, progress };
+    if (progress.sequence !== undefined) {
+      if (progress.sequence <= this.progressSequence) return;
+      this.progressSequence = progress.sequence;
+    } else if (this.progressSequence > 0) return;
+    const files = new Map(this.snapshot.files.map(file => [resultKey(file.ref), file]));
+    for (const file of progress.files ?? []) {
+      if (!this.dirtyKeys.has(resultKey(file.ref)) && !this.dirtyPaths.has(file.displayPath.toLocaleLowerCase())) {
+        if (files.size < 10_000 || files.has(resultKey(file.ref))) files.set(resultKey(file.ref), file);
+      }
+    }
+    const combined = [...files.values()];
+    this.snapshot = { ...this.snapshot, progress, files: combined,
+      totalMatches: combined.reduce((sum, file) => sum + file.matches.length, 0) };
     this.publish();
   }
 

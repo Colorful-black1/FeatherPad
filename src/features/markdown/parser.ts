@@ -1,4 +1,5 @@
 import { Marked, Renderer } from 'marked';
+import { GFM, parser as sourceParser } from '@lezer/markdown';
 import { markdownTasks, type MarkdownTask } from './task-mapping';
 import { headingAnchor, headingLocations, topLevelSourceRanges, type SourceBlock, type MarkdownHeading } from './source-map';
 
@@ -35,7 +36,8 @@ export function renderMarkdown(request: RenderRequest): RenderReply {
   }
   let nodes = 0;
   let blockedResources = 0;
-  const tasks = markdownTasks(request.source);
+  const sourceTree = sourceParser.configure(GFM).parse(request.source);
+  const tasks = markdownTasks(request.source, sourceTree);
   const taskTokens = new WeakMap<object, number>();
   const codeBlocks: { text: string; language: string }[] = [];
   const images: { url: string; alt: string }[] = [];
@@ -43,7 +45,7 @@ export function renderMarkdown(request: RenderRequest): RenderReply {
   const rawHtml: string[] = [];
   const blocks = new Map<number, SourceBlock>();
   const blockTokens = new WeakMap<object, SourceBlock>();
-  const locations = headingLocations(request.source);
+  const locations = headingLocations(request.source, sourceTree);
   const headingTokens = new WeakMap<object, (typeof locations)[number]>();
   const headings: MarkdownHeading[] = [];
   const usedAnchors = new Set<string>();

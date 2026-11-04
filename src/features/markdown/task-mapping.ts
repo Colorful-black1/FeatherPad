@@ -9,9 +9,9 @@ export interface MarkdownTask {
   rawLine: string;
 }
 
-export function markdownTasks(source: string): MarkdownTask[] {
+export function markdownTasks(source: string, tree = parser.configure(GFM).parse(source)): MarkdownTask[] {
   const tasks: MarkdownTask[] = [];
-  const cursor = parser.configure(GFM).parse(source).cursor();
+  const cursor = tree.cursor();
   do {
     if (cursor.name !== 'TaskMarker') continue;
     const marker = source.slice(cursor.from, cursor.to);
