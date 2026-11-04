@@ -141,7 +141,6 @@ cargo fmt --manifest-path src-tauri/Cargo.toml --check
 cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 cargo test --manifest-path src-tauri/Cargo.toml
 pnpm build                  # tsc/Vite + Tauri Release，必须真实产物
-pnpm bench:app              # 采样与结果文件，不打印伪造数字
 pnpm audit                  # lockfile级审查，按可达性处置
 ```
 

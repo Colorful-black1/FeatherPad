@@ -22,7 +22,7 @@ powershell.exe -NoProfile -File .\scripts\Probe-Environment.ps1
 
 **先查`E:\Codeing`和默认目录，优先复用；确实缺失时所有新工具/SDK/浏览器/安装包/缓存只能在`E:\Codeing`下，默认`E:\Codeing\featherpad-dev`。** 不修改系统PATH、不切全局nvm、不自动升级工具链。不能遵守指定目录的安装要停止并报告，不能静默例外。
 
-M0已建立的命令（bench:app仍待性能阶段创建）：`pnpm dev` / `pnpm dev:web` / `pnpm typecheck` / `pnpm lint` / `pnpm test:unit` / `pnpm test:integration` / `pnpm test:e2e` / `pnpm test:desktop` / `pnpm build` / `pnpm bench:app`；Rust：`cargo fmt --manifest-path src-tauri/Cargo.toml --check`，`cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings`，`cargo test --manifest-path src-tauri/Cargo.toml`。
+已建立的命令：`pnpm dev` / `pnpm dev:web` / `pnpm typecheck` / `pnpm lint` / `pnpm test:unit` / `pnpm test:integration` / `pnpm test:e2e` / `pnpm test:desktop` / `pnpm build`；Rust：`cargo fmt --manifest-path src-tauri/Cargo.toml --check`，`cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings`，`cargo test --manifest-path src-tauri/Cargo.toml`。
 
 ## 每轮怎么做
 

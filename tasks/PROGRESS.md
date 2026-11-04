@@ -17,8 +17,8 @@
 ### 2026-11-04 M4收尾补充：按需视图与性能测量
 
 - 发布前补充按需加载Markdown/HTML/图片视图及设置、格式化、转换、比较对话框；普通文本首屏不初始化这些可选UI，加载期间沿用原registry/undo，失败可重试。新增按需对话框的焦点/组合输入交接测试，旧断言不变。
-- 搜索补充首批结果投递与sequence/dirty fence、事件节流；新增`pnpm bench:app`测量入口与进程树采样脚本，nearest-rank统计保留全部原始值。开发机单次观测（启动、1MiB打开、普通输入、20MiB只读首屏、100k目录）已记录，未做10样本目标机p95，不作为性能验收结论。
-- Win11/i5-12600KF/32GB仅开发基准；Win10与4核/8GB目标机未实测，相关声明保持未验证。测量脚本保留在`tests/benchmarks/`与`scripts/bench.ps1`，所有产物未删除。
+- 搜索补充首批结果投递与sequence/dirty fence、事件节流。开发机单次观测（启动、1MiB打开、普通输入、20MiB只读首屏、100k目录）记录在验收报告里，未做10样本目标机p95，不作为性能验收结论。
+- Win11/i5-12600KF/32GB仅开发基准；Win10与4核/8GB目标机未实测，相关声明保持未验证。
 
 ### 2026-11-04 T405完成：M4/G4统一验收通过并停止
 
@@ -476,7 +476,7 @@
 - 动态增长已收紧：文件在可编辑读取时跨过20MiB会重新打开并按真实大小进入分块；跨过100MiB只返回可选择前1MiB预览的TOO_LARGE；未越上限但读取期间变化的文件返回CONFLICT，不返回截断正文。`LargeFileView`只持有当前64KiB页及页起点历史；上一块从已读精确起点重新请求，不在React中累加正文。>100MiB流程先关闭自动读取，用户明确点击后才调用head-preview。
 - 真实边界证据：Rust实际文件覆盖2MiB−1/2MiB/2MiB+1、20MiB−1/20MiB/20MiB+1、100MiB/100MiB+1；并发真实写入使读取跨过20MiB和100MiB上限均得到TOO_LARGE，未越限增长得到CONFLICT；另用“初次观察为可编辑大小、实际文件已增长”的路径验证自动分块重判。流式20MiB摘要与既有全文件快照一致且只保留小窗口；100MiB扫描保留零正文窗口，末尾UTF-8窗口精确。原生Release打开受控20MiB文件后可前/后分页，单页<64KiB+16字符，源文件SHA256不变；100MiB+1文件自动打开被拒，用户明确选择后显示前1MiB预览且保存/另存禁用，源文件SHA256不变。
 - 本切片实际检查：typecheck/lint、TS33、全Web16（分块下一页只显示新页、上一页恢复且保存入口禁用；Web mock与原生证据独立）、Rust全套61、`cargo fmt --check`、`cargo clippy --all-targets -D warnings`、Release build及真实桌面综合1（43.0秒）均exit0。没有新增依赖/工具。原生截图`native-release-large-chunk.png`显示第1页65,536字节/20,971,520字节及上一/下一按钮，`native-release-head-preview.png`显示截断前1MiB；均已视觉检查。`native-release.json`记录nativeLargeChunkReadonlyVerified=true、nativeHeadPreviewVerified=true。
-- 当前Release：10,088,960 bytes，SHA256 `1472127164a831ac654bd3985b757b6da14ef02ed5fc1cd936ce5b8747257633`。Win11/WebView2 156.0.4314.58、浏览器offline重载。单次开发机观测：20MiB分块首屏上界1,116.8ms（含受控原生选择器自动化），100MiB打开到预览选项上界1,596.4ms，用户预览动作361.2ms；该长流程进程树私有工作集约348–444MiB。计时不是10次p95/目标机结论，内存也高于SPEC的180MiB目标，故不标性能通过，后续bench:app与常驻预算继续复核。
+- 当前Release：10,088,960 bytes，SHA256 `1472127164a831ac654bd3985b757b6da14ef02ed5fc1cd936ce5b8747257633`。Win11/WebView2 156.0.4314.58、浏览器offline重载。单次开发机观测：20MiB分块首屏上界1,116.8ms（含受控原生选择器自动化），100MiB打开到预览选项上界1,596.4ms，用户预览动作361.2ms；该长流程进程树私有工作集约348–444MiB。计时不是10次p95/目标机结论，内存也高于SPEC的180MiB目标，故不标性能通过。
 - T104和T102磁盘满此后已由上方最新切片完成。以下T102/T103各节保留实施时的历史状态；当前结论、最终Hash和下一项以上页记录为准。
 
 ## T103.a 完整降级编辑（历史切片）
@@ -489,7 +489,7 @@
 - T102/F-FILE-009进程终止故障新增真实证据：`src-tauri/tests/save_interruption.rs`用同一Rust集成测试exe的私有stdin屏障，在TemporaryReady或Committed后确认子进程仍活着，再通过所持Child handle强杀。替换前原件未变、临时正文与original/body blob及摘要齐全、无replacing/committed；提交后新字节与committed保持；放行同屏障的正向对照实际提交且exit 0。两个被杀worker均exit 1，无ignored测试、无生产钩子/假IO。新FileService重开核对磁盘，不自动修复或冒称会话恢复。最终3项result在`.artifacts/T102/interruptions/{3851fc2f-de45-4b2f-9c3b-04f0a8fe4c74,a52a2f3f-de91-4c24-8ddb-6e7ba1ce6e6f,743f902a-0a65-4d2e-9fa6-8848cd82975c}/result.json`。
 - 真实Tauri Release强杀：`tests/desktop/forced-exit.ts`利用现有框架debug callbacks只暂缓一次真实SaveAck交付，不改返回/磁盘/grant。实际目标/body.bin字节及唯一committed receipt验证完成，UI仍正在保存时终止本轮spawn的Tauri子进程，终止后再核对目标/body/committed正确。`.artifacts/T102/native-release.json`新增nativeForcedExitVerified=true，forcedExit记录ackDelivered=false、实际signal=SIGTERM/exitCode=null及receipt/hash；这是Windows Node Child.kill结果，不冒称重启会话恢复或物理断电。
 - 本切片检查：Rust全套46（新增3）/fmt --check/clippy --all-targets -D warnings、typecheck/lint、真实Release综合1（44.7秒）均exit 0。首编译测试时间戳误用未启用clock的Utc::now，E0599/exit101；改用现有SystemTime转换后通过，未加依赖/feature。生产代码未变，沿用9950208 bytes、SHA256 `4320A43CD7E1E04E23E610EA1B73F84C52D2D4B0C193845CEBDFD7BB9DFCE6C3`的Release；本轮未重复Web/TS单测或重建不变产品。
-- 磁盘满具体缺口：`powershell.exe -NoProfile -File scripts/Probe-FaultVolume.ps1`仅尝试在E盘独立UUID目录创建64MiB动态VHDX，exit1；New-VHD返回“没有所需权限”、errorId=Unspecified,Microsoft.Vhd.PowerShell.Cmdlets.NewVhd，HResult=-2146233088。`.artifacts/T102/fault-volumes/cf75923e-e034-4bf1-935b-7efe5737de97/probe.json`证实created/imageExists/mounted/formatted均false；没有挂载/格式化/填盘，没有安装工具或修改权限策略。该权限缺口只阻塞此真实磁盘满方案，不把整个Goal标blocked。
+- 磁盘满具体缺口：早期曾尝试在E盘独立UUID目录创建64MiB动态VHDX，exit1；New-VHD返回“没有所需权限”、errorId=Unspecified,Microsoft.Vhd.PowerShell.Cmdlets.NewVhd，HResult=-2146233088。`.artifacts/T102/fault-volumes/cf75923e-e034-4bf1-935b-7efe5737de97/probe.json`证实created/imageExists/mounted/formatted均false；没有挂载/格式化/填盘，没有安装工具或修改权限策略。该探测脚本已从仓库删除，磁盘满方案由WSL2 `tmpfs`取代。
 - T102仍[~]，真实磁盘满待具备受控小容量卷权限后补验；T110启动扫描/预算、恢复与热退出仍未实现。接下来按目标的“先做不受影响且依赖就绪项”推进T103大文件模式（依赖T101已通过），不反复重跑同一New-VHD失败，不用mock磁盘满替代，不标G1或完整v1通过。
 
 ## T102硬链接恢复点（历史，2026-11-01 16:38）

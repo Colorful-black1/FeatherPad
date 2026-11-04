@@ -75,6 +75,6 @@ Markdown 原始 HTML 默认禁用；用户显式启用后仅允许清洗过的�
 
 ## 文档与实施约定
 
-先读 [能力映射](../CAPABILITY-MAP.md)，再按 ID 读矩阵与提供方规格。技术命令统一约定为 `pnpm dev`、`pnpm build`、`pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm test:unit`、`pnpm test:integration`、`pnpm test:e2e`、`pnpm test:desktop`（原生Tauri/WebView2，区别于Web/mock e2e）、`pnpm bench:app`（目标机实测）、`cargo fmt --manifest-path src-tauri/Cargo.toml --check`、`cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings`、`cargo test --manifest-path src-tauri/Cargo.toml`。当前无工程和依赖，以上均为待建立的脚本契约，未执行、不保证立即可运行。
+先读 [能力映射](../CAPABILITY-MAP.md)，再按 ID 读矩阵与提供方规格。技术命令统一约定为 `pnpm dev`、`pnpm build`、`pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm test:unit`、`pnpm test:integration`、`pnpm test:e2e`、`pnpm test:desktop`（原生Tauri/WebView2，区别于Web/mock e2e）、`cargo fmt --manifest-path src-tauri/Cargo.toml --check`、`cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings`、`cargo test --manifest-path src-tauri/Cargo.toml`。当前无工程和依赖，以上均为待建立的脚本契约，未执行、不保证立即可运行。
 
 实施需先将规格映射到小任务和测试，再实现；变更依赖、持久化格式、安全边界、损失性操作或范围需记录决策并更新规格。始终校验 Rust 入口、路径、版本、取消/重试结果；禁止静默永久删除、覆盖冲突、执行预览内容、隐藏已知数据损失。后续实现阶段的确认要求不能追溯成此次已授权文档阶段的阻塞。
