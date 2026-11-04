@@ -56,6 +56,8 @@ impl FileService {
         Ok(Some(OpenDocument {
             document_id: id,
             canonical_identity,
+            write_owner_window_id: None,
+            writable: true,
             reference,
             metadata: snapshot.metadata,
             format: TextFormat {

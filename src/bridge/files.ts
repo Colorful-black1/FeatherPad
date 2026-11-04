@@ -151,7 +151,11 @@ export function isOpenDocument(value: unknown): value is OpenDocument {
   if (!isRecord(value) || !nonemptyString(value.documentId) || !isFileRef(value.ref)
     || !isRecord(value.metadata) || !isRecord(value.format) || !isRecord(value.content)
     || (value.canonicalIdentity !== undefined
-      && (typeof value.canonicalIdentity !== 'string' || value.canonicalIdentity.length > 128))) return false;
+      && (typeof value.canonicalIdentity !== 'string' || value.canonicalIdentity.length > 128))
+    || (value.writeOwnerWindowId !== undefined && value.writeOwnerWindowId !== null
+      && (typeof value.writeOwnerWindowId !== 'string'
+        || value.writeOwnerWindowId.length === 0 || value.writeOwnerWindowId.length > 128))
+    || (value.writable !== undefined && typeof value.writable !== 'boolean')) return false;
   const { metadata, format, content } = value;
   if (!isFileMetadata(metadata)) return false;
   if (!nonemptyString(format.encoding) || typeof format.bom !== 'string'

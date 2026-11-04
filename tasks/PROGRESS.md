@@ -4,8 +4,8 @@
 
 - 产品名称：**轻羽 FeatherPad**。
 - 当前交付：完整产品方案、86项功能矩阵、模块规格、UI规范与离线交互原型、技术/本机环境文档、M0–M5实现计划、57个开发任务、agent执行入口。
-- 产品代码：**M0/G0、M1/G1、M2/G2、M3/G3均已通过（2026-11-03）**。M1提供真实文件打开/编辑/保存/恢复闭环；M2补齐编码与换行、多根/收藏/工作区文件、安全遍历与监听、拖放移动、分栏/多光标/折叠/导航、全文搜索、跨文件替换、全局唤起与隐私清理；M3补齐Markdown、格式化、文本工具、diff、图片/HTML安全预览和离线HTML/PDF导出。完整v1仍需M4–M5。
-- 当前：**M3/G3已通过并停止，M4/T401等待用户确认**。T301–T311已完成；下一步不得自动进入M4。每完成一个M阶段都停止并等待确认。
+- 产品代码：**M0/G0–M3/G3已通过，M4/G4已通过（2026-11-04）**。M1提供真实文件打开/编辑/保存/恢复闭环；M2补齐编码与换行、多根/收藏/工作区文件、安全遍历与监听、拖放移动、分栏/多光标/折叠/导航、全文搜索、跨文件替换、全局唤起与隐私清理；M3补齐Markdown、格式化、文本工具、diff、图片/HTML安全预览和离线HTML/PDF导出。M4补齐CLI/多窗口、安装/便携与系统集成，完整v1仍需M5。
+- 当前：**M4/G4已通过（2026-11-04），T401–T405完成，提交后停止；M5/T501等待用户确认**。每完成一个M阶段都停止并等待确认。
 - 本次交付检查：详见 [DELIVERY-CHECK](../docs/DELIVERY-CHECK.md)，不代表产品关卡G0–G5通过。
 
 ## 已核查环境
@@ -13,6 +13,21 @@
 复用本机Node22.13.0、pnpm10.32.1、Rust1.99.1、VS2022 Build Tools C++、Windows SDK10.0.26100.0、WebView2。未安装新开发工具。严格遵守新增安装与缓存仅在E:\Codeing，入口见 [ENVIRONMENT](../docs/ENVIRONMENT.md)。
 
 ## 实施证据（未来逐任务追加）
+
+### 2026-11-04 T405完成：M4/G4统一验收通过并停止
+
+- F-DESK-005..009共5项完成：CLI/单实例/多窗口唯一写所有权与会话/草稿隔离、NSIS安装/升级/卸载、便携、选择加入的系统关联。完整行为、真实/mock与测试边界见[M4验收](../docs/acceptance/M4.md)。
+- 最终静态/单元/Web/Rust exit0：TS51 files/315 tests；Rust201 passed/0 failed/2 ignored；Web102 passed/50.4秒，fmt/clippy通过。日志`.artifacts/T405/logs/{g4-check-final-r7,cargo-test-final-r7}.log`。最终类型/lint增补检查也通过。
+- 真实Release桌面统一运行首轮23 passed/2 failed/4.7分钟，保留失败；修正标签刷新持久化同步与系统分类旧断言后，同构建定向2 passed/17.8秒/exit0，复用其余23项，最终25场景均有有效证据。日志`desktop-all-final-r8.log`、`native-affected-final-r9.log`；原生根`.artifacts/native/2026-11-04T01-25-55-135Z-1e5e6177-7b05-4c72-b947-0fd302502b43/`与`2026-11-04T01-32-18-685Z-8bfb4b99-1639-40c9-89fb-e2239cb72b33/`。六个M4场景均通过。
+- 最终exe17,818,112 bytes，SHA256 `91598F293283D9AF7CE5C100DE57A5CA4C33BD23F918517CAEF6A41787323BA6`；安装器4,760,313 bytes，SHA256 `937CFD72143966A1BA34B5BDEE0329A4E4557ADAC4142F38D2B555204CDD622C`；便携ZIP6,463,463 bytes，SHA256 `E9FE5B508316AA4E870817D497505C76B92F018E7DA78C559FE936F143812A0B`。交付位于`.artifacts/T405/package-final/`，构建/打包日志`release-nsis-final-r8.log`、`package-final-r8.log`；Windows11 build26100、WebView2 156.0.4314.58。安装载荷另有哈希，逐字节确认只差3字节Tauri包类型标记，详见报告。
+- 所有原始失败/trace/截图与清理清单保留，不自动删除产物。未签名、不内嵌WebView2；Win10/最低Runtime及完整故障/性能p95仍留M5。G4通过后停止，不进入T501，等待用户确认。
+
+### 2026-11-04 M4/T405统一验收进行中
+
+- T401–T404：CLI/单实例/多窗口所有权、用户级NSIS安装/升级/卸载、portable.flag与独立data、选择加入的系统关联已实现；早期真实Release M4四场景通过，最终构建重验待完成。
+- 统一检查发现并修复Clippy路径借用、Web格式化输入同步和Windows guard释放后测试改名瞬时失败。历史失败trace和日志保留，不降低原产品断言。
+- 收尾审查修正完整注册值所有权、无参数唤起、首次CLI wait宿主分离、新窗口会话及草稿隔离、最后窗口热退出清单保留；新行为已补定向测试。NSIS升级保留集成、卸载撤销精确自有项；显式数据清除二次确认且不穿越reparse point。真实NSIS清理函数harness 1 passed/10秒，见`.artifacts/T405/logs/nsis-cleanup-harness.log`；它只证明生产清理函数，不冒称卸载UI点击。
+- 最终全量静态/单元/Web/Rust、Release/NSIS、桌面回归、包哈希和G4报告仍待本轮收尾。G4尚未通过，不进入M5。
 
 ### 2026-11-03 T311完成：M3/G3统一验收通过并停止
 

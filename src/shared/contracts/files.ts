@@ -71,6 +71,8 @@ export type OpenMode = 'normal' | 'head-preview' | 'text-preview';
 export interface OpenDocumentBase {
   documentId: DocumentId;
   canonicalIdentity?: string;
+  writeOwnerWindowId?: string | null;
+  writable?: boolean;
   ref: FileRef;
   metadata: FileMetadata;
   format: TextFormat;

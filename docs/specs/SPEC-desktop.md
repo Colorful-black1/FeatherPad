@@ -1,6 +1,6 @@
 # SPEC-desktop：本地设置、Windows 集成与发布
 
-> 轻羽 FeatherPad；模块 `desktop`；业务依赖仅 `editor`、`workspace`、`file-core`。状态：M1设置/主题/无障碍/会话能力与M2快捷键/隐私能力已通过G1/G2统一验收；M4/M5能力待实现。拥有 F-DESK-001–013，详见 [矩阵](../FEATURE-MATRIX.md)。
+> 轻羽 FeatherPad；模块 `desktop`；业务依赖仅 `editor`、`workspace`、`file-core`。状态：M1设置/主题/无障碍/会话能力与M2快捷键/隐私能力已通过G1/G2统一验收；M4/T401–T405及G4已通过（2026-11-04），见[M4验收](../acceptance/M4.md)；M5待用户确认后实施。拥有 F-DESK-001–013，详见 [矩阵](../FEATURE-MATRIX.md)。
 
 ## Objective 与提供方契约
 
@@ -131,3 +131,14 @@ F-DESK-012待验证性能目标，参考目标机4核/8GiB/SSD、Windows11，并
 Always：用户级/显式系统集成、会话flush确认、离线/最小权限、完整平台验收。Ask first（后续实施变更）：启用遥测/自动联网更新、改数据目录/恢复保留规则、提高权限或系统默认关联。Never：抢关联、未落盘即宣称安全退出、以每窗独立缓冲并发写同文件、伪称签名/测试通过。
 
 待验证：Windows10支持生命周期与runtime版本、签名成本/SmartScreen、多窗口WebView2内存、CLI等待与关闭取消、portable升级、键盘/读屏平台差异、同名项目发布混淆。风险需要验证与发布说明，不是省略对应功能的许可。
+
+
+## M4 实施决策（2026-11-04，G4已通过，真实范围见报告）
+
+安装版采用NSIS currentUser，不提供全局PATH修改；CLI可用exe完整路径，help不要求WebView2。便携marker为`portable.flag`，数据目录与安装版隔离，绝对路径原生环境覆盖仅用于显式自定义/受控运行。包不内嵌WebView2，已有Runtime时完全离线启动；缺失则原生错误框提供微软官方离线安装包指引，不自动联网。
+
+单实例使用数据域mutex及有限额本地文件通道；窗口ID、调用方cwd、请求生命周期和同文件写所有权见[CONTRACTS](../CONTRACTS.md)。新窗口默认空会话，显式同文件新开提供磁盘只读镜像；镜像重读不修改所有者lease/编码/恢复记录。原生文件选择器和变化/拖放事件按调用窗口路由。最后窗口热退出保留清单，新建窗口不认领其他窗口草稿。
+
+系统页两项显式opt-in分别控制“打开方式”候选和Explorer菜单；注册14个支持扩展，不改变UserChoice。使用Windows Registry API并通知Shell刷新；marker、命令、图标须精确匹配，第三方改写项保留。NSIS覆盖升级保留集成，卸载只撤销仍指向该安装的自有项。默认保留数据；勾选清除后再次警告未保存恢复内容，生产NSIS清理函数逐项拒绝reparse point，不使用模板的无限制递归删除。清理函数harness证据只证明该函数，卸载UI确认仍须与实际包测试区分。
+
+Win11当前环境的安装/升级/卸载、便携、CLI与系统集成证据由G4报告汇总；Windows10/最低WebView2、签名与完整跨设备性能/故障矩阵不以当前宿主结果外推，最终v1关卡继续M5。

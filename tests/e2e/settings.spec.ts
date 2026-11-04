@@ -113,7 +113,7 @@ test('settings category tabs support roving focus, arrows, Home/End and a labell
   const all = tabs.getByRole('tab', { name: '全部', exact: true });
   const appearance = tabs.getByRole('tab', { name: '外观', exact: true });
   const editor = tabs.getByRole('tab', { name: '编辑器', exact: true });
-  const privacy = tabs.getByRole('tab', { name: '隐私', exact: true });
+  const system = tabs.getByRole('tab', { name: '系统', exact: true });
   await expect(tabs).toHaveAttribute('aria-orientation', 'vertical');
   await page.keyboard.press('Tab');
   await expect(all).toBeFocused();
@@ -135,12 +135,13 @@ test('settings category tabs support roving focus, arrows, Home/End and a labell
   await expect(editor).toBeFocused();
   await expect(dialog.getByRole('tabpanel', { name: '编辑器', exact: true }).getByRole('checkbox', { name: '显示行号', exact: true })).toBeVisible();
   await page.keyboard.press('End');
-  await expect(privacy).toBeFocused();
-  await expect(dialog.getByRole('tabpanel', { name: '隐私', exact: true }).getByRole('checkbox', { name: '记录最近打开', exact: true })).toBeVisible();
+  await expect(system).toBeFocused();
+  await expect(dialog.getByRole('tabpanel', { name: '系统', exact: true })
+    .getByRole('region', { name: 'Windows 系统集成', exact: true })).toBeVisible();
   await page.keyboard.press('ArrowDown');
   await expect(all).toBeFocused();
   await page.keyboard.press('ArrowUp');
-  await expect(privacy).toBeFocused();
+  await expect(system).toBeFocused();
   await page.keyboard.press('Home');
   await expect(all).toBeFocused();
   await page.keyboard.press('ArrowDown');
@@ -157,16 +158,16 @@ test('empty category search keeps its Tab exit, ignores composition arrows and s
   await dialog.getByRole('searchbox', { name: '搜索设置', exact: true }).fill('编辑字号');
   await page.keyboard.press('Tab');
   await page.keyboard.press('End');
-  const privacy = dialog.getByRole('tab', { name: '隐私', exact: true });
-  await expect(privacy).toBeFocused();
-  const panel = dialog.getByRole('tabpanel', { name: '隐私', exact: true });
+  const system = dialog.getByRole('tab', { name: '系统', exact: true });
+  await expect(system).toBeFocused();
+  const panel = dialog.getByRole('tabpanel', { name: '系统', exact: true });
   await expect(panel).toContainText('没有匹配设置');
-  await privacy.dispatchEvent('keydown', { key: 'ArrowUp', isComposing: true, bubbles: true });
-  await expect(privacy).toHaveAttribute('aria-selected', 'true');
+  await system.dispatchEvent('keydown', { key: 'ArrowUp', isComposing: true, bubbles: true });
+  await expect(system).toHaveAttribute('aria-selected', 'true');
   await page.keyboard.press('Tab');
   await expect(panel).toBeFocused();
   await page.keyboard.press('Shift+Tab');
-  await expect(privacy).toBeFocused();
+  await expect(system).toBeFocused();
   await page.keyboard.press('Home');
   await expect(dialog.getByRole('tab', { name: '全部', exact: true })).toBeFocused();
   const shortcuts = dialog.getByRole('button', { name: '自定义快捷键…', exact: true });

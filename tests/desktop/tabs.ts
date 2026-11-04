@@ -185,6 +185,14 @@ export async function verifyNativeTabs(page: Page, dataDir: string, evidence: st
 
   await page.getByRole('tab', { name: 'b.txt', exact: true }).click();
   await page.screenshot({ path: path.join(evidence, 'native-pinned-tabs.png') });
+  // Renderer reload is abrupt; wait for the existing asynchronous session write
+  // so this pin-metadata check does not restore an older, already closed tab.
+  await expect.poll(async () => {
+    const manifest = JSON.parse(await readFile(path.join(dataDir, 'featherpad-state/session/manifest.json'), 'utf8')) as {
+      windows: { windowId: string; views: { title: string }[] }[];
+    };
+    return manifest.windows.find(window => window.windowId === 'main')?.views.map(view => view.title);
+  }).toEqual(['b.txt']);
   await page.reload(); // All remaining buffers are clean; this verifies pin metadata, not session recovery.
   await openFolder();
   await openTree('b.txt');

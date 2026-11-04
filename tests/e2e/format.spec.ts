@@ -92,7 +92,9 @@ test('SQL requires its visible dialect and YAML formatting preserves anchors, co
   const language = page.getByRole('combobox', { name: '语言模式', exact: true });
   await language.selectOption('sql');
   const editor = page.locator('.cm-content');
-  await editor.focus(); await page.keyboard.insertText('select `name` from `users` where id=:id;');
+  const sql = 'select `name` from `users` where id=:id;';
+  await editor.focus(); await page.keyboard.insertText(sql);
+  await expect(page.locator('.cm-line')).toHaveText([sql]);
   await page.getByRole('button', { name: '格式化…', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '格式化文档', exact: true });
   await expect(dialog.getByRole('combobox', { name: 'SQL格式化方言', exact: true })).toHaveValue('sql');

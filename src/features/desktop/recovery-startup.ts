@@ -27,13 +27,20 @@ export class RecoveryStartup {
   async restore(
     sources: ReadonlyMap<DocumentId, OpenDocument> = new Map(),
     manifest?: SessionManifest,
+    windowId = 'main',
   ): Promise<ResultEnvelope<RecoveryStartupReport>> {
     const inventory = await this.list();
     if (!inventory.ok) return inventory;
     const byDocument = new Map<DocumentId, RecoveryEntry[]>();
     const cleanThrough = new Map(manifest?.windows.flatMap(window => window.views
       .filter(view => !view.dirty).map(view => [view.documentId, view.bufferVersion] as const)) ?? []);
+    const savedWindow = manifest?.windows.find(window => window.windowId === windowId)
+      ?? (windowId === 'main' ? manifest?.windows[0] : undefined);
+    const selectedIds = new Set(savedWindow?.views.map(view => view.documentId) ?? []);
+    const assignedIds = new Set(manifest?.windows.flatMap(window => window.views.map(view => view.documentId)) ?? []);
     for (const entry of inventory.value.entries) {
+      if (sources.get(entry.documentId)?.writable === false
+        || !selectedIds.has(entry.documentId) && (windowId !== 'main' || assignedIds.has(entry.documentId))) continue;
       if (sources.has(entry.documentId) && entry.bufferVersion <= (cleanThrough.get(entry.documentId) ?? -1)) continue;
       const entries = byDocument.get(entry.documentId) ?? [];
       entries.push(entry);
@@ -87,7 +94,8 @@ let startupPromise: ReturnType<RecoveryStartup['restore']> | null = null;
 export function restoreRecoveryOnce(
   sources: ReadonlyMap<DocumentId, OpenDocument> = new Map(),
   manifest?: SessionManifest,
+  windowId = 'main',
 ) {
-  startupPromise ??= recoveryStartup.restore(sources, manifest);
+  startupPromise ??= recoveryStartup.restore(sources, manifest, windowId);
   return startupPromise;
 }

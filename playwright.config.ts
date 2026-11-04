@@ -7,6 +7,7 @@ export default defineConfig({
   metadata: { evidenceRunId: testRunId },
   forbidOnly: true,
   retries: 0,
+  workers: 4,
   use: {
     baseURL: 'http://127.0.0.1:1420',
     channel: 'msedge',

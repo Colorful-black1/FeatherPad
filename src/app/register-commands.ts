@@ -1,6 +1,6 @@
 import { CommandRegistry, type CommandDefinition } from '../shared/commands/registry';
 
-export const appCommandIds = ['file.new', 'file.open', 'workspace.open', 'file.save', 'file.saveAs', 'file.saveCopy',
+export const appCommandIds = ['file.new', 'window.new', 'file.open', 'workspace.open', 'file.save', 'file.saveAs', 'file.saveCopy',
   'file.saveAll', 'file.close', 'editor.find', 'editor.toggleComment', 'editor.toggleBlockComment',
   'search.workspace', 'tools.format', 'tools.transform', 'tools.compare',
   'editor.moveLineUp', 'editor.moveLineDown', 'editor.copyLineUp', 'editor.copyLineDown', 'editor.insertBlankLine',
@@ -37,6 +37,7 @@ const saveBusy = (state: AppCommandState) => state.closing ? '正在关闭文档
 type CommandInfo = [AppCommandId, string, string, string | null, (state: AppCommandState) => string | null];
 const commandInfo: CommandInfo[] = [
   ['file.new', '新建文本', 'new untitled document 草稿', 'Ctrl+N', () => null],
+  ['window.new', '新建窗口', 'new window 新窗口', 'Ctrl+Shift+N', () => null],
   ['file.open', '打开文件', 'open file', 'Ctrl+O', state => state.opening ? '正在打开，请等待。' : null],
   ['workspace.open', '打开文件夹', 'folder workspace 工作区', 'Ctrl+Shift+E', state => state.opening ? '正在打开，请等待。' : null],
   ['file.save', '保存', 'save write', 'Ctrl+S', state => hasDocument(state) ?? saveBusy(state) ?? state.readOnlyReason],

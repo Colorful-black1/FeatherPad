@@ -10,7 +10,7 @@ use serde::Deserialize;
 use std::sync::Arc;
 use tauri::{
     ipc::{InvokeBody, Request},
-    AppHandle, Manager,
+    AppHandle, Manager, WebviewWindow,
 };
 
 #[derive(Deserialize)]
@@ -58,6 +58,7 @@ pub async fn check_encoding(
 #[tauri::command]
 pub async fn reopen_with_encoding(
     app: AppHandle,
+    webview: WebviewWindow,
     request: Request<'_>,
 ) -> Result<ResultEnvelope<OpenDocument>, ()> {
     let request: ReopenRequest = match parse(&request) {
@@ -67,6 +68,7 @@ pub async fn reopen_with_encoding(
     let files = app.state::<SharedFiles>().inner().clone();
     let active = app.state::<Arc<InFlightSaves>>().inner().clone();
     Ok(tauri::async_runtime::spawn_blocking(move || {
+        super::desktop::require_document_owner(&app, webview.label(), &request.document_id)?;
         if uuid::Uuid::parse_str(&request.document_id)
             .ok()
             .map(|id| id.to_string())

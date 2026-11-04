@@ -32,6 +32,13 @@ export const test = base.extend({
                 case 'list_recovery_entries': return { ok: true, value: {
                   entries: [], failures: [], startupWarnings: [], storageBytes: 0, saveTransactions: [],
                 } };
+                case 'get_desktop_integration': return { ok: true, value: {
+                  runtimeMode: 'installed', dataRoot: 'E:\\fixtures\\app-data',
+                  executablePath: 'E:\\fixtures\\featherpad.exe',
+                  fileAssociation: false, contextMenu: false, supportedExtensions: ['.txt'],
+                  changesDefaultApp: false,
+                } };
+                case 'take_desktop_requests': return { ok: true, value: [] };
                 case 'save_session': {
                   const manifest = args.manifest;
                   if (!manifest || typeof manifest !== 'object') throw new Error('Session manifest is required');

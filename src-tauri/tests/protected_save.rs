@@ -7,7 +7,12 @@ use featherpad_lib::{
         save::{HardLinkPolicy, PreparedSave},
     },
 };
-use std::{fs, path::PathBuf};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    thread,
+    time::Duration,
+};
 
 struct Fixture {
     service: FileService,
@@ -57,6 +62,19 @@ fn journal_directory(fixture: &Fixture) -> PathBuf {
         .unwrap()
         .unwrap()
         .path()
+}
+
+fn rename_after_guard(source: &Path, destination: &Path) -> std::io::Result<()> {
+    for attempt in 0..5 {
+        match fs::rename(source, destination) {
+            Ok(()) => return Ok(()),
+            Err(error) if attempt < 4 && matches!(error.raw_os_error(), Some(5 | 32 | 33)) => {
+                thread::sleep(Duration::from_millis(20 * (attempt + 1)));
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    unreachable!("the bounded rename retry always returns")
 }
 
 #[test]
@@ -279,7 +297,7 @@ fn prepared_save_holds_parent_names_stable_until_commit_or_cancel() {
     );
     drop(prepared);
     drop(fixture.service);
-    fs::rename(root, &moved).unwrap();
+    rename_after_guard(root, &moved).unwrap();
     assert_eq!(
         fs::read(moved.join("中文 saved fixture.txt")).unwrap(),
         "original\r\n中文😀".as_bytes()

@@ -5,7 +5,7 @@ use crate::{
 };
 use tauri::{
     ipc::{InvokeBody, Request},
-    AppHandle,
+    AppHandle, WebviewWindow,
 };
 
 #[derive(Default)]
@@ -54,6 +54,7 @@ pub fn cancel_pdf_export(
 #[tauri::command]
 pub async fn export_pdf(
     app: AppHandle,
+    webview: WebviewWindow,
     request: Request<'_>,
 ) -> Result<ResultEnvelope<crate::services::export_target::ExportAck>, ()> {
     let value = match request.body() {
@@ -94,11 +95,10 @@ pub async fn export_pdf(
         }
         let _permit = PdfPermit(&state);
         let files = app.state::<super::SharedFiles>().inner().clone();
-        let parent = app.get_webview_window("main").ok_or_else(internal_error)?;
         let Some(selection) = app
             .dialog()
             .file()
-            .set_parent(&parent)
+            .set_parent(&webview)
             .set_title("导出 PDF")
             .set_file_name("文档.pdf")
             .add_filter("PDF文档", &["pdf"])
@@ -122,7 +122,7 @@ pub async fn export_pdf(
                     target.display_path()
                 ))
                 .title("确认覆盖文件")
-                .parent(&parent)
+                .parent(&webview)
                 .kind(MessageDialogKind::Warning)
                 .buttons(MessageDialogButtons::YesNo)
                 .blocking_show()
@@ -160,6 +160,7 @@ pub async fn export_pdf(
 #[tauri::command]
 pub async fn export_html(
     app: AppHandle,
+    webview: WebviewWindow,
     request: Request<'_>,
 ) -> Result<ResultEnvelope<SaveAsAck>, ()> {
     let value = match request.body() {
@@ -175,7 +176,7 @@ pub async fn export_html(
     let result = tauri::async_runtime::spawn_blocking(move || {
         let request: HtmlExportRequest = serde_json::from_value(value)
             .map_err(|_| AppError::new(ErrorCode::InvalidInput, "HTML导出请求格式无效。"))?;
-        perform_save_as(&app, request.into_snapshot()?, true)
+        perform_save_as(&app, &webview, request.into_snapshot()?, true)
     })
     .await
     .unwrap_or_else(|_| Err(internal_error()));

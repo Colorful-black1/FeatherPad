@@ -1,6 +1,6 @@
 # 开发任务清单
 
-当前阶段：**M0/G0、M1/G1、M2/G2、M3/G3 已通过（2026-11-03）；M4/T401等待用户确认**。完整 v1 需要 M0–M5 全部 86 项必需功能，M1 只是可试用 MVP，不是成品。
+当前阶段：**M0/G0–M3/G3已通过；M4/G4已通过（2026-11-04），M5/T501等待用户确认**。完整 v1 需要 M0–M5 全部 86 项必需功能，M1 只是可试用 MVP，不是成品。
 
 2026-11-03 用户修订验收粒度：**以 M 为验收单元**。M 内各 T 只做实现和最小自检，不再每个 T 跑一遍大量测试；整个 M 的 T 全部完成后，统一执行一次全量回归、真实 Release 验收和矩阵证据汇总，通过后打勾并停止，等待用户确认后再推进下一阶段。M0 与 M1 的已完成任务产生于旧的逐任务策略，其逐项证据仍然有效，保存在 [PROGRESS](PROGRESS.md) 和 [M0验收](../docs/acceptance/M0.md)、[M1验收](../docs/acceptance/M1.md)（按 `T1xx` 检索即可定位）。
 
@@ -10,7 +10,7 @@
 - `[~]` 实现中。
 - `[x]` 实现完成并通过该任务的最小自检，**不代表功能已验收**。
 
-功能验收只在所属 M 的统一验收通过后记录。M0/M1 已完成任务保留 `[x]` 和有旧策略下的逐项证据；M2 已通过 G2 并记录整阶段证据；M3–M5 的任务在各自关卡通过前，一律不得写成“已验收”。
+功能验收只在所属 M 的统一验收通过后记录。M0/M1 已完成任务保留 `[x]` 和有旧策略下的逐项证据；M2–M4已通过各自关卡并记录整阶段证据；M5任务在G5通过前不得写成“已验收”。
 
 ## 验收策略（M 为验收单元）
 
@@ -94,8 +94,8 @@ pnpm test:desktop:all
 | M1 | G1 | 已通过（2026-11-03） | T101–T115 完成；34项feature ID统一验收通过，见 [M1验收](../docs/acceptance/M1.md) |
 | M2 | G2 | 已通过（2026-11-03） | T201–T216 完成；29项feature ID统一验收通过，见 [M2验收](../docs/acceptance/M2.md) |
 | M3 | G3 | 已通过（2026-11-03） | T301–T311 完成；16项feature ID统一验收通过，见 [M3验收](../docs/acceptance/M3.md) |
-| M4 | G4 | 等待用户确认 | 依赖 G3；下一项 T401 |
-| M5 | G5 | 未开始 | 依赖 G4 |
+| M4 | G4 | 已通过（2026-11-04） | T401–T405完成；5项feature ID统一验收，见[M4验收](../docs/acceptance/M4.md) |
+| M5 | G5 | 等待用户确认 | G4已通过；下一项T501，未开始 |
 
 ## M0 环境与骨架（依赖：无）
 
@@ -179,11 +179,11 @@ pnpm test:desktop:all
 
 | 状态/任务 | 依赖 | 功能追踪 | 交付内容与验收点 | 主要规划文件（非穷举） |
 |---|---|---|---|---|
-| [ ] T401 单实例/多窗口/CLI | T311 | F-DESK-007..008 | 单实例路由、同文件写所有权、CLI new/reuse/goto/wait 正确 | src-tauri/src/services/windows.rs、src-tauri/src/services/cli.rs、src/features/desktop/windows.ts |
-| [ ] T402 安装/升级/卸载 | T401 | F-DESK-005 | 用户级安装真实可用，缺 runtime 离线指引、不删文档/未确认恢复 | src-tauri/tauri.conf.json、src-tauri/windows/installer.nsi、scripts/package.ps1 |
-| [ ] T403 便携数据模式 | T402 | F-DESK-006 | portable.flag 决定同级 data，不可写报错/选择；与安装版隔离 | src-tauri/src/services/data_dir.rs、scripts/package.ps1 |
-| [ ] T404 系统集成选择加入 | T402 | F-DESK-009 | 关联/右键显式选择，可撤销只清自有项、遵守系统限制 | src-tauri/src/platform/windows/associations.rs、src/features/desktop/IntegrationSettings.tsx |
-| [ ] T405 G4可分发验收 | T401..404 | M4全部 | 包能独立启动/工作/恢复/退出，路径与证据清楚 | docs/acceptance/M4.md、tasks/PROGRESS.md |
+| [x] T401 单实例/多窗口/CLI | T311 | F-DESK-007..008 | 单实例路由、同文件写所有权、CLI new/reuse/goto/wait 正确 | src-tauri/src/services/windows.rs、src-tauri/src/services/cli.rs、src/bridge/desktop.ts |
+| [x] T402 安装/升级/卸载 | T401 | F-DESK-005 | 用户级安装真实可用，缺 runtime 离线指引、不删文档/未确认恢复 | src-tauri/tauri.conf.json、src-tauri/windows/installer-hooks.nsh、scripts/package.ps1 |
+| [x] T403 便携数据模式 | T402 | F-DESK-006 | portable.flag 决定同级 data，不可写报错/选择；与安装版隔离 | src-tauri/src/services/data_dir.rs、scripts/package.ps1 |
+| [x] T404 系统集成选择加入 | T402 | F-DESK-009 | 关联/右键显式选择，可撤销只清自有项、遵守系统限制 | src-tauri/src/platform/windows/associations.rs、src/features/desktop/IntegrationSettings.tsx |
+| [x] T405 G4可分发验收 | T401..404 | M4全部 | 包能独立启动/工作/恢复/退出，路径与证据清楚 | docs/acceptance/M4.md、tasks/PROGRESS.md |
 
 ## M5 完整v1验收（依赖：G4）
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { availableMonitors, getCurrentWindow, LogicalPosition, LogicalSize } from '@tauri-apps/api/window';
 import { listen } from '@tauri-apps/api/event';
+import { currentWindowId, desktopBridge, isDesktopRuntime, type DesktopDelivery } from '../bridge/desktop';
 import { Shell } from '../shared/ui/Shell';
 import { CommandPalette } from '../shared/ui/CommandPalette';
 import { files } from '../bridge/files';
@@ -163,6 +164,11 @@ export function App() {
     Reflect.get(window, '__TAURI_INTERNALS__') ? null : { entries: [], failures: [], startupWarnings: [], storageBytes: 0, saveTransactions: [] });
   const [recoveryInventoryError, setRecoveryInventoryError] = useState<string | null>(null);
   const transactionCopies = useRef(new Map<string, DocumentId>());
+  const handledDesktopRequests = useRef(new Set<string>());
+  const pendingDesktopWaits = useRef(new Map<string, {
+    documentIds: Set<DocumentId>;
+    failures: string[];
+  }>());
 
   const refreshRecoveryInventory = useCallback(async (): Promise<string | null> => {
     if (!Reflect.get(window, '__TAURI_INTERNALS__')) return null;
@@ -271,6 +277,7 @@ export function App() {
     let stopExternal: (() => void) | null = null;
     let unlistenClose: (() => void) | null = null;
     let releaseStartup!: () => void;
+    const currentId = currentWindowId();
     const startupReady = new Promise<void>(resolve => { releaseStartup = resolve; });
     const appWindow = getCurrentWindow();
     void appWindow.onCloseRequested(async event => {
@@ -301,8 +308,8 @@ export function App() {
         else {
           if (loaded.value.warning) notices.push(loaded.value.warning);
           if (loaded.value.session) {
-            const savedWindow = loaded.value.session.windows.find(window => window.windowId === 'main')
-              ?? loaded.value.session.windows[0];
+            const savedWindow = loaded.value.session.windows.find(window => window.windowId === currentId)
+              ?? (currentId === 'main' ? loaded.value.session.windows[0] : undefined);
             if (savedWindow) {
               try {
                 const [monitors, outer, inner, scale] = await Promise.all([
@@ -331,7 +338,7 @@ export function App() {
             notices.push(...restored.warnings);
           }
         }
-        const recovery = await restoreRecoveryOnce(sources, loaded.ok ? loaded.value.session ?? undefined : undefined);
+        const recovery = await restoreRecoveryOnce(sources, loaded.ok ? loaded.value.session ?? undefined : undefined, currentId);
         if (!recovery.ok) setError(`无法读取本地恢复副本：${recovery.error.message}`);
         else {
           if (active) setSaveTransactions(recovery.value.saveTransactions);
@@ -345,8 +352,19 @@ export function App() {
         }
         if (active) await refreshRecoveryInventory();
         if (loaded.ok && loaded.value.session) {
-            const applied = session.apply(loaded.value.session);
-            notices.push(...applied.warnings);
+          const applied = session.apply(loaded.value.session);
+          notices.push(...applied.warnings);
+          if (currentId === 'main') {
+            const primaryWindow = loaded.value.session.windows.find(window => window.windowId === 'main')
+              ?? loaded.value.session.windows[0];
+            for (const savedWindow of loaded.value.session.windows) {
+              if (savedWindow.windowId === primaryWindow?.windowId) continue;
+              const created = await desktopBridge.createWindow(savedWindow.windowId);
+              if (!created.ok) {
+                notices.push(`无法恢复窗口 ${savedWindow.windowId}：${created.error.message}`);
+              }
+            }
+          }
         }
       } catch {
         setError(previous => previous
@@ -629,6 +647,96 @@ export function App() {
     });
     if (target.clamped) setNotice(`目标行列超出当前文档范围，已移动到 ${target.line}:${target.column}。`);
   }, [currentNavigationTarget, navigationHistory, setNotice]);
+
+  const processDesktopDelivery = useCallback(async (delivery: DesktopDelivery) => {
+    if (handledDesktopRequests.current.has(delivery.requestId)) return;
+    handledDesktopRequests.current.add(delivery.requestId);
+    const documentIds = new Set<DocumentId>();
+    const failures: string[] = [...delivery.failures];
+    for (const target of delivery.targets) {
+      if (target.kind === 'directory') {
+        const current = workspace.getSnapshot();
+        const alreadyOpen = [current.root, ...current.roots]
+          .some(root => root?.grant.grantId === target.ref.grantId);
+        if (!alreadyOpen) {
+          const root = { grant: target.ref, displayName: target.displayName };
+          if (current.root || current.roots.length > 0) workspace.addRoot(root);
+          else workspace.setRoot(root);
+        }
+        session.markGrantAvailable(target.ref.grantId);
+        void rememberRecentWorkspace(target.ref, target.displayName);
+        continue;
+      }
+      const failure = await openOne(target.ref, 'pinned', false);
+      if (failure) {
+        failures.push(`${target.displayName}: ${failure}`);
+        continue;
+      }
+      const activeId = documents.getSnapshot().activeId;
+      if (!activeId) {
+        failures.push(`${target.displayName}: 文件已打开但没有活动文档`);
+        continue;
+      }
+      documentIds.add(activeId);
+      if (target.goto) goToPosition({ line: target.goto.line, column: target.goto.column });
+    }
+    if (failures.length > 0) setError(failures.join(' '));
+    if (!delivery.wait) return;
+    if (documentIds.size === 0) {
+      const completed = await desktopBridge.complete(
+        delivery.requestId,
+        failures.length === 0,
+        failures.join(' '),
+      );
+      if (!completed.ok) setError(completed.error.message);
+      return;
+    }
+    pendingDesktopWaits.current.set(delivery.requestId, { documentIds, failures });
+  }, [goToPosition, openOne, rememberRecentWorkspace]);
+
+  useEffect(() => {
+    if (!isDesktopRuntime() || startupPending) return;
+    let active = true;
+    let unlisten: (() => void) | null = null;
+    const drain = async () => {
+      const pending = await desktopBridge.takeRequests();
+      if (!active) return;
+      if (!pending.ok) {
+        setError(pending.error.message);
+        return;
+      }
+      for (const delivery of pending.value) await processDesktopDelivery(delivery);
+    };
+    void listen('featherpad:desktop-request-ready', () => { void drain(); }).then(stop => {
+      if (active) {
+        unlisten = stop;
+        void drain();
+      } else stop();
+    }).catch(() => setError('窗口请求监听不可用；当前窗口仍可正常编辑。'));
+    return () => {
+      active = false;
+      unlisten?.();
+    };
+  }, [processDesktopDelivery, startupPending]);
+
+  useEffect(() => {
+    if (pendingDesktopWaits.current.size === 0) return;
+    const live = new Set(snapshot.documents.map(document => document.id));
+    for (const [requestId, waiting] of pendingDesktopWaits.current) {
+      for (const documentId of waiting.documentIds) {
+        if (!live.has(documentId)) waiting.documentIds.delete(documentId);
+      }
+      if (waiting.documentIds.size > 0) continue;
+      pendingDesktopWaits.current.delete(requestId);
+      void desktopBridge.complete(
+        requestId,
+        waiting.failures.length === 0,
+        waiting.failures.join(' '),
+      ).then(result => {
+        if (!result.ok) setError(result.error.message);
+      });
+    }
+  }, [snapshot.documents, setError]);
 
   const navigateBack = useCallback(() => {
     const target = navigationHistory.back();
@@ -1040,7 +1148,11 @@ export function App() {
   }, [replacementBusy]);
 
   const commandActions = useMemo<AppCommandActions>(() => ({
-    'file.new': newFile, 'file.open': openFile, 'workspace.open': openFolder, 'file.save': saveCurrent,
+    'file.new': newFile, 'window.new': async () => {
+      const result = await desktopBridge.createWindow();
+      if (!result.ok) setError(result.error.message);
+    },
+    'file.open': openFile, 'workspace.open': openFolder, 'file.save': saveCurrent,
     'file.saveAs': () => saveDestination(), 'file.saveCopy': () => saveDestination('copy'),
     'file.saveAll': async () => { await saveAll.run(); },
     'file.close': async () => { const id = documents.getSnapshot().activeId; if (id) await requestClose(id); },
@@ -1147,6 +1259,8 @@ export function App() {
       sidebarOpen={sidebarOpen}
       dark={dark}
       headerActions={<>
+        <button type="button" className="plain-button" {...commandProps('window.new')}
+          onClick={() => void executeCommand('window.new')}>新窗口 <kbd>{commands.binding('window.new') ?? ''}</kbd></button>
         <button type="button" className="plain-button" {...commandProps('files.quickOpen')}
           onClick={() => void executeCommand('files.quickOpen')}>快速打开 <kbd>{commands.binding('files.quickOpen') ?? ''}</kbd></button>
         <button type="button" className="plain-button" {...commandProps('commands.open')}

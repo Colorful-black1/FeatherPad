@@ -129,3 +129,28 @@ it.each(['older', 'newer', 'source-missing'] as const)(
     }
   },
 );
+
+
+it('restores only this window drafts and leaves unassigned recovery to the primary host', async () => {
+  const mainId = crypto.randomUUID() as DocumentId, secondId = crypto.randomUUID() as DocumentId;
+  const orphanId = crypto.randomUUID() as DocumentId, secondWindow = `window-${crypto.randomUUID()}`;
+  const entries = [mainId, secondId, orphanId].map(id => entry(id, 1, '2026-11-04T00:00:00Z'));
+  const manifest: SessionManifest = { schemaVersion: 1, sessionId: crypto.randomUUID(), recoverySnapshotRefs: [], persistedAt: '2026-11-04T00:00:00Z',
+    windows: [mainId, secondId].map((id, index) => ({
+      windowId: index === 0 ? 'main' : secondWindow, bounds: { x: 0, y: 0, width: 1200, height: 800 }, rootIds: [], rootLabels: [],
+      activeViewId: id, groups: [{ groupId: 'primary', viewIds: [id] }], views: [{
+        viewId: id, documentId: id, bufferVersion: 1, recoveryReceiptId: entries[index]!.receiptId,
+        fileRef: null, diskRevision: null, openMode: 'normal', title: 'draft', displayPath: null,
+        isPreview: false, dirty: true, selection: [{ anchor: 0, head: 0 }], scrollAnchor: 0,
+      }],
+    })) };
+  for (const [windowId, expected] of [['main', [mainId, orphanId]], [secondWindow, [secondId]], [`window-${crypto.randomUUID()}`, []]] as const) {
+    const registry = new DocumentRegistry();
+    const startup = new RecoveryStartup(registry,
+      async () => ({ ok: true, value: { entries, failures: [], startupWarnings: [], storageBytes: 128, saveTransactions: [] } }),
+      async request => ({ ok: true, value: loaded(entries.find(item => item.receiptId === request.receiptId)!) }));
+    const result = await startup.restore(new Map(), manifest, windowId);
+    expect(result.ok && result.value.restored).toEqual(expected);
+    expect(registry.getSnapshot().documents.map(document => document.id)).toEqual(expected);
+  }
+});

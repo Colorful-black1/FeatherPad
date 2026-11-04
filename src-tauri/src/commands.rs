@@ -5,7 +5,7 @@ use crate::{
         ListRecoveryEntriesRequest, LoadRecoveryEntryRequest, LoadSessionRequest,
         LoadedRecoveryEntry, OpenDocument, ReadChunkRequest, RecoveryEntry, RecoveryFailure,
         RecoveryInventory, RecoverySnapshotAck, ReleaseDocumentRequest, ReleaseDocumentResult,
-        ResultEnvelope, SaveSessionRequest, SessionClearResult, SessionLoadResult,
+        ResultEnvelope, SaveSessionRequest, SessionClearResult, SessionLoadResult, SessionManifest,
         SessionSaveResult, TextChunk, WriteRecoverySnapshotRequest,
     },
     services::{
@@ -16,15 +16,17 @@ use crate::{
 use std::sync::{Arc, Mutex};
 use tauri::{
     ipc::{InvokeBody, Request},
-    AppHandle, Manager,
+    AppHandle, Manager, WebviewWindow,
 };
 use tauri_plugin_dialog::DialogExt;
 pub mod assets;
 pub mod comparison;
+pub mod desktop;
 pub mod encoding;
 pub mod export;
 pub mod external;
 pub mod file_ops;
+pub mod integration;
 pub mod replacement;
 pub mod save;
 pub mod save_as;
@@ -84,16 +86,17 @@ pub async fn set_global_shortcut(
 }
 
 #[tauri::command]
-pub async fn choose_files(app: AppHandle, multiple: bool) -> ResultEnvelope<ChosenFiles> {
+pub async fn choose_files(
+    app: AppHandle,
+    webview: WebviewWindow,
+    multiple: bool,
+) -> ResultEnvelope<ChosenFiles> {
     let service = app.state::<SharedFiles>().inner().clone();
-    let Some(parent) = app.get_webview_window("main") else {
-        return Err(internal_error()).into();
-    };
     tauri::async_runtime::spawn_blocking(move || {
         let dialog = app
             .dialog()
             .file()
-            .set_parent(&parent)
+            .set_parent(&webview)
             .set_title("打开文件");
         let paths = if multiple {
             dialog.blocking_pick_files().unwrap_or_default()
@@ -114,16 +117,13 @@ pub async fn choose_files(app: AppHandle, multiple: bool) -> ResultEnvelope<Chos
 }
 
 #[tauri::command]
-pub async fn choose_folder(app: AppHandle) -> ResultEnvelope<ChosenFolder> {
+pub async fn choose_folder(app: AppHandle, webview: WebviewWindow) -> ResultEnvelope<ChosenFolder> {
     let service = app.state::<SharedFiles>().inner().clone();
-    let Some(parent) = app.get_webview_window("main") else {
-        return Err(internal_error()).into();
-    };
     tauri::async_runtime::spawn_blocking(move || {
         let selection = app
             .dialog()
             .file()
-            .set_parent(&parent)
+            .set_parent(&webview)
             .set_title("打开文件夹")
             .blocking_pick_folder();
         let (grant, display_name) = if let Some(selection) = selection {
@@ -181,12 +181,18 @@ pub async fn list_directory(
 #[tauri::command]
 pub async fn open_document(
     app: AppHandle,
+    webview: WebviewWindow,
     r#ref: serde_json::Value,
     encoding_override: Option<String>,
     mode: Option<String>,
     document_id: Option<String>,
 ) -> ResultEnvelope<OpenDocument> {
     let service = app.state::<SharedFiles>().inner().clone();
+    let desktop = app
+        .state::<Arc<crate::services::windows::DesktopCoordinator>>()
+        .inner()
+        .clone();
+    let window_id = webview.label().to_owned();
     tauri::async_runtime::spawn_blocking(move || {
         let open_mode = match mode.as_deref() {
             None | Some("normal") => OpenRequestMode::Auto,
@@ -201,7 +207,7 @@ pub async fn open_document(
         };
         let reference = serde_json::from_value(r#ref)
             .map_err(|_| AppError::new(ErrorCode::InvalidInput, "文件引用格式无效。"))?;
-        let result = service
+        let mut result = service
             .lock()
             .map_err(|_| internal_error())?
             .open_document_with_encoding(
@@ -209,8 +215,11 @@ pub async fn open_document(
                 open_mode,
                 document_id.as_deref(),
                 encoding_override.as_deref(),
-            );
-        result
+            )?;
+        let owner = desktop.claim_document(&result.document_id, &window_id)?;
+        result.writable = owner == window_id;
+        result.write_owner_window_id = Some(owner);
+        Ok(result)
     })
     .await
     .unwrap_or_else(|_| Err(internal_error()))
@@ -220,6 +229,7 @@ pub async fn open_document(
 #[tauri::command]
 pub async fn write_recovery_snapshot(
     app: AppHandle,
+    webview: WebviewWindow,
     request: Request<'_>,
 ) -> Result<ResultEnvelope<RecoverySnapshotAck>, ()> {
     let value = match request.body() {
@@ -240,6 +250,7 @@ pub async fn write_recovery_snapshot(
     let result = tauri::async_runtime::spawn_blocking(move || {
         let request: WriteRecoverySnapshotRequest = serde_json::from_value(value)
             .map_err(|_| AppError::new(ErrorCode::InvalidInput, "恢复快照请求格式无效。"))?;
+        desktop::require_document_owner(&app, webview.label(), &request.document_id)?;
         let _permit = active.reserve_documents(
             std::slice::from_ref(&request.document_id),
             &uuid::Uuid::new_v4().to_string(),
@@ -382,6 +393,61 @@ fn session_root(app: &AppHandle) -> Result<std::path::PathBuf, AppError> {
     Ok(save::journal_root(app)?.with_file_name("session"))
 }
 
+fn merge_session_window(
+    existing: Option<SessionManifest>,
+    window_id: String,
+    current: SessionManifest,
+) -> Result<SessionManifest, AppError> {
+    let window = current
+        .windows
+        .iter()
+        .find(|window| window.window_id == window_id)
+        .cloned()
+        .ok_or_else(|| AppError::new(ErrorCode::InvalidInput, "会话清单缺少当前窗口的编码"))?;
+    let mut merged = existing.unwrap_or_else(|| SessionManifest {
+        schema_version: 1,
+        session_id: current.session_id.clone(),
+        windows: Vec::new(),
+        recovery_snapshot_refs: Vec::new(),
+        persisted_at: current.persisted_at.clone(),
+    });
+    // A new primary host adopts the last surviving saved window when the old
+    // main window was closed earlier. Do not keep a duplicate saved view.
+    if window_id == "main" && !merged.windows.iter().any(|saved| saved.window_id == "main") {
+        if let Some(first) = merged.windows.first_mut() {
+            first.window_id = "main".to_owned();
+        }
+    }
+    merged
+        .windows
+        .retain(|candidate| candidate.window_id != window_id);
+    merged.windows.push(window);
+    if merged.windows.len() > 32 {
+        return Err(AppError::new(
+            ErrorCode::Busy,
+            "打开的窗口数量超过会话上限，请关闭部分窗口",
+        ));
+    }
+    merged.windows.sort_by(|left, right| {
+        match (left.window_id.as_str(), right.window_id.as_str()) {
+            ("main", "main") => std::cmp::Ordering::Equal,
+            ("main", _) => std::cmp::Ordering::Less,
+            (_, "main") => std::cmp::Ordering::Greater,
+            (left, right) => left.cmp(right),
+        }
+    });
+    merged.recovery_snapshot_refs = merged
+        .windows
+        .iter()
+        .flat_map(|window| window.views.iter())
+        .filter_map(|view| view.recovery_receipt_id.clone())
+        .collect();
+    merged.recovery_snapshot_refs.sort();
+    merged.recovery_snapshot_refs.dedup();
+    merged.persisted_at = current.persisted_at;
+    crate::services::session::validate_manifest(merged)
+}
+
 #[tauri::command]
 pub async fn load_save_transaction(
     app: AppHandle,
@@ -417,6 +483,7 @@ pub async fn load_save_transaction(
 #[tauri::command]
 pub async fn save_session(
     app: AppHandle,
+    webview: WebviewWindow,
     request: Request<'_>,
 ) -> Result<ResultEnvelope<SessionSaveResult>, ()> {
     let value = match request.body() {
@@ -430,19 +497,28 @@ pub async fn save_session(
         }
     };
     let service = app.state::<SharedFiles>().inner().clone();
+    let desktop = app
+        .state::<Arc<crate::services::windows::DesktopCoordinator>>()
+        .inner()
+        .clone();
+    let window_id = webview.label().to_owned();
     let result = tauri::async_runtime::spawn_blocking(move || {
         let request: SaveSessionRequest = serde_json::from_value(value)
             .map_err(|_| AppError::new(ErrorCode::InvalidInput, "保存会话请求格式无效。"))?;
-        let manifest = crate::services::session::validate_manifest(request.manifest)?;
-        let ids = crate::services::session::grant_ids(&manifest);
+        let current = crate::services::session::validate_manifest(request.manifest)?;
+        let _session_guard = desktop.lock_session()?;
         let root = session_root(&app)?;
+        let store = crate::services::session::SessionStore::new(root.clone());
+        let existing = store.load()?;
+        let manifest = merge_session_window(existing.session, window_id, current)?;
+        let ids = crate::services::session::grant_ids(&manifest);
         let grant_store = crate::services::session_grants::SessionGrantStore::new(root.clone());
         let grants = {
             let files = service.lock().map_err(|_| internal_error())?;
             grant_store.resolve_required(&files.grants, &ids)?
         };
         grant_store.save_merged(&grants)?;
-        crate::services::session::SessionStore::new(root).save(&manifest)?;
+        store.save(&manifest)?;
         Ok(SessionSaveResult {
             saved: true,
             persisted_at: manifest.persisted_at,
@@ -568,6 +644,7 @@ pub async fn load_session(
 #[tauri::command]
 pub async fn clear_session(
     app: AppHandle,
+    webview: WebviewWindow,
     request: Request<'_>,
 ) -> Result<ResultEnvelope<SessionClearResult>, ()> {
     let value = match request.body() {
@@ -580,10 +657,36 @@ pub async fn clear_session(
             .into())
         }
     };
+    let desktop = app
+        .state::<Arc<crate::services::windows::DesktopCoordinator>>()
+        .inner()
+        .clone();
+    let window_id = webview.label().to_owned();
     let result = tauri::async_runtime::spawn_blocking(move || {
         let _: ClearSessionRequest = serde_json::from_value(value)
             .map_err(|_| AppError::new(ErrorCode::InvalidInput, "清理会话请求格式无效。"))?;
-        crate::services::session::SessionStore::new(session_root(&app)?).clear()?;
+        let _session_guard = desktop.lock_session()?;
+        let store = crate::services::session::SessionStore::new(session_root(&app)?);
+        let mut existing = store.load()?;
+        if let Some(session) = &mut existing.session {
+            session
+                .windows
+                .retain(|window| window.window_id != window_id);
+            if session.windows.is_empty() {
+                store.clear()?;
+            } else {
+                session.recovery_snapshot_refs = session
+                    .windows
+                    .iter()
+                    .flat_map(|window| window.views.iter())
+                    .filter_map(|view| view.recovery_receipt_id.clone())
+                    .collect();
+                let validated = crate::services::session::validate_manifest(session.clone())?;
+                store.save(&validated)?;
+            }
+        } else {
+            store.clear()?;
+        }
         Ok(SessionClearResult { cleared: true })
     })
     .await
@@ -594,6 +697,7 @@ pub async fn clear_session(
 #[tauri::command]
 pub async fn discard_recovery(
     app: AppHandle,
+    webview: WebviewWindow,
     request: Request<'_>,
 ) -> Result<ResultEnvelope<DiscardRecoveryResult>, ()> {
     let value = match request.body() {
@@ -613,6 +717,7 @@ pub async fn discard_recovery(
     let result = tauri::async_runtime::spawn_blocking(move || {
         let request: DiscardRecoveryRequest = serde_json::from_value(value)
             .map_err(|_| AppError::new(ErrorCode::InvalidInput, "放弃恢复请求格式无效。"))?;
+        desktop::require_document_owner(&app, webview.label(), &request.document_id)?;
         let _permit = active.reserve_documents(
             std::slice::from_ref(&request.document_id),
             &uuid::Uuid::new_v4().to_string(),
@@ -634,6 +739,7 @@ pub async fn discard_recovery(
 #[tauri::command]
 pub async fn release_document(
     app: AppHandle,
+    webview: WebviewWindow,
     request: Request<'_>,
 ) -> Result<ResultEnvelope<ReleaseDocumentResult>, ()> {
     let value = match request.body() {
@@ -651,6 +757,11 @@ pub async fn release_document(
         .state::<Arc<crate::services::save_requests::InFlightSaves>>()
         .inner()
         .clone();
+    let desktop = app
+        .state::<Arc<crate::services::windows::DesktopCoordinator>>()
+        .inner()
+        .clone();
+    let window_id = webview.label().to_owned();
     let result = tauri::async_runtime::spawn_blocking(move || {
         let request: ReleaseDocumentRequest = serde_json::from_value(value)
             .map_err(|_| AppError::new(ErrorCode::InvalidInput, "文档释放请求格式无效。"))?;
@@ -658,10 +769,14 @@ pub async fn release_document(
             std::slice::from_ref(&request.document_id),
             &uuid::Uuid::new_v4().to_string(),
         )?;
+        if !desktop.owns_document(&request.document_id, &window_id)? {
+            return Ok(ReleaseDocumentResult { released: false });
+        }
         let released = service
             .lock()
             .map_err(|_| internal_error())?
             .release_document(&request.document_id)?;
+        desktop.release_document(&request.document_id, &window_id)?;
         Ok(ReleaseDocumentResult { released })
     })
     .await

@@ -30,6 +30,8 @@ impl super::files::FileService {
         Ok(crate::models::OpenDocument {
             document_id,
             canonical_identity,
+            write_owner_window_id: None,
+            writable: true,
             reference,
             metadata: preview.metadata.clone(),
             format: preview.format,

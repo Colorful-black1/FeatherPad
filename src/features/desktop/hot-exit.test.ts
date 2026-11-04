@@ -54,8 +54,18 @@ function fixture() {
     value: { ...request, discarded: true },
   }));
   const destroy = vi.fn(async () => {});
-  const coordinator = new HotExitCoordinator(registry, recovery, session, discard, destroy);
-  return { registry, recovery, flushRecovery, session, discard, destroy, coordinator };
+  const removeWindowSession = vi.fn(
+    async (): Promise<ResultEnvelope<{ removed: boolean }>> => ({
+      ok: true, value: { removed: true },
+    }),
+  );
+  const coordinator = new HotExitCoordinator(
+    registry, recovery, session, discard, destroy, removeWindowSession,
+  );
+  return {
+    registry, recovery, flushRecovery, session, discard, destroy,
+    removeWindowSession, coordinator,
+  };
 }
 
 describe('HotExitCoordinator', () => {
@@ -72,6 +82,7 @@ describe('HotExitCoordinator', () => {
       [second, 'hot-exit'],
     ]);
     expect(h.session.flush).toHaveBeenCalledTimes(1);
+    expect(h.removeWindowSession).toHaveBeenCalledTimes(1);
     expect(h.destroy).toHaveBeenCalledTimes(1);
     expect(h.registry.getDocument(first)?.state.facet(EditorState.readOnly)).toBe(true);
   });
@@ -164,5 +175,21 @@ describe('HotExitCoordinator', () => {
     expect(h.destroy).not.toHaveBeenCalled();
     expect(h.session.flush).not.toHaveBeenCalled();
     expect(h.registry.getDocument(id)?.state.doc.toString()).toBe('new draft');
+  });
+
+  it('keeps the window open and frozen when current-window session removal is not confirmed', async () => {
+    const h = fixture();
+    const id = crypto.randomUUID() as DocumentId;
+    h.registry.openRecovered(recovered(id));
+    h.removeWindowSession.mockResolvedValueOnce({
+      ok: false,
+      error: { code: 'IPC_UNAVAILABLE', message: 'session cleanup unavailable', retryable: true },
+    });
+
+    expect((await h.coordinator.prepare()).ok).toBe(false);
+    expect(h.session.flush).toHaveBeenCalledTimes(1);
+    expect(h.destroy).not.toHaveBeenCalled();
+    expect(h.registry.getDocument(id)?.summary.hotExitFrozen).toBe(true);
+    expect(h.coordinator.getSnapshot().phase).toBe('failed');
   });
 });

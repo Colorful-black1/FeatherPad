@@ -1,4 +1,5 @@
 import { files } from '../../bridge/files';
+import { currentWindowId } from '../../bridge/desktop';
 import type { DocumentId, GrantId, LoadSessionRequest, OpenDocument, ResultEnvelope, SessionClearResult, SessionLoadResult, SessionManifest, SessionSaveResult, SessionView, SessionWindow } from '../../shared/contracts/files';
 import { documents, type DocumentRegistry } from '../editor/documents';
 import { tabs, type TabController } from '../editor/tabs';
@@ -82,6 +83,7 @@ export class SessionCoordinator {
     private readonly clearTransport: ClearSession = files.clearSession,
     private readonly openTransport: OpenSessionFile = files.open,
     private readonly timer: TimerApi = timers,
+    private readonly windowId: string = currentWindowId(),
   ) {}
 
   readonly subscribe = (listener: () => void) => {
@@ -122,7 +124,8 @@ export class SessionCoordinator {
     manifest: SessionManifest,
     availableGrantIds: readonly string[],
   ): Promise<{ sources: Map<DocumentId, OpenDocument>; warnings: string[] }> {
-    const window = manifest.windows.find(candidate => candidate.windowId === 'main') ?? manifest.windows[0];
+    const window = manifest.windows.find(candidate => candidate.windowId === this.windowId)
+      ?? (this.windowId === 'main' ? manifest.windows[0] : undefined);
     const sources = new Map<DocumentId, OpenDocument>();
     const warnings: string[] = [];
     if (!window) return { sources, warnings };
@@ -169,7 +172,8 @@ export class SessionCoordinator {
   }
 
   apply(manifest: SessionManifest): { applied: number; missing: number; warnings: string[] } {
-    const window = manifest.windows.find(candidate => candidate.windowId === 'main') ?? manifest.windows[0];
+    const window = manifest.windows.find(candidate => candidate.windowId === this.windowId)
+      ?? (this.windowId === 'main' ? manifest.windows[0] : undefined);
     if (!window) {
       this.sessionId = manifest.sessionId;
       this.lastSavedFingerprint = fingerprint(this.capture(manifest.sessionId));
@@ -299,7 +303,7 @@ export class SessionCoordinator {
       .map(view => view.recoveryReceiptId)
       .filter((receipt): receipt is string => receipt !== null))];
     const windowSession: SessionWindow = {
-      windowId: 'main',
+      windowId: this.windowId,
       bounds: currentBounds(),
       rootIds: [...roots.map(root => root.grant.grantId), ...this.pendingRoots.map(root => root.id)],
       rootLabels: [...roots.map(root => root.displayName), ...this.pendingRoots.map(root => root.label)],

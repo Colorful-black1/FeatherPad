@@ -19,7 +19,7 @@
     "test:integration": "powershell.exe -NoProfile -File scripts/Test-Integration.ps1",
     "test:e2e": "playwright test",
     "test:desktop": "playwright test --config desktop.config.ts --project smoke",
-    "test:desktop:all": "playwright test --config desktop.config.ts --project regression --project mvp --project tabs --project commands --project settings --project recent --project accessibility --project text-preview --project language --project encoding --project autosave --project recovery --project external --project reliability --project g2-special --project markdown --project content",
+    "test:desktop:all": "playwright test --config desktop.config.ts --project regression --project mvp --project tabs --project commands --project settings --project recent --project accessibility --project text-preview --project language --project encoding --project autosave --project recovery --project external --project reliability --project g2-special --project markdown --project content --project m4",
     "test": "pnpm test:unit && pnpm test:integration",
     "tauri": "tauri"
   },

@@ -129,15 +129,23 @@ pub fn move_no_replace(source: &Path, target: &Path, collision: &str) -> Result<
     use windows_sys::Win32::Storage::FileSystem::{MoveFileExW, MOVEFILE_WRITE_THROUGH};
     let source: Vec<_> = source.as_os_str().encode_wide().chain(Some(0)).collect();
     let target: Vec<_> = target.as_os_str().encode_wide().chain(Some(0)).collect();
-    // SAFETY: live NUL-terminated paths. Flags request write-through and never replace an existing target.
-    if unsafe { MoveFileExW(source.as_ptr(), target.as_ptr(), MOVEFILE_WRITE_THROUGH) } == 0 {
+    for attempt in 0..5 {
+        // SAFETY: live NUL-terminated paths. Flags request write-through and never replace an existing target.
+        if unsafe { MoveFileExW(source.as_ptr(), target.as_ptr(), MOVEFILE_WRITE_THROUGH) } != 0 {
+            return Ok(());
+        }
         let error = std::io::Error::last_os_error();
         if matches!(error.raw_os_error(), Some(80 | 183)) {
             return Err(AppError::new(ErrorCode::Conflict, collision));
         }
+        // Freshly written Windows directories can be held briefly by a scanner.
+        if attempt < 4 && matches!(error.raw_os_error(), Some(5 | 32 | 33)) {
+            std::thread::sleep(std::time::Duration::from_millis(20 * (attempt + 1)));
+            continue;
+        }
         return Err(io_error(error));
     }
-    Ok(())
+    unreachable!("the final move attempt always returns")
 }
 
 #[cfg(not(windows))]

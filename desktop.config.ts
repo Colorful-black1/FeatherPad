@@ -19,6 +19,7 @@ export default defineConfig({
     { name: 'g2-special', testMatch: 'g2-special.spec.ts' },
     { name: 'markdown', testMatch: 'markdown.spec.ts' },
     { name: 'content', testMatch: 'content.spec.ts' },
+    { name: 'm4', testMatch: 'm4.spec.ts' },
   ],
   workers: 1,
   forbidOnly: true,

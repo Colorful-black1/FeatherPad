@@ -287,6 +287,8 @@ pub struct ResourceImage {
 pub struct OpenDocument {
     pub document_id: String,
     pub canonical_identity: String,
+    pub write_owner_window_id: Option<String>,
+    pub writable: bool,
     #[serde(rename = "ref")]
     pub reference: FileRef,
     pub metadata: FileMetadata,

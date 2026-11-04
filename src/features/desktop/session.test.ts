@@ -104,6 +104,7 @@ it('restores and persists all roots while retaining unavailable root placeholder
 });
 
 function fixture(options: {
+  windowId?: string;
   save?: (manifest: SessionManifest) => Promise<ResultEnvelope<SessionSaveResult>>;
   open?: (ref: OpenDocument['ref'], mode?: Exclude<OpenMode, 'normal'>, documentId?: DocumentId)
     => Promise<ResultEnvelope<OpenDocument>>;
@@ -130,6 +131,8 @@ function fixture(options: {
     }),
     async (): Promise<ResultEnvelope<SessionClearResult>> => ({ ok: true, value: { cleared: true } }),
     open,
+    undefined,
+    options.windowId,
   );
   return { registry, tabs, save, open, workspaceStore: workspaceStoreMock, coordinator };
 }
@@ -138,6 +141,19 @@ describe('SessionCoordinator', () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
+  });
+
+  it('keeps a newly created window empty instead of cloning another window session', async () => {
+    const h = fixture({ windowId: `window-${crypto.randomUUID()}` });
+    const manifest: SessionManifest = { schemaVersion: 1, sessionId: crypto.randomUUID(), recoverySnapshotRefs: [], persistedAt: '2026-11-04T00:00:00Z',
+      windows: [{ windowId: 'main', bounds: { x: 0, y: 0, width: 1200, height: 800 }, rootIds: [crypto.randomUUID()], rootLabels: ['main root'],
+        activeViewId: null, groups: [{ groupId: 'primary', viewIds: [] }], views: [] }] };
+    const restored = await h.coordinator.restoreSources(manifest, manifest.windows[0]!.rootIds);
+    expect(restored.sources.size).toBe(0);
+    expect(h.workspaceStore.setRoot).not.toHaveBeenCalled();
+    expect(h.coordinator.apply(manifest)).toEqual({ applied: 0, missing: 0, warnings: [] });
+    expect(h.registry.getSnapshot().documents).toEqual([]);
+    h.coordinator.stop();
   });
 
   it('restores the source disk encoding independently of an unsaved target conversion', async () => {

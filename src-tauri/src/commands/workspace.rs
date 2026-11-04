@@ -10,7 +10,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use tauri::{
     ipc::{InvokeBody, Request},
-    AppHandle, Emitter, Manager,
+    AppHandle, Emitter, Manager, WebviewWindow,
 };
 use tauri_plugin_dialog::DialogExt;
 
@@ -66,20 +66,16 @@ pub async fn release_workspace_root(app: AppHandle, root: FileRef) -> ResultEnve
 }
 
 #[tauri::command]
-pub async fn open_workspace_file(app: AppHandle) -> ResultEnvelope<Option<WorkspaceFileDocument>> {
+pub async fn open_workspace_file(
+    app: AppHandle,
+    webview: WebviewWindow,
+) -> ResultEnvelope<Option<WorkspaceFileDocument>> {
     let service = app.state::<SharedFiles>().inner().clone();
-    let Some(parent) = app.get_webview_window("main") else {
-        return Err(AppError::new(
-            ErrorCode::Internal,
-            "主窗口暂时不可用，请重试。",
-        ))
-        .into();
-    };
     tauri::async_runtime::spawn_blocking(move || {
         let selection = app
             .dialog()
             .file()
-            .set_parent(&parent)
+            .set_parent(&webview)
             .set_title("打开 FeatherPad 工作区")
             .add_filter("FeatherPad 工作区", &["featherpad-workspace"])
             .blocking_pick_file();
@@ -142,6 +138,7 @@ pub async fn save_workspace_file(
 #[tauri::command]
 pub async fn save_workspace_file_as(
     app: AppHandle,
+    webview: WebviewWindow,
     request: Request<'_>,
 ) -> Result<ResultEnvelope<Option<WorkspaceFileDocument>>, ()> {
     let value = match request.body() {
@@ -165,18 +162,11 @@ pub async fn save_workspace_file_as(
         }
     };
     let service = app.state::<SharedFiles>().inner().clone();
-    let Some(parent) = app.get_webview_window("main") else {
-        return Ok(Err(AppError::new(
-            ErrorCode::Internal,
-            "主窗口暂时不可用，请重试。",
-        ))
-        .into());
-    };
     let result = tauri::async_runtime::spawn_blocking(move || {
         let selection = app
             .dialog()
             .file()
-            .set_parent(&parent)
+            .set_parent(&webview)
             .set_title("保存 FeatherPad 工作区")
             .set_file_name("project.featherpad-workspace")
             .add_filter("FeatherPad 工作区", &["featherpad-workspace"])
@@ -287,8 +277,9 @@ pub async fn cancel_workspace_walk(
     Ok(cancelled.map(|_| request).into())
 }
 
-pub fn handle_native_drop(app: &AppHandle, paths: Vec<std::path::PathBuf>) {
+pub fn handle_native_drop(app: &AppHandle, window_id: &str, paths: Vec<std::path::PathBuf>) {
     let app = app.clone();
+    let window_id = window_id.to_owned();
     tauri::async_runtime::spawn_blocking(move || {
         let service = app.state::<SharedFiles>().inner().clone();
         let result = service
@@ -297,10 +288,10 @@ pub fn handle_native_drop(app: &AppHandle, paths: Vec<std::path::PathBuf>) {
             .and_then(|mut service| service.register_native_drop(paths));
         match result {
             Ok(entries) => {
-                let _ = app.emit("featherpad:native-drop", entries);
+                let _ = app.emit_to(&window_id, "featherpad:native-drop", entries);
             }
             Err(error) => {
-                let _ = app.emit("featherpad:native-drop-error", error);
+                let _ = app.emit_to(&window_id, "featherpad:native-drop-error", error);
             }
         }
     });

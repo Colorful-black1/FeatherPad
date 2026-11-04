@@ -167,7 +167,7 @@ test('real Release preserves editing through keyboard navigation and persists fo
     await dialog.getByRole('spinbutton', { name: '编辑字号', exact: true }).fill('20');
     await appearance.focus();
     await page.keyboard.press('End');
-    await expect(dialog.getByRole('tab', { name: '隐私', exact: true })).toBeFocused();
+    await expect(dialog.getByRole('tab', { name: '系统', exact: true })).toBeFocused();
     await page.keyboard.press('Home');
     await expect(dialog.getByRole('spinbutton', { name: '编辑字号', exact: true })).toHaveValue('20');
     await page.keyboard.press('Escape');

@@ -230,11 +230,14 @@ export class DocumentRegistry {
     const id = document.documentId;
     if (!this.documents.has(id)) {
       const fragment = document.content.kind === 'text' ? null : document.content;
-      const reason = document.mode === 'image-readonly' ? '图片只读查看；不会把二进制内容保存为文本。' : document.mode === 'text-preview' ? textPreviewReason : fragment
+      const mirrorReason = document.writable === false
+        ? `文件正在窗口 ${document.writeOwnerWindowId ?? '其他窗口'} 中编辑；此窗口仅提供只读镜像。`
+        : null;
+      const reason = mirrorReason ?? (document.mode === 'image-readonly' ? '图片只读查看；不会把二进制内容保存为文本。' : document.mode === 'text-preview' ? textPreviewReason : fragment
         ? document.content.kind === 'chunked'
-          ? '大文件以只读分块方式打开，无法保存完整文件'
-          : '内容为前1MiB截断预览，无法保存'
-        : readOnlyReason(document.metadata, document.format);
+          ? '大文件以只读分块方式打开，无法保存完整文件。'
+          : '内容为前1MiB截断预览，无法保存。'
+        : readOnlyReason(document.metadata, document.format));
       const initialText = document.content.kind === 'text'
         ? document.content.text
         : document.content.kind === 'chunked'
@@ -254,6 +257,8 @@ export class DocumentRegistry {
       const source = {
         documentId: document.documentId,
         ...(document.canonicalIdentity === undefined ? {} : { canonicalIdentity: document.canonicalIdentity }),
+        ...(document.writeOwnerWindowId === undefined ? {} : { writeOwnerWindowId: document.writeOwnerWindowId }),
+        writable: document.writable ?? true,
         ref: document.ref,
         metadata: document.metadata,
         format: document.format,
@@ -685,8 +690,10 @@ export class DocumentRegistry {
     const text = opened.content.kind === 'text' ? opened.content.text
       : opened.content.kind === 'chunked' ? opened.content.initialChunk.text : opened.content.kind === 'image' ? '' : opened.content.text;
     const fragment = opened.content.kind === 'text' ? null : opened.content;
-    const reason = opened.mode === 'image-readonly' ? '图片只读查看；不会把二进制内容保存为文本。' : opened.mode === 'text-preview' ? textPreviewReason : fragment ? '磁盘文件以只读预览方式打开，无法保存完整文件'
-      : readOnlyReason(opened.metadata, opened.format);
+    const reason = opened.writable === false || document.source.writable === false
+      ? `文件正在窗口 ${opened.writeOwnerWindowId ?? document.source.writeOwnerWindowId ?? '其他窗口'} 中编辑；此窗口仅提供只读镜像。`
+      : opened.mode === 'image-readonly' ? '图片只读查看；不会把二进制内容保存为文本。' : opened.mode === 'text-preview' ? textPreviewReason : fragment ? '磁盘文件以只读预览方式打开，无法保存完整文件'
+        : readOnlyReason(opened.metadata, opened.format);
     const previousSelection = document.state.selection.ranges;
     const version = expectedVersion + 1;
     document.state = createEditorState(text, reason !== null, { ...this.editorPreferences,

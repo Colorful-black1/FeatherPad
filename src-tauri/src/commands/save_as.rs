@@ -11,13 +11,14 @@ use crate::{
 use std::sync::Arc;
 use tauri::{
     ipc::{InvokeBody, Request},
-    AppHandle, Manager,
+    AppHandle, Manager, WebviewWindow,
 };
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
 #[tauri::command]
 pub async fn save_document_as(
     app: AppHandle,
+    webview: WebviewWindow,
     request: Request<'_>,
 ) -> Result<ResultEnvelope<SaveAsAck>, ()> {
     let value = match request.body() {
@@ -33,7 +34,7 @@ pub async fn save_document_as(
     let result = tauri::async_runtime::spawn_blocking(move || {
         let request: SaveAsRequest = serde_json::from_value(value)
             .map_err(|_| AppError::new(ErrorCode::InvalidInput, "另存快照格式无效。"))?;
-        perform_save_as(&app, request, false)
+        perform_save_as(&app, &webview, request, false)
     })
     .await
     .unwrap_or_else(|_| Err(internal_error()));
@@ -42,11 +43,21 @@ pub async fn save_document_as(
 
 pub(super) fn perform_save_as(
     app: &AppHandle,
+    webview: &WebviewWindow,
     request: SaveAsRequest,
     export_html: bool,
 ) -> Result<SaveAsAck, AppError> {
     let service = app.state::<SharedFiles>().inner().clone();
     let active = app.state::<Arc<InFlightSaves>>().inner().clone();
+    let desktop = app
+        .state::<Arc<crate::services::windows::DesktopCoordinator>>()
+        .inner();
+    if !desktop.owns_document(&request.document_id, webview.label())? {
+        return Err(AppError::new(
+            ErrorCode::Conflict,
+            "文件正在另一个窗口编辑；当前窗口为只读镜像",
+        ));
+    }
     let _permit = active.enter_as(&request)?;
     let start = service
         .lock()
@@ -56,7 +67,7 @@ pub(super) fn perform_save_as(
         SaveAsStart::Fresh(ticket) => ticket,
         SaveAsStart::Replay(result) => return result,
     };
-    let result = choose_and_save(app, &service, request, export_html);
+    let result = choose_and_save(app, webview, &service, request, export_html);
     let result = service
         .lock()
         .map_err(|_| internal_error())?
@@ -66,12 +77,12 @@ pub(super) fn perform_save_as(
 
 fn choose_and_save(
     app: &AppHandle,
+    webview: &WebviewWindow,
     service: &SharedFiles,
     request: SaveAsRequest,
     export_html: bool,
 ) -> Result<SaveAsAck, AppError> {
     let root = journal_root(app)?;
-    let parent = app.get_webview_window("main").ok_or_else(internal_error)?;
     let title = if export_html {
         "导出 HTML"
     } else if request.intent == SaveIntent::Copy {
@@ -82,7 +93,7 @@ fn choose_and_save(
     let selection = app
         .dialog()
         .file()
-        .set_parent(&parent)
+        .set_parent(webview)
         .set_title(title)
         .set_file_name(if export_html {
             "文档.html"
@@ -111,7 +122,7 @@ fn choose_and_save(
                 destination.display_path()
             ))
             .title("确认覆盖文件")
-            .parent(&parent)
+            .parent(webview)
             .kind(MessageDialogKind::Warning)
             .buttons(MessageDialogButtons::YesNo)
             .blocking_show();

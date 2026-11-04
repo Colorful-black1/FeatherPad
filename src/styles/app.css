@@ -668,6 +668,11 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round
 .settings-font-preview { font-family: var(--font-mono); font-size: var(--editor-size); line-height: var(--editor-line-height, 1.85); white-space: pre-wrap; padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-editor); overflow-wrap: anywhere; }
 .settings-fields h3 { font-size: 13px; margin: var(--space-3) 0 var(--space-2); }
 .settings-fields li { overflow-wrap: anywhere; font-size: 11px; }
+.settings-integration { margin-top: var(--space-4); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-md); }
+.settings-integration fieldset { display: grid; gap: var(--space-2); }
+.settings-integration label { display: flex; gap: var(--space-2); align-items: flex-start; font-weight: 600; }
+.settings-integration dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--space-1) var(--space-3); font-size: 11px; }
+.settings-integration code { overflow-wrap: anywhere; user-select: text; }
 .settings-dialog footer { flex: 0 0 auto; border-top: 1px solid var(--border); padding: var(--space-3); }
 .settings-tools, .settings-decisions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .settings-decisions { justify-content: flex-end; margin-top: var(--space-3); }

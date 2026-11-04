@@ -1,5 +1,6 @@
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { files } from '../../bridge/files';
+import { desktopBridge } from '../../bridge/desktop';
 import type {
   DiscardRecoveryRequest, DiscardRecoveryResult, DocumentId, ResultEnvelope,
 } from '../../shared/contracts/files';
@@ -37,6 +38,7 @@ export class HotExitCoordinator {
     private readonly session: SessionActions,
     private readonly discard: DiscardRecovery = files.discardRecovery,
     private readonly destroy: () => Promise<void> = destroyWindow,
+    private readonly removeWindowSession = desktopBridge.removeCurrentWindowSession,
   ) {}
 
   readonly subscribe = (listener: () => void) => {
@@ -93,6 +95,8 @@ export class HotExitCoordinator {
     if (failedIds.length > 0) return this.fail(failedIds, errors);
     const savedSession = await this.session.flush();
     if (!savedSession.ok) return this.fail([], [savedSession.error.message]);
+    const removed = await this.removeWindowSession();
+    if (!removed.ok) return this.fail([], [removed.error.message]);
     try {
       await this.destroy();
       this.publish({ phase: 'idle', error: null, failedDocumentIds: [] });

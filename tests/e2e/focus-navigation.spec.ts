@@ -4,7 +4,7 @@ test('F6 cycles visible regions in both directions and preserves editor selectio
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto('/');
-  const header = page.getByRole('button', { name: /^快速打开/ });
+  const header = page.getByRole('button', { name: /^新窗口/ });
   const toggle = page.getByRole('button', { name: '切换资源管理器', exact: true });
   const all = page.locator('.recent-panel').getByRole('button', { name: '全部', exact: true });
   const create = page.getByRole('button', { name: '新建文本', exact: true });

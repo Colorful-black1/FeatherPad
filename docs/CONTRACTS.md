@@ -348,3 +348,22 @@ T110缺失源占位（2026-11-02）：缺根/缺文件保留原会话引用并�
 5. 搜索取消、迟到事件、截断、正则错误和 UTF16/Unicode 定位正确；跨文件替换脏buffer跳过且可撤销不覆盖新改动。
 6. 应用重启、损坏清单、多窗口并发写会话不丢未保存草稿。
 7. file-core 的磁盘行为必须在 Windows 原生集成测试中验证；Web mock 只能验证调用和UI。
+
+
+## M4 桌面入口、窗口所有权与分发决策（2026-11-04）
+
+- `OpenDocument` 增加 `writeOwnerWindowId:string|null`、`writable:boolean`；原生按 DocumentId 登记唯一可写窗口，调用方窗口来自 Tauri 注入，不接受前端自报所有者。重复窗口显示只读磁盘快照；保存、覆盖、自动保存、另存、恢复快照/放弃及编码重开复核所有权；镜像磁盘重读不adopt共享lease，释放不影响原窗口。该机制仅协调同一数据域内进程，不代替磁盘 revision 或外部冲突检查。
+- CLI 请求为 schemaVersion=1、规范 UUID、调用方绝对 cwd、解析后的 windowMode/wait/goto/paths；最多 64 个路径、64KiB 消息。相对路径基于调用方 cwd 解析，目标经过既有原生 grant 校验。数据域哈希命名的 Windows 本地 mutex 配合私有 coordination 文件通道，不使用公开 TCP 或 shell 执行用户路径。无参数二次启动激活已有窗口；显式新窗口可为空。`--wait` 在首次启动时分离 GUI 宿主和等待进程，在相关文档生命周期结束后退出；0/1/2 分别表示成功、路由/路径/生命周期失败、参数错误。
+- 窗口 ID 仅 `main` 或 `window-<canonical UUID>`。`save_session` 在原生串行锁内只合并调用方窗口，`clear_session` 只移除调用方清单；`remove_desktop_window_session` 在正常热退出时移除已关闭的非最终窗口，最后窗口清单保留供重启恢复。主宿主可接管上次最后一个非 main 窗口；新建窗口不套用主窗口标签。恢复只读取当前窗口的已分配草稿；无归属候选由主窗口展示，只读镜像不恢复为独立 dirty 正文。
+- `portable.flag` 必须是程序同目录的普通非重解析点文件；存在则采用同级 `data/`。原生 `FEATHERPAD_USER_DATA_DIR` 绝对路径覆盖仍可用于受控运行。安装数据默认为 `%LOCALAPPDATA%/app.featherpad.desktop`。非法 marker、数据非目录/链接或写探针失败均显式终止，不静默切换存储。WebView2 缺失时原生显示官方依赖指引；不自动联网安装。
+- 系统关联默认关闭，仅 HKCU 的 14 个支持扩展名、打开方式候选与 Explorer 菜单。所有者要求 marker、完整命令和 icon 精确匹配；第三方改写即视为非自有。禁止 UserChoice/默认应用修改。升级保留集成，撤销/卸载仅移除仍完整指向当前可执行文件的项；卸载默认保留本地数据，显式清除须再次确认未保存恢复内容风险，逐项拒绝 reparse point，不运行模板的无限制递归删除。
+
+| 命令 | 输入 | 输出 value |
+|---|---|---|
+| `take_desktop_requests` | `{}` | `DesktopDelivery[]`，最多128项，仅当前调用窗口 |
+| `complete_desktop_request` | `{request:{requestId,ok,message}}` | `{completed:true}`，请求须属于调用窗口 |
+| `create_desktop_window` | `{request:{windowId?:string}}` | `{windowId}` |
+| `focus_desktop_window` | `{request:{windowId:string}}` | `{focused:true}` |
+| `remove_desktop_window_session` | `{}` | `{removed:boolean}` |
+| `get_desktop_integration` | `{}` | `{runtimeMode,dataRoot,executablePath,fileAssociation,contextMenu,supportedExtensions,changesDefaultApp:false}` |
+| `set_desktop_integration` | `{request:{fileAssociation:boolean,contextMenu:boolean}}` | 同上；未知字段拒绝，冲突不覆盖第三方 |

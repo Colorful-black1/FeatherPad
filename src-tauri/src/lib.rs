@@ -4,8 +4,10 @@ pub mod models;
 use tauri::Manager;
 pub mod services {
     pub mod assets;
+    pub mod cli;
     pub mod comparison;
     pub mod create_file;
+    pub mod data_dir;
     pub mod directories;
     pub mod documents;
     pub mod encode;
@@ -41,6 +43,7 @@ pub mod services {
     pub mod trash;
     pub mod walker;
     pub mod watch;
+    pub mod windows;
     pub mod windows_file;
     pub mod windows_trash;
     pub mod workspace;
@@ -51,9 +54,83 @@ pub mod services {
 pub mod platform {
     #[cfg(windows)]
     pub mod pdf;
+    #[cfg(windows)]
+    pub mod windows;
 }
 
 pub fn run() {
+    let args = std::env::args().skip(1).collect::<Vec<_>>();
+    let action = match services::cli::parse(&args) {
+        Ok(action) => action,
+        Err(error) => {
+            eprintln!("{}", error.message);
+            std::process::exit(i32::from(error.exit_code));
+        }
+    };
+    let run = match action {
+        services::cli::CliAction::Help => {
+            println!("{}", services::cli::HELP);
+            return;
+        }
+        services::cli::CliAction::Run(run) => run,
+    };
+    let guard = match services::windows::acquire_instance() {
+        Ok(services::windows::InstanceStart::Primary(guard)) => {
+            if run.wait {
+                // Keep the CLI waiter separate from the GUI lifetime, including
+                // when this invocation starts the first application instance.
+                drop(guard);
+                let started = std::env::current_exe().and_then(|executable| {
+                    std::process::Command::new(executable)
+                        .stdin(std::process::Stdio::null())
+                        .stdout(std::process::Stdio::null())
+                        .stderr(std::process::Stdio::null())
+                        .spawn()
+                });
+                if let Err(error) = started {
+                    eprintln!("无法启动 FeatherPad 窗口：{error}");
+                    std::process::exit(1);
+                }
+                let outcome = services::windows::route_to_primary(&args);
+                if !outcome.message.is_empty() {
+                    if outcome.exit_code == 0 {
+                        println!("{}", outcome.message);
+                    } else {
+                        eprintln!("{}", outcome.message);
+                    }
+                }
+                std::process::exit(i32::from(outcome.exit_code));
+            }
+            if let Err(error) = platform::windows::webview2::ensure_available() {
+                eprintln!("{}", error.message);
+                std::process::exit(1);
+            }
+            guard
+        }
+        Ok(services::windows::InstanceStart::Secondary(_outcome)) => {
+            let outcome = services::windows::route_to_primary(&args);
+            if !outcome.message.is_empty() {
+                if outcome.exit_code == 0 {
+                    println!("{}", outcome.message);
+                } else {
+                    eprintln!("{}", outcome.message);
+                }
+            }
+            std::process::exit(i32::from(outcome.exit_code));
+        }
+        Err(error) => {
+            eprintln!("{}", error.message);
+            platform::windows::show_error(&error.message);
+            std::process::exit(1);
+        }
+    };
+    let desktop = std::sync::Arc::new(services::windows::DesktopCoordinator::new(guard));
+    if let Err(error) = desktop.enqueue_initial(run) {
+        eprintln!("{}", error.message);
+        platform::windows::show_error(&error.message);
+        std::process::exit(1);
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(std::sync::Arc::new(std::sync::Mutex::new(
@@ -73,12 +150,53 @@ pub fn run() {
         ))
         .manage(global_shortcut::GlobalShortcutState::default())
         .manage(commands::export::PdfCoordinator::default())
+        .manage(desktop)
+        .setup(|app| {
+            commands::desktop::start_primary_scanner(app.handle().clone());
+            Ok(())
+        })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
-                commands::workspace::handle_native_drop(window.app_handle(), paths.clone());
+                commands::workspace::handle_native_drop(window.app_handle(), window.label(), paths.clone());
+            }
+            if matches!(event, tauri::WindowEvent::Destroyed) {
+                let desktop = window
+                    .app_handle()
+                    .state::<std::sync::Arc<services::windows::DesktopCoordinator>>()
+                    .inner()
+                    .clone();
+                if let Ok(document_ids) = desktop.release_window(window.label()) {
+                    if let Some(files) = window
+                        .app_handle()
+                        .try_state::<std::sync::Arc<std::sync::Mutex<services::files::FileService>>>()
+                    {
+                        if let Ok(mut files) = files.inner().lock() {
+                            for document_id in document_ids {
+                                let _ = files.release_document(&document_id);
+                            }
+                        }
+                    }
+                }
+                if let Ok(request_ids) = desktop.finish_window_requests(window.label()) {
+                    for request_id in request_ids {
+                        let _ = services::windows::complete_request(
+                            desktop.root(),
+                            &request_id,
+                            true,
+                            "窗口已关闭",
+                        );
+                    }
+                }
             }
         })
         .invoke_handler(tauri::generate_handler![
+            commands::desktop::take_desktop_requests,
+            commands::desktop::complete_desktop_request,
+            commands::desktop::create_desktop_window,
+            commands::desktop::focus_desktop_window,
+            commands::desktop::remove_desktop_window_session,
+            commands::integration::get_desktop_integration,
+            commands::integration::set_desktop_integration,
             commands::assets::read_preview_resource,
             commands::comparison::read_comparison_snapshot,
             commands::export::export_html,

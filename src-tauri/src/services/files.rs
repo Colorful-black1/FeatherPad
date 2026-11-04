@@ -256,6 +256,8 @@ impl FileService {
         Ok(OpenDocument {
             document_id,
             canonical_identity,
+            write_owner_window_id: None,
+            writable: true,
             reference,
             metadata: snapshot.metadata,
             format: TextFormat {
@@ -390,6 +392,8 @@ impl FileService {
         Ok(OpenDocument {
             document_id,
             canonical_identity,
+            write_owner_window_id: None,
+            writable: true,
             reference,
             metadata: snapshot.metadata.clone(),
             format,
@@ -448,6 +452,8 @@ impl FileService {
         Ok(OpenDocument {
             document_id,
             canonical_identity,
+            write_owner_window_id: None,
+            writable: true,
             reference,
             metadata: snapshot.metadata.clone(),
             format,

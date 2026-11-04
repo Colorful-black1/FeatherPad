@@ -3,6 +3,7 @@ import type { JsonValue, RawSettings } from '../../shared/contracts/settings';
 import { defaultSettings, mergeSettings, parseSettingsImport, settingDefinitions, settingsChanges,
   type SettingDefinition, type SettingGroup, type Settings, type SettingSource } from './settings-schema';
 import type { SettingsCoordinator } from './settings';
+import { IntegrationSettings } from './IntegrationSettings';
 
 const sourceNames: Record<SettingSource, string> = { default: '内置默认', user: '用户设置', workspace: '工作区设置', session: '本次预览 / 会话' };
 const display = (value: JsonValue | undefined) => value === undefined ? '恢复上层值' : JSON.stringify(value).slice(0, 160);
@@ -47,7 +48,7 @@ export function SettingsDialog({ coordinator, onClose, onShortcuts }: {
   const search = useRef<HTMLInputElement>(null);
   const importing = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState('');
-  const [group, setGroup] = useState<SettingGroup | 'all'>('all');
+  const [group, setGroup] = useState<SettingGroup | 'all' | 'system'>('all');
   const [horizontal, setHorizontal] = useState(() => window.matchMedia('(max-width: 700px)').matches);
   const [imported, setImported] = useState<RawSettings | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -78,10 +79,12 @@ export function SettingsDialog({ coordinator, onClose, onShortcuts }: {
   function navigateCategory(event: KeyboardEvent<HTMLButtonElement>, index: number) {
     if (busy || confirmRestore || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229
       || event.ctrlKey || event.altKey || event.metaKey) return;
-    const next = event.key === 'Home' ? 0 : event.key === 'End' ? settingGroups.length - 1
-      : ['ArrowDown', 'ArrowRight'].includes(event.key) ? (index + 1) % settingGroups.length
-        : ['ArrowUp', 'ArrowLeft'].includes(event.key) ? (index + settingGroups.length - 1) % settingGroups.length : null;
-    const selected = next === null ? undefined : settingGroups[next];
+    const categoryCount = settingGroups.length + 1;
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? categoryCount - 1
+      : ['ArrowDown', 'ArrowRight'].includes(event.key) ? (index + 1) % categoryCount
+        : ['ArrowUp', 'ArrowLeft'].includes(event.key) ? (index + categoryCount - 1) % categoryCount : null;
+    const selected = next === null ? undefined
+      : next === settingGroups.length ? ['system', '系统'] as const : settingGroups[next];
     if (!selected || next === null) return;
     event.preventDefault();
     setGroup(selected[0]);
@@ -113,6 +116,11 @@ export function SettingsDialog({ coordinator, onClose, onShortcuts }: {
             className="plain-button" aria-selected={group === id} aria-controls={`${categoryId}-panel`}
             tabIndex={group === id ? 0 : -1} disabled={busy || confirmRestore}
             onKeyDown={event => navigateCategory(event, index)} onClick={() => setGroup(id)}>{label}</button>)}
+          <button id={`${categoryId}-system`} role="tab" className="plain-button"
+            aria-selected={group === 'system'} aria-controls={`${categoryId}-panel`}
+            tabIndex={group === 'system' ? 0 : -1} disabled={busy || confirmRestore}
+            onKeyDown={event => navigateCategory(event, settingGroups.length)}
+            onClick={() => setGroup('system')}>系统</button>
         </div>
       </nav>
       <div id={`${categoryId}-panel`} className="settings-fields" role="tabpanel" aria-labelledby={`${categoryId}-${group}`} tabIndex={0}>
@@ -135,6 +143,7 @@ export function SettingsDialog({ coordinator, onClose, onShortcuts }: {
           {definitions.length === 0 && <p>没有匹配设置。</p>}
         </fieldset>
         <pre className="settings-font-preview" aria-label="字体预览">轻羽 FeatherPad{`\n`}Aa 0123456789 中文标点，等宽缩进。</pre>
+        {(group === 'all' || group === 'system') && <IntegrationSettings />}
         {snapshot.fontWarning && <p className="notice" role="note">{snapshot.fontWarning}</p>}
         {snapshot.warning && <p className="notice" role="note">{snapshot.warning}</p>}
         {snapshot.workspaceWarning && <p className="notice" role="note">{snapshot.workspaceWarning}</p>}

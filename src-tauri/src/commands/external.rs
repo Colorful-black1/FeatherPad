@@ -7,7 +7,7 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use tauri::{
     ipc::{InvokeBody, Request},
-    AppHandle, Emitter, Manager,
+    AppHandle, Emitter, Manager, WebviewWindow,
 };
 
 #[derive(Deserialize)]
@@ -87,6 +87,7 @@ pub async fn get_disk_snapshot(
 #[tauri::command]
 pub async fn reload_document(
     app: AppHandle,
+    webview: WebviewWindow,
     request: Request<'_>,
 ) -> Result<ResultEnvelope<OpenDocument>, ()> {
     let request = match parse::<ReloadRequest>(&request) {
@@ -97,6 +98,23 @@ pub async fn reload_document(
     let active = app.state::<Arc<InFlightSaves>>().inner().clone();
     Ok(tauri::async_runtime::spawn_blocking(move || {
         validate_id(&request.document_id)?;
+        let desktop = app.state::<Arc<crate::services::windows::DesktopCoordinator>>();
+        if !desktop.owns_document(&request.document_id, webview.label())? {
+            let mut snapshot = files
+                .lock()
+                .map_err(|_| internal_error())?
+                .get_disk_snapshot(&request.document_id)?;
+            if snapshot.metadata.disk_revision != request.expected_disk_revision {
+                return Err(AppError::new(
+                    ErrorCode::Conflict,
+                    "磁盘版本已变化，请重新读取只读镜像。",
+                ));
+            }
+            snapshot.writable = false;
+            snapshot.write_owner_window_id =
+                Some(desktop.claim_document(&request.document_id, webview.label())?);
+            return Ok(snapshot);
+        }
         let _permit = active.reserve_documents(
             std::slice::from_ref(&request.document_id),
             &uuid::Uuid::new_v4().to_string(),
@@ -114,6 +132,7 @@ pub async fn reload_document(
 #[tauri::command]
 pub async fn start_watch(
     app: AppHandle,
+    webview: WebviewWindow,
     request: Request<'_>,
 ) -> Result<ResultEnvelope<StartedWatch>, ()> {
     let request = match parse::<WatchRequest>(&request) {
@@ -128,7 +147,7 @@ pub async fn start_watch(
             &grants,
             request.refs,
             Arc::new(move |event| {
-                let _ = app.emit_to("main", "filesystem_changed", event);
+                let _ = app.emit_to(webview.label(), "filesystem_changed", event);
             }),
         )?;
         Ok(StartedWatch { watch_id })

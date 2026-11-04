@@ -90,3 +90,6 @@ pwsh -NoProfile -File 'E:\Codeing\ai-workspace-permission-recovery\acl-backup-59
 ```
 
 本段只记录已发生的环境操作，不要求后续 agent 重复修复。
+
+
+2026-11-04 M4/G4：复用项目`src-tauri/target/.tauri/NSIS/`的makensis，`bundle.useLocalToolsDir=true`，未新装或升级系统工具；真实NSIS用户级安装、覆盖升级、卸载、便携和受控Runtime缺失原生提示已通过。最终Windows11/WebView2版本、包SHA256与独立路径/PATH验证边界见[M4验收](acceptance/M4.md)。历史M0“未运行bundler”记录只表示当时状态。
