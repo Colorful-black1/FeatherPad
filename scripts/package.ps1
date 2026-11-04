@@ -47,15 +47,18 @@ Copy-Item -LiteralPath $exe -Destination (Join-Path $portableDirectory "featherp
 Copy-Item -LiteralPath (Join-Path $repo "packaging/README-portable.txt") -Destination (Join-Path $portableDirectory "README.txt")
 Set-Content -LiteralPath (Join-Path $portableDirectory "portable.flag") -Value "FeatherPad portable mode" -Encoding UTF8
 
+foreach ($relative in @('THIRD-PARTY-NOTICES.md', 'packaging/LICENSE-TEXTS.txt', 'packaging/third-party-inventory.json',
+    'docs/USER-GUIDE.md', 'docs/RECOVERY.md', 'docs/RELEASE-NOTES.md')) {
+  $destination = Join-Path $portableDirectory $relative
+  New-Item -ItemType Directory -Path (Split-Path -Parent $destination) -Force | Out-Null
+  Copy-Item -LiteralPath (Join-Path $repo $relative) -Destination $destination
+}
+
 $portableZip = Join-Path $output "FeatherPad-M4-portable-$short.zip"
 if (Test-Path -LiteralPath $portableZip) {
   throw "Refusing to overwrite existing portable archive: $portableZip"
 }
-Compress-Archive -LiteralPath @(
-  (Join-Path $portableDirectory "featherpad.exe"),
-  (Join-Path $portableDirectory "README.txt"),
-  (Join-Path $portableDirectory "portable.flag")
-) -DestinationPath $portableZip -CompressionLevel Optimal
+Compress-Archive -LiteralPath (Get-ChildItem -LiteralPath $portableDirectory).FullName -DestinationPath $portableZip -CompressionLevel Optimal
 
 $installerCopy = Join-Path $output "FeatherPad-M4-installer-$short.exe"
 if (Test-Path -LiteralPath $installerCopy) {
