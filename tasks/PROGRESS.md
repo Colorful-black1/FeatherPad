@@ -3,10 +3,10 @@
 ## 目前状态
 
 - 产品名称：**轻羽 FeatherPad**。
-- 当前交付：完整产品方案、86项功能矩阵、模块规格、UI规范与离线交互原型、技术/本机环境文档、M0–M5实现计划、57个开发任务、agent执行入口。
-- 产品代码：**M0/G0–M3/G3已通过，M4/G4已通过（2026-11-04）**。M1提供真实文件打开/编辑/保存/恢复闭环；M2补齐编码与换行、多根/收藏/工作区文件、安全遍历与监听、拖放移动、分栏/多光标/折叠/导航、全文搜索、跨文件替换、全局唤起与隐私清理；M3补齐Markdown、格式化、文本工具、diff、图片/HTML安全预览和离线HTML/PDF导出。M4补齐CLI/多窗口、安装/便携与系统集成，完整v1仍需M5。
-- 当前：**M4/G4已通过（2026-11-04），T401–T405完成，提交后停止；M5/T501等待用户确认**。每完成一个M阶段都停止并等待确认。
-- 本次交付检查：详见 [DELIVERY-CHECK](../docs/DELIVERY-CHECK.md)，不代表产品关卡G0–G5通过。
+- 当前交付：完整产品方案、86项功能矩阵、模块规格、UI规范与离线交互原型、技术/本机环境文档、M0–M4实现计划、53个开发任务、agent执行入口。
+- 产品代码：**M0/G0–M4/G4已全部通过（2026-11-04）**。M1提供真实文件打开/编辑/保存/恢复闭环；M2补齐编码与换行、多根/收藏/工作区文件、安全遍历与监听、拖放移动、分栏/多光标/折叠/导航、全文搜索、跨文件替换、全局唤起与隐私清理；M3补齐Markdown、格式化、文本工具、diff、图片/HTML安全预览和离线HTML/PDF导出；M4补齐CLI/多窗口、安装/便携与系统集成，并交付可运行安装包与便携包。
+- 当前：开发告一段落，按实际使用反馈做增量修复；未做目标机兼容与性能验收的项目保持未验证。
+- 本次交付检查：详见 [DELIVERY-CHECK](../docs/DELIVERY-CHECK.md)，不代表产品关卡G0–G4通过。
 
 ## 已核查环境
 
@@ -14,20 +14,26 @@
 
 ## 实施证据（未来逐任务追加）
 
+### 2026-11-04 M4收尾补充：按需视图与性能测量
+
+- 发布前补充按需加载Markdown/HTML/图片视图及设置、格式化、转换、比较对话框；普通文本首屏不初始化这些可选UI，加载期间沿用原registry/undo，失败可重试。新增按需对话框的焦点/组合输入交接测试，旧断言不变。
+- 搜索补充首批结果投递与sequence/dirty fence、事件节流；新增`pnpm bench:app`测量入口与进程树采样脚本，nearest-rank统计保留全部原始值。开发机单次观测（启动、1MiB打开、普通输入、20MiB只读首屏、100k目录）已记录，未做10样本目标机p95，不作为性能验收结论。
+- Win11/i5-12600KF/32GB仅开发基准；Win10与4核/8GB目标机未实测，相关声明保持未验证。测量脚本保留在`tests/benchmarks/`与`scripts/bench.ps1`，所有产物未删除。
+
 ### 2026-11-04 T405完成：M4/G4统一验收通过并停止
 
 - F-DESK-005..009共5项完成：CLI/单实例/多窗口唯一写所有权与会话/草稿隔离、NSIS安装/升级/卸载、便携、选择加入的系统关联。完整行为、真实/mock与测试边界见[M4验收](../docs/acceptance/M4.md)。
 - 最终静态/单元/Web/Rust exit0：TS51 files/315 tests；Rust201 passed/0 failed/2 ignored；Web102 passed/50.4秒，fmt/clippy通过。日志`.artifacts/T405/logs/{g4-check-final-r7,cargo-test-final-r7}.log`。最终类型/lint增补检查也通过。
 - 真实Release桌面统一运行首轮23 passed/2 failed/4.7分钟，保留失败；修正标签刷新持久化同步与系统分类旧断言后，同构建定向2 passed/17.8秒/exit0，复用其余23项，最终25场景均有有效证据。日志`desktop-all-final-r8.log`、`native-affected-final-r9.log`；原生根`.artifacts/native/2026-11-04T01-25-55-135Z-1e5e6177-7b05-4c72-b947-0fd302502b43/`与`2026-11-04T01-32-18-685Z-8bfb4b99-1639-40c9-89fb-e2239cb72b33/`。六个M4场景均通过。
 - 最终exe17,818,112 bytes，SHA256 `91598F293283D9AF7CE5C100DE57A5CA4C33BD23F918517CAEF6A41787323BA6`；安装器4,760,313 bytes，SHA256 `937CFD72143966A1BA34B5BDEE0329A4E4557ADAC4142F38D2B555204CDD622C`；便携ZIP6,463,463 bytes，SHA256 `E9FE5B508316AA4E870817D497505C76B92F018E7DA78C559FE936F143812A0B`。交付位于`.artifacts/T405/package-final/`，构建/打包日志`release-nsis-final-r8.log`、`package-final-r8.log`；Windows11 build26100、WebView2 156.0.4314.58。安装载荷另有哈希，逐字节确认只差3字节Tauri包类型标记，详见报告。
-- 所有原始失败/trace/截图与清理清单保留，不自动删除产物。未签名、不内嵌WebView2；Win10/最低Runtime及完整故障/性能p95仍留M5。G4通过后停止，不进入T501，等待用户确认。
+- 所有原始失败/trace/截图与清理清单保留，不自动删除产物。未签名、不内嵌WebView2；Win10/最低Runtime及完整故障/性能p95保持未验证。G4通过即交付收尾。
 
 ### 2026-11-04 M4/T405统一验收进行中
 
 - T401–T404：CLI/单实例/多窗口所有权、用户级NSIS安装/升级/卸载、portable.flag与独立data、选择加入的系统关联已实现；早期真实Release M4四场景通过，最终构建重验待完成。
 - 统一检查发现并修复Clippy路径借用、Web格式化输入同步和Windows guard释放后测试改名瞬时失败。历史失败trace和日志保留，不降低原产品断言。
 - 收尾审查修正完整注册值所有权、无参数唤起、首次CLI wait宿主分离、新窗口会话及草稿隔离、最后窗口热退出清单保留；新行为已补定向测试。NSIS升级保留集成、卸载撤销精确自有项；显式数据清除二次确认且不穿越reparse point。真实NSIS清理函数harness 1 passed/10秒，见`.artifacts/T405/logs/nsis-cleanup-harness.log`；它只证明生产清理函数，不冒称卸载UI点击。
-- 最终全量静态/单元/Web/Rust、Release/NSIS、桌面回归、包哈希和G4报告仍待本轮收尾。G4尚未通过，不进入M5。
+- 最终全量静态/单元/Web/Rust、Release/NSIS、桌面回归、包哈希和G4报告仍待本轮收尾。G4尚未通过。
 
 ### 2026-11-03 T311完成：M3/G3统一验收通过并停止
 
@@ -132,7 +138,7 @@
 - 最终`scripts/check.ps1` exit 0：TypeScript、ESLint、27个TS测试文件231项、Rust 148 passed/1个100k专项ignored、Rust格式与clippy、Web Playwright 73 passed全部通过；日志`.artifacts/T115/logs/m1-final-check.stdout.log`和`.artifacts/T115/logs/m1-final-check.stderr.log`，ignored不计通过。
 - 最终真实Release桌面Playwright `pnpm test:desktop:all`为11 passed/3.4分钟/exit 0；日志`.artifacts/T115/logs/m1-desktop-all-pass.log`，原生结果根`.artifacts/native/2026-11-02T16-43-43-526Z-4356b62a-c96c-40a5-b0dd-8644956e266e/`。覆盖真实Tauri/WebView2、原生选择器、文件读写、保存冲突、回收站、设置、最近记录、只读预览、恢复/热退出、外部变化和键盘无障碍。
 - 最终Release为`src-tauri/target/release/featherpad.exe`，12,434,432 bytes，SHA256 `935A3E5450E2E1BC7153FA18F2EAD3FC6B6074ED9DAC4CF8C9029A831A9FB1D5`，WebView2 156.0.4314.58。M1可试用包`.artifacts/T115/FeatherPad-M1-portable-935A3E54.zip`为3,924,638 bytes，SHA256 `11D3335E443D7917137C4B08ACEC2992D0BE912362B7388346891E75CABD547F`，保留exe和README；失败、排错和专项产物均未删除。
-- 收尾`git diff --check` exit 0；`node scripts/validate-docs.mjs` exit 0（313文件/29 Markdown/206本地链接/86 feature/57任务/coverage 86），文档检查不计为产品行为测试。
+- 收尾`git diff --check` exit 0；`node scripts/validate-docs.mjs` exit 0（313文件/29 Markdown/206本地链接/86 feature/53任务/coverage 86），文档检查不计为产品行为测试。
 - M1的34个必需feature ID和组织范围见[`docs/acceptance/M1.md`](../docs/acceptance/M1.md)。已知边界继续保留：满盘为受控WSL2 `tmpfs`而非原生NTFS全卷，强杀不承诺零丢失，可选小地图明确不可用，完整编码/转换留待M2。M1/G1完成，M2/T201等待用户确认。
 
 ### 2026-11-02 T115补齐F-FILE-015：显式只读文本试开
@@ -140,9 +146,9 @@
 - `open_document`显式`text-preview`：BOM优先，无法无损解释的字节仅在试开显示为替代字符，控制字符可见化；<20MiB完整显示，≥20MiB保留前1MiB且全文件revision参与校验。既有grant/物理身份去重不变，不升级已有可编辑lease；试开lease沿用只读保护，原生保存/覆盖/另存/副本全拒绝，重载/会话保留模式。无新依赖/权限/联网入口。
 - `text_preview.rs`读取/解释，`stream_snapshot.rs`复用固定窗口与全对象校验；files/documents/external/session接入模式，commands只扩展既有枚举值。TS契约/bridge校验、session/tabs、`read-only-open.ts`/`ReadOnlyOpenChoices.tsx`及App/EditorDocument接入用户选择与真实CM只读视图；显示试读字节/截断/替代提示，语言和保存操作禁用，不执行HTML内容。
 - 定向TS最终3文件54项、Rust核心4项及相关集成30项、Web mock6项（含200% CSS缩放）通过，typecheck/受影响ESLint/fmt/clippy均exit0。日志`.artifacts/T115/logs/{text-preview-model-final,text-preview-core-verified,text-preview-rust-related,text-preview-longline-web,text-preview-lint-release,text-preview-clippy-final}.log`，Web mock不证明原生IO。
-- 原生发现百万控制符单行软换行渲染问题：回调约60ms收到完整1MiB数据，模型快，Web同用例约15.8秒。按产品100,000字符长行规则关闭试开软换行、提示水平滚动后，Web该用例约0.6秒；内容/超时不变。这些单次时间用于定位，不代替M5性能分布。测试快照嵌套IPC参数、TS品牌类型、Fast Refresh导出及Rust collect类型推断问题已修，原失败日志/截图和回调长度诊断保留，不记录正文。
+- 原生发现百万控制符单行软换行渲染问题：回调约60ms收到完整1MiB数据，模型快，Web同用例约15.8秒。按产品100,000字符长行规则关闭试开软换行、提示水平滚动后，Web该用例约0.6秒；内容/超时不变。这些单次时间用于定位，不代替性能分布。测试快照嵌套IPC参数、TS品牌类型、Fast Refresh导出及Rust collect类型推断问题已修，原失败日志/截图和回调长度诊断保留，不记录正文。
 - `pnpm build`exit0：12,432,896 bytes、SHA256 `50BD6B3E0FAA4772BC3D342FD22F080B9F5E1E1A870111DAC09A6BB13813398B`，WebView2 156.0.4314.58，主JS778.93kB/gzip246.08kB警告保留。真实`text-preview/mvp/recovery`3 passed/38.0秒/exit0，试开8.7秒；验证显式选择、非可编辑CM、四种合法格式原生写请求READ_ONLY、20MiB二进制限量1MiB、真正UTF16不误判、正常退出/重启仍只读及三份源SHA不变。七种文件和恢复回归通过，此轮恢复包含既有强杀，未另跑满盘/100k/性能专项。
-- 证据`.artifacts/native/2026-11-02T15-49-49-011Z-798a581d-21bd-47f6-b3fc-901f20ecd468/{text-preview,mvp,recovery}/native-release.json`；小文件/大文件截图已视觉检查，重启截图及私有会话保留。日志`{text-preview-longline-release-checked,text-preview-native-final}.log`。F-FILE-015当前M1范围通过；G1逐项报告/试用包待完成，完整编码/转换继续T201，M2–M5未通过。全部历史产物与清理清单保留。
+- 证据`.artifacts/native/2026-11-02T15-49-49-011Z-798a581d-21bd-47f6-b3fc-901f20ecd468/{text-preview,mvp,recovery}/native-release.json`；小文件/大文件截图已视觉检查，重启截图及私有会话保留。日志`{text-preview-longline-release-checked,text-preview-native-final}.log`。F-FILE-015当前M1范围通过；G1逐项报告/试用包待完成，完整编码/转换继续T201，M2–M4未通过。全部历史产物与清理清单保留。
 - 收尾将两个启动实例的控制台/请求诊断都纳入断言，并补重启后脚本不执行检查，同一Release试开复验1 passed/7.4秒（总8.3秒）/exit0；最终单项证据`.artifacts/native/2026-11-02T15-58-17-070Z-8dc23935-4a8d-41d2-b618-f2958a8a2f72/text-preview/native-release.json`和`text-preview-native-diagnostics-final.log`。code-review-and-quality复核读取上界、BOM/截断边界、已有lease、重载/会话标志及所有写入口，无新增必改项。
 - 2026-11-03收尾类型/文档/差异校验均exit0，日志`{text-preview-typecheck-final,text-preview-docs-checkpoint,text-preview-diff-checkpoint}.log`；同哈希exe保留于`.artifacts/T115/release-50BD6B3E/featherpad.exe`，尚未将单个exe当G1试用包。下一M1逐项审计与试用包。
 
@@ -153,7 +159,7 @@
 - 新增`tests/desktop/mvp.ts`并加入原生project与`test:desktop:all`：中文两级懒加载树、MD/Java/JSON/SQL/XML/HTML/TXT七类文件的语言检测/编辑/保存字节、无标题取消/首次保存、跨标签undo通过。原生11项首轮9通过/2失败；回收测试现同时核对明确回收成功及通用缺失提示，并在删除前等操作按钮可用，原字节/恢复断言保留。保存失败定向捕获真实BUSY后才修复，证据日志`{native-m1,native-saving-workspace}.log`及相应native目录保留。
 - 修复验证：新增模型先红后绿，最终恢复/热退出/保存3文件23项、Rust预算3项、Web恢复副本1项、类型/受影响ESLint/fmt/clippy均exit0。日志`{recovery-busy-red,recovery-busy-final,recovery-exit-save-final,rust-storage-contention,web-recovery-final,typecheck-final,lint-summary-final,clippy-recovery-fix}.log`。首轮修复Release真实mvp/saving/workspace/recovery 4 passed/2.6分钟/exit0，证据`.artifacts/native/2026-11-02T14-49-39-776Z-d82208d7-4150-4b27-9f50-be1e5ed6ab0e/`，其中mvp截图已检查；此轮恢复包含既有受控强杀，未重复满盘/100k/大文件专项。
 - 最终`pnpm build`exit0：12,412,928 bytes，SHA256 `2B99731FF7B8B31D5BE7E354A3D96D10A5D1712DA60B9EF0552FE508B78D0EB6`，WebView2 156.0.4314.58，主JS776.88kB/gzip245.18kB警告保留。保存/恢复相关真实Release复验2 passed/55.3秒/exit0，证据`.artifacts/native/2026-11-02T14-55-50-061Z-1ceb50b1-c204-4785-8ed5-07811352f8e8/{saving,recovery}/native-release.json`及`{release-build-final,native-contention-edge-final}.log`。对应exe保留于`.artifacts/T115/release-2B99731F/featherpad.exe`，不将它称作已通过G1的试用包；其余未相关能力按代码/构建关联性复用，未声称新exe全套重跑。
-- code-review-and-quality审查无新增必改项。F-FILE-015严格二进制拒绝/UTF16识别已有证据，但手动只读试开入口尚缺，下一切片必须补齐及相关真实验收，不能借T201依赖G1推迟。README明确可选小地图不可用且默认关闭；M1最终逐项报告/试用包待补，G1及M2–M5未通过。所有失败产物及未提交的`docs/CLEANUP-AFTER-DEVELOPMENT.md`保留，未自动清理。
+- code-review-and-quality审查无新增必改项。F-FILE-015严格二进制拒绝/UTF16识别已有证据，但手动只读试开入口尚缺，下一切片必须补齐及相关真实验收，不能借T201依赖G1推迟。README明确可选小地图不可用且默认关闭；M1最终逐项报告/试用包待补，G1及M2–M4未通过。所有失败产物及未提交的`docs/CLEANUP-AFTER-DEVELOPMENT.md`保留，未自动清理。
 
 ### 2026-11-02 T114完成：字号、焦点导航和实际Windows辅助功能
 
@@ -162,7 +168,7 @@
 - 实际“水生/沙漠”高对比下，正文对比度16.29/10.43，搜索和主按钮7.89/7.00，禁用项opacity1、搜索和焦点轮廓可见。减少动效时媒体查询生效，观测动画/非零过渡均0，编辑后单次undo及F6正常。最终恢复100%、无对比主题、动效开启，正文不变；测试实例正常关闭exit0，讲述人退出。未清理任何产物。
 - Windows讲述人10.0.26100.3323实际播报样本8条：状态、dirty标签、关闭风险、Tab模式状态/帮助、设置分类、弹窗返回、主动读取搜索“1处”、非法正则自动错误提示。使用[微软键盘命令](https://support.microsoft.com/en-us/accessibility/windows/narrator/appendix-b-narrator-keyboard-commands-and-touch-gestures)的读当前/下一项与复制最后播报保存受控UI短句；未取得自动完整计数或瞬时CtrlM公告录音，不据此宣称这些播报已证实。原剪贴板未备份恢复，仅保留受控短句；没有采集用户正文或剪贴板内容。
 - 汇总`.artifacts/T114/windows-platform-1SPvhE/platform-acceptance.json`；`dpi*-settings`、`raw-high-contrast-*-search`、`raw-reduced-motion-*`、`final-platform-restored`的JSON/PNG及`narrator-*.txt`保留。125–200%和深浅高对比截图已视觉检查。最初Playwright附着时出现的高对比媒体不匹配证据保留并排除，实际高对比重新启动后的原始CDP只读观测、主题动态切换及恢复为有效证据，未用仿真覆盖系统偏好。
-- `node .artifacts/T114/summarize-platform.mjs` exit0（仅核对实际观测，不冒充新产品运行）；日志`.artifacts/T114/logs/platform-summary.log`。d1类型/ESLint/Release和原生证据有效；最终`node scripts/validate-docs.mjs`与`git diff --check`均exit0，日志`{docs-final,diff-check-final}.log`。Windows10及后续功能仍须各阶段验收；下一T115整体回归，G1/M2–M5未通过。
+- `node .artifacts/T114/summarize-platform.mjs` exit0（仅核对实际观测，不冒充新产品运行）；日志`.artifacts/T114/logs/platform-summary.log`。d1类型/ESLint/Release和原生证据有效；最终`node scripts/validate-docs.mjs`与`git diff --check`均exit0，日志`{docs-final,diff-check-final}.log`。Windows10及后续功能仍须各阶段验收；下一T115整体回归，G1/M2–M4未通过。
 
 ### 2026-11-02 T114.d1：相关真实Release验收（平台矩阵仍待验）
 
@@ -293,7 +299,7 @@
 - pnpm build exit0（T109-release-build.log），构建终止后才启动原生。exe为10,993,152 bytes，SHA256 F058B832150B1123DFB4A4538BE3C494419759D47644DBC219E335C218BDCB61；JS657.35kB/gzip211.97kB警告保留，未改门槛。真实Release commands 1 passed/5.2秒/exit0（T109-native-commands-first.log），证据.artifacts/native/2026-11-02T03-47-00-635Z-86e89276-53f2-4f9b-b0a1-6555dac63f36/commands/native-release.json。
 - 原生范围：命令经真实OS选择器打开中文emoji目录，CtrlP打开真实文件/复用dirty同ID，面板保存字节核对、只读禁用并保持源hash、从CM触发重映射快捷键/拒绝冲突/CM占用、模态不新建、主题操作后正文/undo/焦点、加载前无陈旧候选/加载后同名路径选择、renderer重载偏好和恢复默认。保存SHA256=1b72059e634d31339b0672f5c5b9c4c09aed6daf8023576008c81faa8045fb50，只读源SHA256=c334650b6f73619dcc28664352c06d7aae229319c93900ee493e6636e23a8716，原生禁用截图已视觉检查。不声明完整启动恢复或OS缩放。
 - test:desktop:all已加入commands；--list exit0/发现regression+tabs+commands三项（T109-native-all-list.log），没有执行阶段整体。按用户策略仅一次Release/相关原生；未重跑Rust、综合桌面、大文件、100k、满盘、强杀或性能。历史产物及既有未跟踪CLEANUP清单未清理。下一T110，G1仍未通过。
-- 收尾文档校验exit0（T109-docs-final.log，86功能/57任务，0失败）、git diff --check exit0。五轴自审完成，未发现未解决阻断项；按完整T109功能提交，保持Goal完整范围。
+- 收尾文档校验exit0（T109-docs-final.log，86功能/53任务，0失败）、git diff --check exit0。五轴自审完成，未发现未解决阻断项；按完整T109功能提交，保持Goal完整范围。
 
 ## T109.a 统一命令分发简记（2026-11-02，当时面板待接）
 
@@ -311,7 +317,7 @@
 - 同构建workspace 1 passed/20.2s/exit0（.artifacts/T107-workspace-native.log）；证据.artifacts/native/2026-11-02T03-17-22-935Z-83382657-05fb-4e11-b115-da0af043ca2b/workspace/native-release.json，树懒加载/分页/定位、创建改名后保存、共享锁回收失败保源/保树、dirty后代保护/取消/缺失后另存均通过。日常workspace入口跳过无改动的低层release/chunk/discard IPC组合，coreIpcLifecycleChecksRun=false；原综合regression保留这些检查及全部断言。test:desktop:all现包含regression和新增tabs，列表发现不等于执行整体回归。
 - 测试输出修订：配置及native使用独立runId；本次相关旧Web回归仍曾使用固定截图路径，随后将全部Web显式截图/取消指标写入test.info().outputPath，后续不再覆盖旧路径。仅输出路径调整的用例未额外重跑，行为证据复用；没有自动清理历史产物，既有CLEANUP清单未改。两轮tabs及workspace留下受控回收站fixture，具体原路径在各运行dataDir和recycledFixtures；未枚举/清空用户回收站。
 - 本任务按用户新策略收尾：未重复全TS/Rust、综合桌面、大文件、100k、满盘、强杀或性能专项；G1仍待T109–T115。下一项T109，T110须实现真实快照周期、启动扫描及热退出，并遵守已有discard tombstone。
-- 收尾自审覆盖身份/版本、保存队列/关闭fence、恢复标记/未知回执、偏好边界及焦点；未发现未解决阻断项。新增证据输出路径的定向eslint exit0（T107-evidence-path-lint.log），阶段入口--list exit0且发现regression/tabs两项（T107-stage-regression-list.log，未执行整体），文档校验exit0/86功能/57任务（T107-docs-final.log）及git diff --check exit0。未新增依赖，未改断言或性能预算。
+- 收尾自审覆盖身份/版本、保存队列/关闭fence、恢复标记/未知回执、偏好边界及焦点；未发现未解决阻断项。新增证据输出路径的定向eslint exit0（T107-evidence-path-lint.log），阶段入口--list exit0且发现regression/tabs两项（T107-stage-regression-list.log，未执行整体），文档校验exit0/86功能/53任务（T107-docs-final.log）及git diff --check exit0。未新增依赖，未改断言或性能预算。
 
 ## T107.c1 关闭编排模型简记（2026-11-02，当时UI待接）
 
@@ -376,7 +382,7 @@
 - Web明确mock：取消、失败保树/dirty、未知结果同requestId同快照、保存后新revision/identity再确认、缺失后另存；.artifacts/T105/trash-web-zoom200.png已视觉检查。它不证明磁盘IO。
 - 真实Release另验：未授权grant/多余path字段/陈旧revision/junction均拒绝保源；真实无共享删除句柄使系统回收失败，源字节/树/dirty不变且恢复body摘要正确；解除锁后先真实保存，再用新identity确认回收，源消失、缓冲保留，CtrlS经真实OS选择器另存到新路径且字节正确；含dirty后代的目录，Escape取消保原件，确认后目录消失、后代缓冲保留且草稿正文/版本/SHA256正确。
 - 原生证据：.artifacts/T102/native-release.json的nativeWorkspaceObservation新增nativeRecycleSharingFailurePreservesSourceAndTree、nativeTrashDraftVerified、nativeTrashInvalidRequestsRejected、nativeSaveBeforeTrashRefreshesIdentity、nativeTrashMissingBufferCanSaveAs、nativeDirectoryTrashWithDirtyDescendant、nativeDirectoryTrashCancellationPreservesSource均true，含两个真实草稿receipt和body SHA256。T105下native-trash-sharing-failure.png、native-trash-directory-confirmation.png、native-trash-missing-buffer.png已视觉检查。系统回收API/回收项字节/还原及永久删除否决另由真实Rust测试证明；Release综合留下2个受控回收站fixture作为真实结果，原始路径列于recycledFixtures，未枚举/清空用户回收站。
-- 最新Release：src-tauri/target/release/featherpad.exe，10,786,304 bytes，SHA256 DCBB34B6D535D12FA53F457867C524115AD6CB843CA38C7DF2D24F4237269F72。Win11/WebView2开发机证据，不外推Win10、OS缩放或M5性能。没有新增依赖/工具安装。本轮变更已做正确性、授权边界、失败状态、结构及证据范围自审。
+- 最新Release：src-tauri/target/release/featherpad.exe，10,786,304 bytes，SHA256 DCBB34B6D535D12FA53F457867C524115AD6CB843CA38C7DF2D24F4237269F72。Win11/WebView2开发机证据，不外推Win10、OS缩放或性能目标。没有新增依赖/工具安装。本轮变更已做正确性、授权边界、失败状态、结构及证据范围自审。
 - 下一项T107标签/关闭保护；T110仍须接启动扫描/恢复认领/热退出/冗余与保存事务统一预算。当前仅回收前快照，不宣称启动会话恢复、G1或完整v1通过。下面保留各切片当时状态，当前结论以上方为准。
 
 ## T105.b2 typed IPC已接（2026-11-01，确认UI待接）
@@ -470,7 +476,7 @@
 - 动态增长已收紧：文件在可编辑读取时跨过20MiB会重新打开并按真实大小进入分块；跨过100MiB只返回可选择前1MiB预览的TOO_LARGE；未越上限但读取期间变化的文件返回CONFLICT，不返回截断正文。`LargeFileView`只持有当前64KiB页及页起点历史；上一块从已读精确起点重新请求，不在React中累加正文。>100MiB流程先关闭自动读取，用户明确点击后才调用head-preview。
 - 真实边界证据：Rust实际文件覆盖2MiB−1/2MiB/2MiB+1、20MiB−1/20MiB/20MiB+1、100MiB/100MiB+1；并发真实写入使读取跨过20MiB和100MiB上限均得到TOO_LARGE，未越限增长得到CONFLICT；另用“初次观察为可编辑大小、实际文件已增长”的路径验证自动分块重判。流式20MiB摘要与既有全文件快照一致且只保留小窗口；100MiB扫描保留零正文窗口，末尾UTF-8窗口精确。原生Release打开受控20MiB文件后可前/后分页，单页<64KiB+16字符，源文件SHA256不变；100MiB+1文件自动打开被拒，用户明确选择后显示前1MiB预览且保存/另存禁用，源文件SHA256不变。
 - 本切片实际检查：typecheck/lint、TS33、全Web16（分块下一页只显示新页、上一页恢复且保存入口禁用；Web mock与原生证据独立）、Rust全套61、`cargo fmt --check`、`cargo clippy --all-targets -D warnings`、Release build及真实桌面综合1（43.0秒）均exit0。没有新增依赖/工具。原生截图`native-release-large-chunk.png`显示第1页65,536字节/20,971,520字节及上一/下一按钮，`native-release-head-preview.png`显示截断前1MiB；均已视觉检查。`native-release.json`记录nativeLargeChunkReadonlyVerified=true、nativeHeadPreviewVerified=true。
-- 当前Release：10,088,960 bytes，SHA256 `1472127164a831ac654bd3985b757b6da14ef02ed5fc1cd936ce5b8747257633`。Win11/WebView2 156.0.4314.58、浏览器offline重载。单次开发机观测：20MiB分块首屏上界1,116.8ms（含受控原生选择器自动化），100MiB打开到预览选项上界1,596.4ms，用户预览动作361.2ms；该长流程进程树私有工作集约348–444MiB。计时不是10次p95/目标机结论，内存也高于SPEC的180MiB目标，故不标M5性能通过，后续bench:app与常驻预算继续复核。
+- 当前Release：10,088,960 bytes，SHA256 `1472127164a831ac654bd3985b757b6da14ef02ed5fc1cd936ce5b8747257633`。Win11/WebView2 156.0.4314.58、浏览器offline重载。单次开发机观测：20MiB分块首屏上界1,116.8ms（含受控原生选择器自动化），100MiB打开到预览选项上界1,596.4ms，用户预览动作361.2ms；该长流程进程树私有工作集约348–444MiB。计时不是10次p95/目标机结论，内存也高于SPEC的180MiB目标，故不标性能通过，后续bench:app与常驻预算继续复核。
 - T104和T102磁盘满此后已由上方最新切片完成。以下T102/T103各节保留实施时的历史状态；当前结论、最终Hash和下一项以上页记录为准。
 
 ## T103.a 完整降级编辑（历史切片）
@@ -493,7 +499,7 @@
 - 检查实际通过：环境探针；typecheck/lint/TS31；全Web13（包括改取消文案）；Rust全套43（新增4，protected_save现16）；clippy --locked --offline --all-targets -- -D warnings；Release build、真实桌面综合1项均exit 0。第一版硬链接UI原生47.1秒通过；加文档互斥与并发原生断言后重跑Rust全套/typecheck/lint/build/native，最终44.6秒通过。未因信心重复无变更的Web测试，未冒称check.ps1整链再运行。
 - 原生证据：创建真实Windows硬链接→OS选取原路径→编辑CtrlS→inspect时两条路径仍原字节；此时真实stat成功，第二个同DocId不同requestId保存BUSY，证明无服务锁等待/无重入写入。No保正文/dirty/双路径原字节；下一CtrlS Yes只改原路径、别名旧字节且tab/DocumentId不变。打开旧别名得到独立文档，再加别名，在确认显示后真实外部写入，Yes触发CONFLICT、双别名外部字节和内存输入均保留，第一已保存路径不受影响。此前全部保存/覆盖/副本/迟到Ack/越权拒绝均原生回归。`.artifacts/T102/native-release.json`新增nativeHardlinkConsentVerified=true；hardlink步骤JSON、`native-release-hardlink-{saved,conflict}.png`为证据，截图已视觉检查。
 - 当前Release：9950208 bytes，SHA256 `4320A43CD7E1E04E23E610EA1B73F84C52D2D4B0C193845CEBDFD7BB9DFCE6C3`；Win11/WebView2 156.0.4314.58、浏览器offline重载，非Win10/IME/OS缩放/断电证据。确认核心首切片已提交`f0833fd`。没有新增依赖/工具安装。
-- 最后cargo fmt --check、文档静态检查（130文件/27 Markdown/141链接/86功能/57任务覆盖）和git diff --check均exit 0；文档检查不是产品验收。最后通过后仅更新交接文档，产品/行为测试未再改动。
+- 最后cargo fmt --check、文档静态检查（130文件/27 Markdown/141链接/86功能/53任务覆盖）和git diff --check均exit 0；文档检查不是产品验收。最后通过后仅更新交接文档，产品/行为测试未再改动。
 - 下一仍T102受控磁盘满/强杀；T110启动扫描/预算/恢复、关闭保护尚未实现，T102/G1不勾选。故障环境只读盘点：当前非提权，已有New-VHD/diskpart，无imdisk；尚未执行挂载或填盘，不据此宣称外部阻塞或磁盘满已测。后续先验证受控E盘小容量卷方案，不能填满宿主盘；有权限缺口时推进不受影响的进程终止测试及依赖就绪任务。
 
 ## T102覆盖恢复点（历史，2026-11-01 16:23）
@@ -503,7 +509,7 @@
 - 原生helper扩展仅准单个已存在的受控小文件，仍检查E盘fixture根/无reparse/哈希/测试exe/PID/父worker；系统/应用确认分别限定标题、目标文本和唯一启用是/否按钮，UIAutomation只读取该owned确认框且限100个Text元素。文件选择提交用异步PostMessage避免嵌套OS确认阻塞；实际Button用BM_CLICK路由真实通知。inspect仅校验，不发送点击，JSON commandInvoked=false。没有生产IPC改动、没有新依赖/安装。
 - 排错证据：desktop先因“Expected exactly one owned, named overwrite confirmation” exit 1；追加owned控件诊断再现exit 1，确认系统对话框为“确认另存为”、DirectUIHWND/Button ID0；改为标题/按钮文字后又因WM_GETTEXT无法读DirectUI目标文本而“Overwrite confirmation is not for the controlled destination” exit 1。读取已锁rfd TaskDialog实现及微软按钮/异步消息文档后，使用已有UIAutomation系统程序集验证目标文字，定向原生综合通过；再扩展同ID/副本覆盖/同源拒绝后typecheck/lint及desktop综合1项exit 0（37.5秒），不改timeout/断言。
 - 当前Release仍为9935360 bytes、SHA256 `81349CFF6D7FE0A7CF68A4035C4596D7E6468CEEF61BA4D117FD1633A45CBF74`（本覆盖切片只改测试/helper，无需重建相同产品）；`.artifacts/T102/native-release.json`记录nativeExistingOverwriteVerified=true及既有全部保存/保存/另存/副本等回归。`native-release-overwrite-{copy,collision}.png`已视觉检查；Win11/WebView2 156.0.4314.58、浏览器offline重载，非Win10/IME/OS缩放证据。
-- 文档静态检查`node scripts/validate-docs.mjs` exit 0（129文件/27 Markdown/141链接/86功能/57任务完整覆盖），git diff --check exit 0；没有把文档检查计为产品测试。最后成功后仅追加证据文档，未继续修改被验证的代码。
+- 文档静态检查`node scripts/validate-docs.mjs` exit 0（129文件/27 Markdown/141链接/86功能/53任务完整覆盖），git diff --check exit 0；没有把文档检查计为产品测试。最后成功后仅追加证据文档，未继续修改被验证的代码。
 - 下一T102普通CtrlS硬链接原生确认（现仍安全拒绝，Rust确认核心已测），真实磁盘满/强杀；T110启动扫描/预算/恢复和关闭保护仍缺。不标T102/G1或完整v1通过。全部保存与F-FILE-002授权单项失败已完成，不再重做。
 
 ## F-FILE-002恢复点（历史，2026-11-01 16:13）

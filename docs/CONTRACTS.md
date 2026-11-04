@@ -1,5 +1,7 @@
 # 进程接口与数据契约
 
+增量搜索决策（2026-11-04）：`featherpad:workspace-search-progress`增加单请求递增`sequence`与可省略的`files`增量（每批最多25个既有`SearchFileResult`，沿用总10,000匹配/50MiB预算）。首个匹配立即投递，后续批次节流；原生遍历通过内部visitor逐项交给搜索，不等待完整目录清单。最终invoke结果仍为权威完整结果，取消仍返回已完成的部分结果。前端以requestId和sequence拒绝旧事件，并在流式与最终结果中始终以捕获的dirty buffer替代磁盘同文件；dirty buffer零匹配也要排除磁盘旧命中。不增加写权限、绝对路径输入或新IPC命令。
+
 状态：跨进程设计与实现契约；已实现范围与实际证据见 [PROGRESS](../tasks/PROGRESS.md)。模块责任见 [能力地图](../CAPABILITY-MAP.md)，功能 ID 见 [功能矩阵](FEATURE-MATRIX.md)。本文件定义跨进程边界；模块内部可以演进，但不得静默改变保存、取消和错误语义。v1 使用单一 schemaVersion=1，不维护平行版本 API。
 
 M0实施决策（T003，2026-11-01）：按既有协议先落地choose_files/choose_folder/open_document，不添加任意路径授权或测试专用IPC。授权仅保存在Rust内存；每次读取同时校验路径组件、canonical目标和已打开句柄的Windows最终路径，阻止junction换向逃逸。首个切片只提供有界UTF8只读查看，其他编码/大文件返回明确错误，完整打开策略/文档身份/保存由T101之后扩展；不得提前标记相应功能完成。AppManifest为这三个命令生成精确ACL，仅main本地窗口获权。

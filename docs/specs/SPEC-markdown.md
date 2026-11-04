@@ -1,5 +1,7 @@
 # SPEC-markdown：安全 Markdown 阅读与导出
 
+性能决策：100KiB实测从392.8ms逐步优化到303.8ms，已将默认合并等待从150ms缩短到100ms并继续验证调度余量；300ms整体预算不变。正文仍只在停止输入80ms后复制，快速连续输入继续合并。保留2秒强制终止、版本/requestId fence及全部清洗。任务映射和标题定位共享同一快照的Lezer语法树；成功返回的专用Worker可在同一视图内复用，正在运行的任务遇取消/版本变化/超时/错误仍terminate，视图卸载销毁空闲Worker。导出Worker仍独立，不跨文档共享正文或修改iframe安全边界。
+
 > 模块 `markdown`；业务依赖仅 `editor`、`file-core`。状态：2026-11-03用户确认开始M3，T301–T306实现完成，G3待验；当前T307，G3待验。拥有 F-MD-001–011，全部首次在M3验收；完整索引见 [矩阵](../FEATURE-MATRIX.md)。
 
 实施决策（T301）：锁定Marked18.1.3（MIT）和DOMPurify3.4.17（Apache-2.0或MPL-2.0），已核对包元数据、首次禁脚本安装。150ms合并后才从CodeMirror复制快照到专用Worker，2秒超时终止Worker；结果绑定documentId/bufferVersion/requestId。宿主执行显式标签白名单清洗后，放入无任何sandbox权限的srcdoc iframe，内层CSP禁脚本/联网/表单/插件，绝不授予same-origin、Tauri IPC或顶层导航。T301中的URL和图片只显示安全占位，真实授权资源与用户点击动作留T303。三模式在应用组合层连接editor，editor不反向导入markdown。
@@ -55,7 +57,7 @@ type ExportOptions = {
 
 T304实现：Lezer标题与Marked令牌首行交叉匹配，顶层块逐字核对raw文本；offset为CodeMirror规范LF缓冲的UTF16位置。锚点以NFKC与120字符slug生成，重复后缀和空标题回退稳定。目录最多显示500项并提供筛选；嵌套折叠不隐藏筛选结果。双向同步跟随首个可见映射块，滚动不改变选区，用户输入解除反馈抑制；图片/布局重排重新观察，重渲染保持同版本块。过期版本或不可靠映射暂停同步并提示，关闭同步后两端独立滚动。
 
-split同步滚动可关闭，默认按首个可见sourceMap块定位，图片加载后重新计算布局；避免两端scroll事件反馈循环。去抖渲染默认150ms，worker/requestId可取消；新版本优先，旧版本不能闪回。>2MiB或长行降级停止实时渲染，提供明确提示和可取消的一次性预览（仍遵守大小/资源预算）；≥20MiB不完整渲染，限量预览不能导出假完整文档。单次渲染CPU预算2秒/生成节点上限50,000，超限提示缩小内容，禁止主线程长锁。
+split同步滚动可关闭，默认按首个可见sourceMap块定位，图片加载后重新计算布局；避免两端scroll事件反馈循环。去抖渲染默认80ms（按实测调整），worker/requestId可取消；新版本优先，旧版本不能闪回。>2MiB或长行降级停止实时渲染，提供明确提示和可取消的一次性预览（仍遵守大小/资源预算）；≥20MiB不完整渲染，限量预览不能导出假完整文档。单次渲染CPU预算2秒/生成节点上限50,000，超限提示缩小内容，禁止主线程长锁。
 
 read/split任务勾选通过sourceMap映射原始`[ ]`/`[x]`标记，提交expectedBufferVersion的单次事务；成功后dirty且一次undo。重复同文任务必须按位置区分。只读、过期映射、无法定位时checkbox禁用或重新渲染，不做文本全局替换猜位置。
 
@@ -77,7 +79,7 @@ HTML：生成独立UTF8 HTML，内置受控CSS、目录anchor、可嵌入本地�
 
 T305实现决策：单独冻结CodeMirror Text/version，不要求先保存；独立Worker和资源序列可取消。复用预览清洗生成便携HTML后去除运行时/应用动作，任务只读、代码保留离线高亮，本地文档链接转为无路径文本。最终HTML≤64MiB，与现有安全保存事务预算一致；超限明确拒绝且不截断。原生专用命令强制Copy/UTF8，通过原生选择器及既有save_as核心写入，源文档不接受导出Ack，保存状态/路径/undo不变。
 
-PDF：必须实现真正本地生成PDF到所选路径，不能仅调用浏览器打印对话框并要求用户自行选打印机。Windows优先验证WebView2 PrintToPdf/PrintToPdfStream的Tauri可调用适配器；清理内容在无IPC、无网络的专用渲染面板加载，等本地图像/字体就绪后输出。接口/运行时不支持则返回PDF_BACKEND_UNAVAILABLE和离线修复指引，不能假报成功；M3/M5需把能力验证完成，否则v1未完成。
+PDF：必须实现真正本地生成PDF到所选路径，不能仅调用浏览器打印对话框并要求用户自行选打印机。Windows优先验证WebView2 PrintToPdf/PrintToPdfStream的Tauri可调用适配器；清理内容在无IPC、无网络的专用渲染面板加载，等本地图像/字体就绪后输出。接口/运行时不支持则返回PDF_BACKEND_UNAVAILABLE和离线修复指引，不能假报成功；M3需把能力验证完成，否则交付不完整。
 
 T306实施决策：复用已锁定Wry/WebView2 COM依赖，创建没有Tauri初始化脚本的隐藏原生子WebView；禁用文档脚本/宿主对象/Web消息，原生请求过滤只允许本作业单一内存页面及data图片。固定就绪探针核对图片/本地字体后调用ICoreWebView2_16.PrintToPdfStream，不弹打印框。单作业、60秒/100MiB预算、取消销毁子视图；流校验后交file-core字节事务，原生选定目标/覆盖前后revision与打开文档所有权重验、同目录临时文件落盘再原子提交，失败保留原目标。PDF运行时缺失返回UNSUPPORTED与修复指引，不降级为伪成功。实际可用性仍待T306真实冒烟。
 
@@ -99,4 +101,4 @@ T306实施决策：复用已锁定Wry/WebView2 COM依赖，创建没有Tauri初�
 
 Always：清理和隔离双重防护、资源scope检查、版本化映射、离线真实导出。Ask first（后续实施变更）：允许远程资源、扩大HTML allowlist、改变PDF后端/资源授权或加入执行型图表。Never：直接渲染未清理HTML、给内容IPC权限、自动网络图片、将打印对话框当PDF完成。
 
-Tauri2/WebView2 PrintToPdfStream已实际接入；中文多页PDF和清洗/资源/源映射证据见[M3报告](../acceptance/M3.md)。最低runtime及Windows10真实目标、完整跨设备/断电故障与最终性能仍需M4/M5验证，不能由当前Windows11结果推导。
+Tauri2/WebView2 PrintToPdfStream已实际接入；中文多页PDF和清洗/资源/源映射证据见[M3报告](../acceptance/M3.md)。最低runtime及Windows10真实目标、完整跨设备/断电故障与最终性能仍需目标机与专项验证，不能由当前Windows11结果推导。

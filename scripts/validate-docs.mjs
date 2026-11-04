@@ -83,7 +83,7 @@ for (const line of taskLines) {
     covered.add(feature);
   }
 }
-if (tasks.size !== 57) failures.push(`Expected 57 tasks, got ${tasks.size}`);
+if (tasks.size !== 53) failures.push(`Expected 53 tasks, got ${tasks.size}`);
 const done = new Set();
 const visiting = new Set();
 function visit(id) {

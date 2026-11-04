@@ -1,6 +1,8 @@
 # SPEC-desktop：本地设置、Windows 集成与发布
 
-> 轻羽 FeatherPad；模块 `desktop`；业务依赖仅 `editor`、`workspace`、`file-core`。状态：M1设置/主题/无障碍/会话能力与M2快捷键/隐私能力已通过G1/G2统一验收；M4/T401–T405及G4已通过（2026-11-04），见[M4验收](../acceptance/M4.md)；M5待用户确认后实施。拥有 F-DESK-001–013，详见 [矩阵](../FEATURE-MATRIX.md)。
+启动优化决策：应用组合层按需加载Markdown/HTML/图片视图以及设置、格式化、转换、比较对话框，普通文本首屏不初始化这些可选UI；视图加载期间源码继续使用原registry/同一undo，失败可重试，图片失败保留只读占位。对话框加载使用可关闭/Escape退出的原生modal占位，失败保留正文且可重试，晚到加载不能重开已关闭窗口。加载切换不写盘、不改变语言和授权；editor不反向依赖Markdown。预算保持不变，优化收益必须用最终Release实测。
+
+> 轻羽 FeatherPad；模块 `desktop`；业务依赖仅 `editor`、`workspace`、`file-core`。状态：M1设置/主题/无障碍/会话能力与M2快捷键/隐私能力已通过G1/G2统一验收；M4/T401–T405及G4已通过（2026-11-04），见[M4验收](../acceptance/M4.md)。拥有 F-DESK-001–013，详见 [矩阵](../FEATURE-MATRIX.md)。
 
 ## Objective 与提供方契约
 
@@ -38,7 +40,7 @@ type SessionManifest = {
 
 M0：F-DESK-013。M1：F-DESK-001、F-DESK-002、F-DESK-010、F-DESK-011。
 
-M2：F-DESK-003、F-DESK-004。M4：F-DESK-005、F-DESK-006、F-DESK-007、F-DESK-008、F-DESK-009。M5：F-DESK-012。
+M2：F-DESK-003、F-DESK-004。M4：F-DESK-005、F-DESK-006、F-DESK-007、F-DESK-008、F-DESK-009、F-DESK-012。
 
 每项联合矩阵和下述交互/error-state/test strategy验收，安装/便携与完整发布均是v1范围。
 
@@ -112,7 +114,7 @@ F-DESK-013默认无网络权限/请求，CSP限制脚本/连接/资源，Tauri c
 
 F-DESK-012待验证性能目标，参考目标机4核/8GiB/SSD、Windows11，并在Windows10回归；开发机i5-12600KF/32GB/Win11仅作开发基准，不代表目标机通过。采样10次取p95，冷启动单列：冷启动≤1.5s，1MiB文本暖打开≤300ms，正常键入p95≤50ms，大文件只读首屏≤1s；空闲主进程+所属WebView2合计私有工作集≤180MiB、30秒CPU均值≤1%；1万文件100MiB搜索首批≤500ms/总≤5s，取消≤250ms；应用压缩分发包≤25MiB目标（runtime另计）。以上全部是目标非实测。测试报告注明CPU/系统/runtime/杀毒/电源状态/样本。
 
-完整v1发布要求M0–M5和86项必需验收完成，附版本/变更日志、许可证/第三方清单、已知限制、校验和、安装与便携说明。安装/升级/卸载/离线runtime、故障恢复、外部并发、恶意预览、长路径回归均需证据；不把M1 MVP发布当完整交付。
+发布要求M0–M4和86项必需验收完成，附版本/变更日志、许可证/第三方清单、已知限制、校验和、安装与便携说明。安装/升级/卸载/离线runtime、故障恢复、外部并发、恶意预览、长路径回归均需证据；不把M1 MVP发布当完整交付。
 
 ## Acceptance、error-state 与测试策略
 
@@ -141,4 +143,4 @@ Always：用户级/显式系统集成、会话flush确认、离线/最小权限�
 
 系统页两项显式opt-in分别控制“打开方式”候选和Explorer菜单；注册14个支持扩展，不改变UserChoice。使用Windows Registry API并通知Shell刷新；marker、命令、图标须精确匹配，第三方改写项保留。NSIS覆盖升级保留集成，卸载只撤销仍指向该安装的自有项。默认保留数据；勾选清除后再次警告未保存恢复内容，生产NSIS清理函数逐项拒绝reparse point，不使用模板的无限制递归删除。清理函数harness证据只证明该函数，卸载UI确认仍须与实际包测试区分。
 
-Win11当前环境的安装/升级/卸载、便携、CLI与系统集成证据由G4报告汇总；Windows10/最低WebView2、签名与完整跨设备性能/故障矩阵不以当前宿主结果外推，最终v1关卡继续M5。
+Win11当前环境的安装/升级/卸载、便携、CLI与系统集成证据由G4报告汇总；Windows10/最低WebView2、签名与完整跨设备性能/故障矩阵不以当前宿主结果外推，相关项保持未验证。

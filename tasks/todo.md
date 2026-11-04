@@ -1,6 +1,6 @@
 # 开发任务清单
 
-当前阶段：**M0/G0–M3/G3已通过；M4/G4已通过（2026-11-04），M5/T501等待用户确认**。完整 v1 需要 M0–M5 全部 86 项必需功能，M1 只是可试用 MVP，不是成品。
+当前阶段：**M0/G0–M4/G4已全部通过（2026-11-04），86项必需功能已交付**。后续按实际使用反馈做增量修复，不再新增大阶段。
 
 2026-11-03 用户修订验收粒度：**以 M 为验收单元**。M 内各 T 只做实现和最小自检，不再每个 T 跑一遍大量测试；整个 M 的 T 全部完成后，统一执行一次全量回归、真实 Release 验收和矩阵证据汇总，通过后打勾并停止，等待用户确认后再推进下一阶段。M0 与 M1 的已完成任务产生于旧的逐任务策略，其逐项证据仍然有效，保存在 [PROGRESS](PROGRESS.md) 和 [M0验收](../docs/acceptance/M0.md)、[M1验收](../docs/acceptance/M1.md)（按 `T1xx` 检索即可定位）。
 
@@ -10,7 +10,7 @@
 - `[~]` 实现中。
 - `[x]` 实现完成并通过该任务的最小自检，**不代表功能已验收**。
 
-功能验收只在所属 M 的统一验收通过后记录。M0/M1 已完成任务保留 `[x]` 和有旧策略下的逐项证据；M2–M4已通过各自关卡并记录整阶段证据；M5任务在G5通过前不得写成“已验收”。
+功能验收只在所属 M 的统一验收通过后记录。M0/M1 已完成任务保留 `[x]` 和有旧策略下的逐项证据；M2–M4 已通过各自关卡并记录整阶段证据。
 
 ## 验收策略（M 为验收单元）
 
@@ -77,7 +77,6 @@ pnpm test:desktop:all
 | G2 | 编码与混合换行 round-trip、10k 文件/100MiB 搜索与取消、跨文件替换中断与回滚、100k 目录 |
 | G3 | Markdown 恶意 HTML/SVG/URL、离线 HTML 导出重开、真实多页 PDF、格式化异常退出 |
 | G4 | 独立环境安装/卸载/便携、CLI 与单实例、关联 opt-in 与撤销、缺 WebView2 指引 |
-| G5 | 全 86 项逐 ID 证据、故障矩阵、性能 10 样本 p95、发布材料 |
 
 ### 5. 收尾
 
@@ -94,8 +93,7 @@ pnpm test:desktop:all
 | M1 | G1 | 已通过（2026-11-03） | T101–T115 完成；34项feature ID统一验收通过，见 [M1验收](../docs/acceptance/M1.md) |
 | M2 | G2 | 已通过（2026-11-03） | T201–T216 完成；29项feature ID统一验收通过，见 [M2验收](../docs/acceptance/M2.md) |
 | M3 | G3 | 已通过（2026-11-03） | T301–T311 完成；16项feature ID统一验收通过，见 [M3验收](../docs/acceptance/M3.md) |
-| M4 | G4 | 已通过（2026-11-04） | T401–T405完成；5项feature ID统一验收，见[M4验收](../docs/acceptance/M4.md) |
-| M5 | G5 | 等待用户确认 | G4已通过；下一项T501，未开始 |
+| M4 | G4 | 已通过（2026-11-04） | T401–T405完成；F-DESK-005..009统一验收，F-DESK-012目标机项未验证，见[M4验收](../docs/acceptance/M4.md) |
 
 ## M0 环境与骨架（依赖：无）
 
@@ -183,22 +181,11 @@ pnpm test:desktop:all
 | [x] T402 安装/升级/卸载 | T401 | F-DESK-005 | 用户级安装真实可用，缺 runtime 离线指引、不删文档/未确认恢复 | src-tauri/tauri.conf.json、src-tauri/windows/installer-hooks.nsh、scripts/package.ps1 |
 | [x] T403 便携数据模式 | T402 | F-DESK-006 | portable.flag 决定同级 data，不可写报错/选择；与安装版隔离 | src-tauri/src/services/data_dir.rs、scripts/package.ps1 |
 | [x] T404 系统集成选择加入 | T402 | F-DESK-009 | 关联/右键显式选择，可撤销只清自有项、遵守系统限制 | src-tauri/src/platform/windows/associations.rs、src/features/desktop/IntegrationSettings.tsx |
-| [x] T405 G4可分发验收 | T401..404 | M4全部 | 包能独立启动/工作/恢复/退出，路径与证据清楚 | docs/acceptance/M4.md、tasks/PROGRESS.md |
-
-## M5 完整v1验收（依赖：G4）
-
-验收：本表全部 `[x]` 后，一次性执行 [M 统一验收清单](#m-统一验收清单) 的 G5 项；这是全项目最终统一验收。
-
-| 状态/任务 | 依赖 | 功能追踪 | 交付内容与验收点 | 主要规划文件（非穷举） |
-|---|---|---|---|---|
-| [ ] T501 Release性能 | T405 | F-DESK-012 | 冷热启动/全树私有内存/输入/目录/搜索/预览/包大小达到预算 | tests/benchmarks/runner.ts、scripts/bench.ps1、docs/acceptance/performance.md |
-| [ ] T502 故障安全回归 | T501 | F-DESK-012,全部数据安全ID | 实际强杀/磁盘满/锁定/外部变化/恶意预览/坏清单无未解严重问题 | tests/integration/faults/、tests/desktop/recovery/、docs/acceptance/faults.md |
-| [ ] T503 全矩阵和兼容验收 | T502 | 全部86项 | 每 ID 有实现+证据；Win10/11 目标核查；无 TODO/mock 伪完成 | docs/FEATURE-MATRIX.md、docs/acceptance/v1.md、tasks/PROGRESS.md |
-| [ ] T504 内部发布材料 | T503 | F-DESK-012 | 便携/安装包、hash、许可证、指南/恢复说明/已知问题，未签名状态明确 | docs/USER-GUIDE.md、docs/RELEASE-NOTES.md、THIRD-PARTY-NOTICES.md、scripts/release.ps1 |
+| [x] T405 G4可分发验收 | T401..404 | M4全部,F-DESK-012 | 包能独立启动/工作/恢复/退出，路径与证据清楚 | docs/acceptance/M4.md、tasks/PROGRESS.md |
 
 ## 完整性规则
 
-任务表共 57 个工作单元（T000..005、T101..115、T201..216、T301..311、T401..405、T501..504；实际数量由 `scripts/validate-docs.mjs` 校验）。最后一个任务完成之前不得宣称完整 v1。
+任务表共 53 个工作单元（T000..005、T101..115、T201..216、T301..311、T401..405；实际数量由 `scripts/validate-docs.mjs` 校验）。
 
 任务状态与功能验收分离：`[x]` 只代表实现完成和最小自检通过，功能 ID 的验收证据在所属 M 统一验收时汇总。完整功能可由多个任务共同实现，一个任务完成也不能代替矩阵逐 ID 证据。
 

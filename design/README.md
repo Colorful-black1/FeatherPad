@@ -57,6 +57,6 @@ Markdown 输入通过白名单 DOM 节点与 textContent / Text 生成，不使�
 
 最终复核使用本机 Microsoft Edge 156 headless 从 `file://` 离线打开，**38 项检查通过，exit code 0，运行时异常 0，页面资源请求仅 HTML 与本地 CSS**。覆盖品牌与羽毛 SVG、四类目录点击、预览标签替换 / 固定、真实输入与注入安全、Ctrl+S / Ctrl+P / Ctrl+Shift+P、dirty 确认、搜索选区、设置焦点循环与 inert、PDF 禁用边界、冲突 / 欢迎 / 新建、键盘分隔条和窄屏覆盖侧栏。布局覆盖 800×560 / 1024×768 / 1280×800 / 1440×900 / 1920×1080；另外完成 1.25 / 1.5 / 2 DPR 仿真，**这不等同于真实 Windows DPI 人工验收**。已人工查看最终浅色主屏和深色设置截图。
 
-随设计一并交付本机验证证据：[检查结果](./validation-results.json)、[浅色主屏](./preview-light.png)、[深色设置](./preview-dark.png)。检查在最终目录重命名前运行，交付 JSON 将资源路径规范化为项目相对路径；原始记录保留于工程外的开发证据目录。最终样式复核也已通过，弱辅助文字对标题栏的最低对比度为 4.55:1；截图已按最终 token 刷新。目录重命名后，重新双击原型即可继续使用。
+随设计一并交付本机截图：[浅色主屏](./preview-light.png)、[深色设置](./preview-dark.png)。检查在最终目录重命名前运行，交付 JSON 将资源路径规范化为项目相对路径；原始记录保留于工程外的开发证据目录。最终样式复核也已通过，弱辅助文字对标题栏的最低对比度为 4.55:1；截图已按最终 token 刷新。目录重命名后，重新双击原型即可继续使用。
 
-后续实现遵守 **app-shell（no deps，业务模块单向组装）**，阶段统一为 **M0 壳 / M1 MVP / M2 效率 / M3 Markdown 格式 / M4 桌面 / M5 质量发布**，详见 [UI-DESIGN.md](./UI-DESIGN.md)。
+后续实现遵守 **app-shell（no deps，业务模块单向组装）**，阶段统一为 **M0 壳 / M1 MVP / M2 效率 / M3 Markdown 格式 / M4 桌面交付**，详见 [UI-DESIGN.md](./UI-DESIGN.md)。
