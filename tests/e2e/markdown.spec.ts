@@ -1,3 +1,4 @@
+import { documentOptions, menuItem, resumeEditing } from '../ui-actions';
 import { expect, test } from './test-fixture';
 
 test('Markdown three modes share the CodeMirror buffer and undo, render GFM, and resize with the keyboard', async ({ page }) => {
@@ -5,7 +6,7 @@ test('Markdown three modes share the CodeMirror buffer and undo, render GFM, and
   page.on('pageerror', error => errors.push(error.message));
   await page.goto('/');
   await page.getByRole('button', { name: '新建文本', exact: true }).click();
-  await page.getByRole('combobox', { name: '语言模式' }).selectOption('markdown');
+  await (await documentOptions(page)).getByRole('combobox', { name: '语言模式', exact: true }).selectOption('markdown'); await resumeEditing(page);
   const source = '# 中文阅读\n\n| 一 | 二 |\n| --- | --- |\n| 值 | ~~删除~~ |\n\n- [x] 已完成\n\n> 引用\n';
   const editor = page.locator('.cm-content');
   await editor.focus();
@@ -40,7 +41,7 @@ test('Markdown preview isolates scripts and IPC, blocks remote images, and repla
   page.on('request', request => { if (request.url().startsWith('https://example.com/')) externalRequests.push(request.url()); });
   await page.goto('/');
   await page.getByRole('button', { name: '新建文本', exact: true }).click();
-  await page.getByRole('combobox', { name: '语言模式' }).selectOption('markdown');
+  await (await documentOptions(page)).getByRole('combobox', { name: '语言模式', exact: true }).selectOption('markdown'); await resumeEditing(page);
   const editor = page.locator('.cm-content');
   await editor.focus();
   await page.keyboard.insertText('# 原版本\n\n<script>parent.pwned=1</script>\n\n![远程](https://example.com/leak.png)\n\n[危险](javascript:alert%281%29)');
@@ -68,10 +69,10 @@ test('Markdown preview isolates scripts and IPC, blocks remote images, and repla
 test('Markdown mode belongs to each editor group and narrow layouts retain access to source', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: '新建文本', exact: true }).click();
-  await page.getByRole('combobox', { name: '语言模式' }).selectOption('markdown');
+  await (await documentOptions(page)).getByRole('combobox', { name: '语言模式', exact: true }).selectOption('markdown'); await resumeEditing(page);
   await page.locator('.cm-content').focus();
   await page.keyboard.insertText('# 双组正文');
-  await page.getByRole('button', { name: '向右拆分', exact: true }).click();
+  await (await menuItem(page, '向右拆分')).click();
   const primary = page.getByRole('group', { name: '主编辑组 Markdown视图' });
   const secondary = page.getByRole('group', { name: '第二编辑组 Markdown视图' });
   await secondary.getByRole('button', { name: '阅读', exact: true }).click();
@@ -87,7 +88,7 @@ test('Markdown tasks edit exact duplicate positions in one undo and code copy st
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
   await page.goto('/');
   await page.getByRole('button', { name: '新建文本', exact: true }).click();
-  await page.getByRole('combobox', { name: '语言模式' }).selectOption('markdown');
+  await (await documentOptions(page)).getByRole('combobox', { name: '语言模式', exact: true }).selectOption('markdown'); await resumeEditing(page);
   const editor = page.locator('.cm-content');
   await editor.focus();
   await page.keyboard.insertText('- [ ] 重复\n- [ ] 重复\n  - [x] 嵌套\n\n```json\n{"中文": true}\n```');
@@ -150,7 +151,7 @@ test('Web mock: Markdown local resources require a base, sanitize SVG, retain fa
   });
   await page.goto('/');
   await page.getByRole('button', { name: '新建文本', exact: true }).click();
-  await page.getByRole('combobox', { name: '语言模式' }).selectOption('markdown');
+  await (await documentOptions(page)).getByRole('combobox', { name: '语言模式', exact: true }).selectOption('markdown'); await resumeEditing(page);
   await page.locator('.cm-content').focus();
   await page.keyboard.insertText('![像素](图%20100%25%23.gif)\n\n![安全SVG](picture.svg)\n\n![越界](../outside/secret.gif)\n\n![远程](https://example.com/leak.png)');
   await page.getByRole('group', { name: '主编辑组 Markdown视图' }).getByRole('button', { name: '阅读', exact: true }).click();
@@ -190,7 +191,7 @@ test('Web mock: external preview links show the exact target and require confirm
   });
   await page.goto('/');
   await page.getByRole('button', { name: '新建文本', exact: true }).click();
-  await page.getByRole('combobox', { name: '语言模式' }).selectOption('markdown');
+  await (await documentOptions(page)).getByRole('combobox', { name: '语言模式', exact: true }).selectOption('markdown'); await resumeEditing(page);
   await page.locator('.cm-content').focus();
   await page.keyboard.insertText('[外部](https://example.com/中文)\n\n[危险](javascript:alert%281%29)');
   await page.getByRole('group', { name: '主编辑组 Markdown视图' }).getByRole('button', { name: '阅读', exact: true }).click();
@@ -216,7 +217,7 @@ test('restricted HTML requires user opt-in, strips scripts and forged controls, 
   page.on('request', request => { if (request.url().startsWith('https://example.com/')) externalRequests.push(request.url()); });
   await page.goto('/');
   await page.getByRole('button', { name: '新建文本', exact: true }).click();
-  await page.getByRole('combobox', { name: '语言模式' }).selectOption('markdown');
+  await (await documentOptions(page)).getByRole('combobox', { name: '语言模式', exact: true }).selectOption('markdown'); await resumeEditing(page);
   const body = '<details open><summary>安全结构</summary><p onclick="parent.pwned=1">受限正文</p><script>parent.pwned=1</script><img src="https://example.com/leak.png" alt="HTML远程"><iframe src="https://example.com/frame"></iframe><input type="checkbox" data-task-id="0"><button data-copy-id="0">伪造复制</button></details>\n\n- [ ] 真实任务';
   const editor = page.locator('.cm-content');
   await editor.focus();
@@ -249,7 +250,7 @@ test('Markdown outline navigates source and preview; block sync follows both sid
     `## 章节 ${index + 1}\n\n段落 ${index + 1}：${'正文内容用于验证源区间同步。'.repeat(10)}\n\n`).join('');
   await page.goto('/');
   await page.getByRole('button', { name: '新建文本', exact: true }).click();
-  await page.getByRole('combobox', { name: '语言模式' }).selectOption('markdown');
+  await (await documentOptions(page)).getByRole('combobox', { name: '语言模式', exact: true }).selectOption('markdown'); await resumeEditing(page);
   const editor = page.locator('.cm-content');
   await editor.focus();
   await page.keyboard.insertText(source);

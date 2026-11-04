@@ -18,6 +18,48 @@ powershell.exe -NoProfile -File .\scripts\Probe-Environment.ps1
 . .\scripts\Enter-Dev.ps1
 ```
 
+## 在 Git Bash 中启动桌面程序
+
+以下命令在 **Windows 的 Git Bash** 中执行，使用 Bash 的 `cd` 和路径写法。项目依赖 Windows 的 MSVC、Windows SDK 和 WebView2；这里不是在 Linux / WSL 中交叉编译 Windows EXE。现有工具与缓存由 `Enter-Dev.ps1` 在子进程中初始化，不修改系统 PATH，也不切换全局 Node。
+
+```bash
+cd /e/Codeing/ai-workspace/featherpad
+
+# 环境检查：已有工具缺失时先排查，不自动安装或升级
+powershell.exe -NoProfile -File ./scripts/Probe-Environment.ps1
+
+# 启动真正的 Tauri 桌面窗口，保持此终端打开
+powershell.exe -NoProfile -Command '. ./scripts/Enter-Dev.ps1; pnpm dev; exit $LASTEXITCODE'
+```
+
+本机已安装项目依赖，可直接启动。首次启动或调试缓存变化时，需要等待 Rust 编译完成；看到 `Running ...featherpad.exe` 后会打开桌面窗口。Vite 地址为 `http://127.0.0.1:1420/`，打开网页只是在看 Web 界面，原生文件能力请在桌面窗口中使用。
+
+停止时先保存需要保留的内容并关闭桌面窗口，再在启动它的 Git Bash 中按 **Ctrl+C** 结束开发服务；若出现终止批处理的确认，输入 `Y` 并回车。重新启动时再次执行上述启动命令即可。
+
+如果以后重新拉取源码且没有 `node_modules`，先执行一次依赖安装；当前本机无需重复安装：
+
+```bash
+powershell.exe -NoProfile -Command '. ./scripts/Enter-Dev.ps1; pnpm install --frozen-lockfile; exit $LASTEXITCODE'
+```
+
+这些命令中的 PowerShell 代码必须保留外层**单引号**，避免 Git Bash 提前展开 `$LASTEXITCODE`。每次调用都在同一个 PowerShell 子进程里初始化环境并执行 pnpm；单独运行初始化脚本不会改变 Git Bash 的环境。
+
+## 在 Git Bash 中打包安装器（给其他电脑使用）
+
+在 Windows 的 Git Bash 中执行以下命令，生成可复制给其他电脑安装的 EXE 安装器。本机构建需要已有的 Node、pnpm、Rust、MSVC 和 Windows SDK；环境初始化沿用项目现有脚本，工具与缓存目录约束见 [ENVIRONMENT](docs/ENVIRONMENT.md)。
+
+```bash
+cd /e/Codeing/ai-workspace/featherpad
+powershell.exe -NoProfile -Command '. ./scripts/Enter-Dev.ps1; pnpm tauri build --bundles nsis; exit $LASTEXITCODE'
+
+# 构建成功后查看安装器
+ls -lh src-tauri/target/release/bundle/nsis/*-setup.exe
+```
+
+命令会自动构建前端、Rust Release 程序和 NSIS 安装器。完成后，将 `src-tauri/target/release/bundle/nsis/` 下以 `-setup.exe` 结尾的文件复制给其他 Windows x64 电脑，双击安装，再从开始菜单启动轻羽。目标电脑无需安装 Node、Rust 或项目源码。
+
+目标电脑需要已有 **Microsoft Edge WebView2 Runtime**；当前安装器不内嵌或自动下载它，缺失时程序会显示安装指引。安装器为当前用户安装，尚未签名。Windows 10 及最低 Runtime 版本的目标机兼容性仍未实测，现有验证环境为 Windows 11。NSIS 工具使用项目本地缓存（`src-tauri/target/.tauri/`）。
+
 ## 产品会具备什么
 
 打开文件夹和多根工作区；文件树、最近与收藏；多标签、预览/固定、双分栏；常见代码文本高亮、多光标、列选择、注释/折叠/行操作；快速打开、命令面板、可配置快捷键；文件内/全文搜索和有预览/恢复记录的跨文件替换；Markdown源码/阅读/分屏、目录、相对图片、HTML/PDF导出；格式化、文本转换、两文件diff、图片查看；多编码与换行、外部冲突、可靠保存、草稿与崩溃恢复；亮暗主题、安装/便携、CLI与显式选择加入的Windows集成。

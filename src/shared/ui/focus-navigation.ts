@@ -1,6 +1,6 @@
 export type FocusMemory = WeakMap<HTMLElement, HTMLElement>;
 const regionSelector = '.app-heading, .activity-rail, .sidebar, .document-toolbar, .document-tabs, .document-view, .welcome, .statusbar';
-const controlSelector = 'button, input, select, textarea, a[href], [tabindex]';
+const controlSelector = 'button, summary, input, select, textarea, a[href], [tabindex]';
 
 function available(element: HTMLElement) {
   return !element.matches(':disabled') && !element.closest('[hidden], [inert]')

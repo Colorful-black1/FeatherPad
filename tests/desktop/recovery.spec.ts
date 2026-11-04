@@ -1,3 +1,4 @@
+import { menuItem } from '../ui-actions';
 import { chromium, expect, test, type Page } from '@playwright/test';
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
@@ -104,7 +105,7 @@ test('real Release hot exit flushes dirty buffers, restores sources, and fences 
     await expect(app.page.getByRole('status')).toContainText('未修改');
     const diskHash = sha(await readFile(source));
     await append(app.page, ' 最新命名草稿');
-    await app.page.getByRole('button', { name: '打开文件夹', exact: true }).click();
+    await (await menuItem(app.page, '打开文件夹')).click();
     await app.chooser.select('open-folder', folder);
     await app.page.getByRole('treeitem', { name: 'second.txt', exact: true }).click();
     await expect(editor(app.page)).toHaveText('第二份原文😀');

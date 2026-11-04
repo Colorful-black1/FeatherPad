@@ -1,3 +1,4 @@
+import { menuItem } from '../ui-actions';
 import { expect, test } from './test-fixture';
 
 test('workspace replacement shows only writable files, requires final confirmation and exposes rollback outcomes', async ({ page }) => {
@@ -80,7 +81,7 @@ test('workspace replacement shows only writable files, requires final confirmati
   });
 
   await page.goto('/');
-  await page.getByRole('button', { name: '打开文件夹', exact: true }).click();
+  await (await menuItem(page, '打开文件夹')).click();
   await expect(page.getByRole('tree', { name: 'controlled-project 文件树', exact: true })).toBeVisible();
   await page.keyboard.press('Control+Shift+f');
   const search = page.getByRole('region', { name: /在文件和文件夹中查找/ });

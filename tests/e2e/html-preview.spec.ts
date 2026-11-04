@@ -1,10 +1,11 @@
+import { documentOptions, resumeEditing } from '../ui-actions';
 import { expect, test } from './test-fixture';
 
 test('HTML static preview isolates scripts, navigation, forms and remote resources without modifying source or undo', async ({ page }) => {
   const requests: string[] = [];
   page.on('request', request => { if (request.url().startsWith('https://example.com/')) requests.push(request.url()); });
   await page.goto('/'); await page.getByRole('button', { name: '新建文本', exact: true }).click();
-  await page.getByRole('combobox', { name: '语言模式', exact: true }).selectOption('html');
+  await (await documentOptions(page)).getByRole('combobox', { name: '语言模式', exact: true }).selectOption('html'); await resumeEditing(page);
   const source = '<h1 onclick="parent.htmlPwned=1">安全静态内容</h1><script>parent.htmlPwned=1</script><form action="https://example.com/post"><input autofocus onfocus="parent.htmlPwned=1"></form><a href="https://example.com/go" target="_top">链接不导航</a><iframe src="https://example.com/frame"></iframe><style>@import "https://example.com/css";</style><img src="https://example.com/leak" alt="远程图"><meta http-equiv="refresh" content="0;url=https://example.com/go">';
   const editor = page.locator('.cm-content'); await editor.focus(); await page.keyboard.insertText(source);
   const original = await page.locator('.cm-line').allTextContents();
@@ -48,7 +49,7 @@ test('HTML images need the explicit scope for unnamed documents and only verifie
     } });
   });
   await page.goto('/'); await page.getByRole('button', { name: '新建文本', exact: true }).click();
-  await page.getByRole('combobox', { name: '语言模式', exact: true }).selectOption('html');
+  await (await documentOptions(page)).getByRole('combobox', { name: '语言模式', exact: true }).selectOption('html'); await resumeEditing(page);
   await page.locator('.cm-content').focus(); await page.keyboard.insertText('<h2>本地HTML</h2><img src="本地图.gif" alt="授权图">');
   await page.getByRole('group', { name: 'HTML视图', exact: true }).getByRole('button', { name: '静态预览', exact: true }).click();
   const frame = page.frameLocator('iframe[title*="HTML静态预览"]');

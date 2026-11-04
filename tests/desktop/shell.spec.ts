@@ -1,3 +1,4 @@
+import { menuItem } from '../ui-actions';
 import { chromium, expect, test } from '@playwright/test';
 import { execFile, spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
@@ -123,6 +124,21 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
       await context.setOffline(true);
       await page.reload();
       await expect(page.getByRole('heading', { name: '快开文件，专心编辑。' })).toBeVisible();
+    }
+    if (scenario === 'smoke') {
+      await page.getByRole('menubar').getByRole('menuitem', { name: '文件', exact: true }).click();
+      await expect(page.getByRole('menu').getByRole('menuitem', { name: '保存', exact: true })).toBeDisabled();
+      await page.getByRole('menu').getByRole('menuitem', { name: '新建文本', exact: true }).click();
+      const editor = page.getByRole('textbox', { name: '文档内容', exact: true });
+      await expect(editor).toBeFocused();
+      await page.keyboard.insertText('轻羽顶部菜单 · 真实桌面检查');
+      await page.getByRole('menubar').getByRole('menuitem', { name: '转到', exact: true }).click();
+      await page.getByRole('menu').getByRole('menuitem', { name: '跳转到行列', exact: true }).click();
+      await expect(page.getByRole('dialog')).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(editor).toBeFocused();
+      await expect(editor).toHaveText('轻羽顶部菜单 · 真实桌面检查');
+      await expect(page.locator('.document-toolbar')).toHaveCount(0);
     }
     const darkButton = page.getByRole('button', { name: '切换到深色主题' });
     if (await darkButton.count() === 0) await page.getByRole('button', { name: '切换到浅色主题' }).click();
@@ -297,7 +313,7 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
         await page.keyboard.press('Control+End');
         await page.keyboard.insertText(' 副本输入');
         const copy = path.join(dataDir, '副本 保存😀.txt');
-        await page.getByRole('button', { name: '保存副本', exact: true }).click();
+        await (await menuItem(page, '保存副本')).click();
         await chooseDestination('save', copy);
         await expect(page.getByText(`副本已保存：${copy}`, { exact: true })).toBeVisible();
         await expect(page.getByRole('status')).toContainText('未保存修改');

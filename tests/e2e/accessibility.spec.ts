@@ -1,3 +1,4 @@
+import { documentOptions, resumeEditing } from '../ui-actions';
 import { expect, test } from './test-fixture';
 
 test('editor Tab focus can be discovered, toggled and retained through view recreation', async ({ page }) => {
@@ -40,7 +41,7 @@ test('editor Tab focus can be discovered, toggled and retained through view recr
   await expect(toggle).toHaveAttribute('aria-pressed', 'false');
   await page.getByRole('tab', { name: /无标题 1/ }).click();
   await expect(toggle).toHaveAttribute('aria-pressed', 'true');
-  await page.getByRole('combobox', { name: '缩进宽度' }).selectOption('2');
+  await (await documentOptions(page)).getByRole('combobox', { name: '缩进宽度', exact: true }).selectOption('2'); await resumeEditing(page);
   await expect(toggle).toHaveAttribute('aria-pressed', 'true');
   await editor.focus();
   await page.keyboard.press('Control+m');

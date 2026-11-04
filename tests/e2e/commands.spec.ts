@@ -1,3 +1,4 @@
+import { menuItem } from '../ui-actions';
 import { expect, test, type Page } from './test-fixture';
 import { readFile } from 'node:fs/promises';
 
@@ -163,7 +164,7 @@ test('Web mock: quick open uses loaded authorized candidates, distinguishes path
     } });
   });
   await page.goto('/');
-  await page.getByRole('button', { name: '打开文件夹', exact: true }).click();
+  await (await menuItem(page, '打开文件夹')).click();
   await page.getByRole('treeitem', { name: 'root.txt', exact: true }).click();
   await page.locator('.cm-content').focus();
   await page.keyboard.press('Control+End');

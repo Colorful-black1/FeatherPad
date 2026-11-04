@@ -1,3 +1,4 @@
+import { menuItem } from '../ui-actions';
 import { expect, type Page } from '@playwright/test';
 import { execFile } from 'node:child_process';
 import { mkdir, readFile, readdir, rm, stat, symlink, unlink, writeFile } from 'node:fs/promises';
@@ -87,13 +88,13 @@ export async function verifyNativeWorkspace(
   aclChanged = true;
 
   try {
-    await page.getByRole('button', { name: '打开文件夹', exact: true }).click();
+    await (await menuItem(page, '打开文件夹')).click();
     await openFolder(emptyRoot);
     const emptyTree = page.getByRole('tree', { name: `${path.basename(emptyRoot)} 文件树` });
     await expect(emptyTree).toBeVisible();
     await expect(emptyTree.getByText('此文件夹为空', { exact: true })).toBeVisible();
 
-    await page.getByRole('button', { name: '打开文件夹', exact: true }).click();
+    await (await menuItem(page, '打开文件夹')).click();
     await openFolder(deniedRoot);
     const deniedTree = page.getByRole('tree', { name: `${path.basename(deniedRoot)} 文件树` });
     await expect(deniedTree.getByRole('treeitem', { name: '恢复后根可见.txt', exact: true })).toBeVisible();
@@ -110,7 +111,7 @@ export async function verifyNativeWorkspace(
     await deniedTree.getByRole('button', { name: '重试', exact: true }).click();
     await expect(deniedTree.getByRole('treeitem', { name: '恢复后根可见.txt', exact: true })).toBeVisible();
 
-    await page.getByRole('button', { name: '打开文件夹', exact: true }).click();
+    await (await menuItem(page, '打开文件夹')).click();
     await openFolder(root);
     const rootName = path.basename(root);
     const tree = page.getByRole('tree', { name: `${rootName} 文件树` });
@@ -162,7 +163,7 @@ export async function verifyNativeWorkspace(
     await page.keyboard.press('Control+End');
     await page.keyboard.insertText(' dirty');
     await expect(page.getByRole('tab', { name: /打开 中文😀\.txt 有未保存修改/ })).toBeVisible();
-    await page.getByRole('button', { name: '打开文件夹', exact: true }).click();
+    await (await menuItem(page, '打开文件夹')).click();
     await openFolder(root);
     await expect(tree).toBeVisible();
     await expect(editor).toHaveText('原生目录内容第二行 dirty');

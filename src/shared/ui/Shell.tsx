@@ -6,6 +6,7 @@ interface ShellProps {
   sidebar: ReactNode;
   status: ReactNode;
   headerActions?: ReactNode;
+  menus?: ReactNode;
   railActions?: ReactNode;
   sidebarOpen: boolean;
   dark: boolean;
@@ -15,7 +16,7 @@ interface ShellProps {
   themeShortcut?: string | undefined;
 }
 
-export function Shell({ children, sidebar, status, headerActions, railActions, sidebarOpen, dark, onToggleSidebar, onToggleTheme, sidebarShortcut, themeShortcut }: ShellProps) {
+export function Shell({ children, sidebar, status, headerActions, menus, railActions, sidebarOpen, dark, onToggleSidebar, onToggleTheme, sidebarShortcut, themeShortcut }: ShellProps) {
   const root = useRef<HTMLDivElement>(null);
   const sidebarToggle = useRef<HTMLButtonElement>(null);
   const memory = useRef<FocusMemory>(new WeakMap());
@@ -66,7 +67,8 @@ export function Shell({ children, sidebar, status, headerActions, railActions, s
         <svg viewBox="0 0 24 24" aria-hidden="true" className="brand-mark">
           <path d="M5 21 19 3C9 2 3 8 7 16c7 2 13-3 12-13M10 14l6 0M13 10V6" />
         </svg>
-        <span>轻羽 <span className="brand-english">FeatherPad</span></span>
+        <span className="brand-name">轻羽 <span className="brand-english">FeatherPad</span></span>
+        {menus}
         {headerActions && <div className="heading-actions">{headerActions}</div>}
       </header>
       <div className="app-body">

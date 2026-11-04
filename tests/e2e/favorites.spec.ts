@@ -1,3 +1,4 @@
+import { menuItem, sidebarSection } from '../ui-actions';
 import { expect, test } from './test-fixture';
 
 test('Web mock favorites persist names and ordering independently of disabled history, repair missing entries and retain damaged data', async ({ page }) => {
@@ -37,20 +38,21 @@ test('Web mock favorites persist names and ordering independently of disabled hi
   });
   await page.goto('/');
   await page.getByRole('button', { name: '打开文件', exact: true }).click();
+  await sidebarSection(page, '收藏');
   const panel = page.getByRole('region', { name: '收藏', exact: true });
   await panel.getByRole('button', { name: '收藏当前文件', exact: true }).click();
   await expect(panel.getByRole('listitem')).toHaveCount(1);
   await panel.getByRole('button', { name: '重命名收藏 file.txt', exact: true }).click();
   await panel.getByRole('textbox', { name: '收藏名称 file.txt', exact: true }).fill('我的文档');
   await panel.getByRole('button', { name: '确定', exact: true }).click();
-  await page.getByRole('button', { name: '打开文件夹', exact: true }).click();
+  await (await menuItem(page, '打开文件夹')).click();
   await panel.getByRole('button', { name: '收藏当前根', exact: true }).click();
   await expect(panel.getByRole('listitem')).toHaveCount(2);
   await panel.getByRole('button', { name: '上移收藏 fav-root', exact: true }).click();
   await expect(panel.getByRole('listitem').first()).toContainText('fav-root');
   const stored = await page.evaluate(() => (Reflect.get(window, 'favoritesFixture') as { settings: () => Record<string, unknown> }).settings());
   expect(stored.recentHistoryItems).toBeUndefined();
-  await page.reload();
+  await page.reload(); await sidebarSection(page, '收藏');
   await expect(panel.getByRole('listitem')).toHaveCount(2);
   await expect(panel.getByRole('listitem').last()).toContainText('我的文档');
   await expect(panel.getByRole('listitem').last()).toContainText('授权失效');
@@ -63,7 +65,7 @@ test('Web mock favorites persist names and ordering independently of disabled hi
   await panel.getByRole('button', { name: '确认清空收藏', exact: true }).click();
   await expect(panel.getByRole('listitem')).toHaveCount(0);
   await page.evaluate(() => localStorage.setItem('favorites-test-settings', '{"workspaceFavorites":{"schemaVersion":99,"entries":[]}}'));
-  await page.reload();
+  await page.reload(); await sidebarSection(page, '收藏');
   await expect(panel.getByRole('alert')).toContainText('原记录已保留');
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('favorites-test-settings')!).workspaceFavorites.schemaVersion)).toBe(99);
 });

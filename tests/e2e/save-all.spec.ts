@@ -1,3 +1,4 @@
+import { menuItem } from '../ui-actions';
 import { expect, test, type Page } from './test-fixture';
 
 async function installBatchMock(page: Page, mode: 'third-failure' | 'cancel' | 'held') {
@@ -32,7 +33,7 @@ test('Web mock: save-all lists a third-item failure and keeps that buffer dirty 
   await installBatchMock(page, 'third-failure');
   await page.goto('/');
   await createDrafts(page, 4);
-  await page.getByRole('button', { name: '全部保存', exact: true }).click();
+  await (await menuItem(page, '全部保存')).click();
   const results = page.getByRole('region', { name: '全部保存', exact: true });
   await expect(results).toContainText('本次处理结束：已处理 4 / 4 份');
   const rows = results.getByRole('listitem');
@@ -54,14 +55,14 @@ test('Web mock: save-all lists a third-item failure and keeps that buffer dirty 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: test.info().outputPath('save-all-failure-web.png') });
   await results.getByRole('button', { name: '关闭保存结果' }).click();
-  await expect(page.getByRole('button', { name: '全部保存', exact: true })).toBeFocused();
+  await expect(page.getByRole('menubar').getByRole('menuitem', { name: '文件', exact: true })).toBeFocused();
 });
 
 test('Web mock: cancelled chooser stops subsequent items and a new run only retries remaining dirty drafts', async ({ page }) => {
   await installBatchMock(page, 'cancel');
   await page.goto('/');
   await createDrafts(page, 3);
-  await page.getByRole('button', { name: '全部保存', exact: true }).click();
+  await (await menuItem(page, '全部保存')).click();
   const results = page.getByRole('region', { name: '全部保存', exact: true });
   await expect(results).toContainText('本次处理结束：已处理 2 / 3 份');
   const rows = results.getByRole('listitem');
@@ -71,7 +72,7 @@ test('Web mock: cancelled chooser stops subsequent items and a new run only retr
   await expect(page.getByRole('tab', { name: /无标题 3/ })).toContainText('●');
   await expect(results.getByRole('alert')).toHaveCount(0);
   expect(await page.evaluate(() => (Reflect.get(window, 'batchRequests') as unknown[]).length)).toBe(2);
-  await page.getByRole('button', { name: '全部保存', exact: true }).click();
+  await (await menuItem(page, '全部保存')).click();
   await expect(results).toContainText('本次处理结束：已处理 2 / 2 份');
   await expect(results).toContainText('当前仍有 0 份未保存修改');
   await expect(page.getByRole('tab', { name: '保存 1.txt', exact: true })).toHaveCount(1);
@@ -82,7 +83,7 @@ test('Web mock: stopping waits for the current Ack and reports input added durin
   await installBatchMock(page, 'held');
   await page.goto('/');
   await createDrafts(page, 2);
-  await page.getByRole('button', { name: '全部保存', exact: true }).click();
+  await (await menuItem(page, '全部保存')).click();
   const results = page.getByRole('region', { name: '全部保存', exact: true });
   await expect.poll(() => page.evaluate(() => typeof Reflect.get(window, 'releaseBatchAck'))).toBe('function');
   await expect(page.getByRole('button', { name: '保存', exact: true })).toBeDisabled();

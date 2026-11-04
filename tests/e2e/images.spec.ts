@@ -1,3 +1,4 @@
+import { menuItem } from '../ui-actions';
 import { expect, test, type Page } from './test-fixture';
 
 async function fixture(page: Page, svg: boolean) {
@@ -39,7 +40,7 @@ test('GIF opens in a readonly tab with bounded zoom, actual decoded dimensions a
   await expect(page.getByRole('img', { name: 'image.gif', exact: true })).toBeVisible();
   await expect(page.getByLabel('图片尺寸与大小', { exact: true })).toContainText('1 × 1');
   await expect(page.getByRole('button', { name: '保存', exact: true })).toBeDisabled();
-  await expect(page.getByRole('button', { name: '另存为', exact: true })).toBeDisabled();
+  await expect((await menuItem(page, '另存为'))).toBeDisabled();
   await page.getByRole('button', { name: '原尺寸', exact: true }).click();
   await expect(page.getByRole('spinbutton', { name: '图片缩放百分比', exact: true })).toHaveValue('100');
   await page.getByRole('spinbutton', { name: '图片缩放百分比', exact: true }).fill('999');

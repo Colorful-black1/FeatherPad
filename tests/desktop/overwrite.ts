@@ -1,3 +1,4 @@
+import { menuItem } from '../ui-actions';
 import { expect, type Page } from '@playwright/test';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -14,14 +15,14 @@ export async function verifyNativeOverwrite(page: Page, dataDir: string, second:
   const originalTabId = await page.getByRole('tab', { name: /无标题 3/ }).getAttribute('id');
 
   async function beginOverwrite() {
-    await page.getByRole('button', { name: '另存为', exact: true }).click();
+    await (await menuItem(page, '另存为')).click();
     await nativeAction('overwrite', destination);
     await nativeAction('confirm-system', destination);
     await nativeAction('inspect-overwrite', destination);
   }
   await beginOverwrite();
   await nativeAction('reject-overwrite', destination);
-  await expect(page.getByRole('button', { name: '另存为', exact: true })).toBeEnabled();
+  await expect((await menuItem(page, '另存为'))).toBeEnabled();
   await expect(page.getByRole('tab', { name: /无标题 3/ })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('status')).toContainText('未保存修改');
   expect(await readFile(destination, 'utf8')).toBe(original);
@@ -48,14 +49,14 @@ export async function verifyNativeOverwrite(page: Page, dataDir: string, second:
   await page.locator('.cm-content').focus();
   await page.keyboard.press('Control+End');
   await page.keyboard.insertText(' 覆盖副本的新内容');
-  await page.getByRole('button', { name: '保存副本', exact: true }).click();
+  await (await menuItem(page, '保存副本')).click();
   await nativeAction('overwrite', destination);
   await nativeAction('confirm-system', destination);
   await expect(page.getByRole('alert')).toContainText('保存副本必须选择与源文档不同的文件');
   expect(await readFile(destination, 'utf8')).toBe(draft);
   const copy = path.join(dataDir, '已有 副本目标😀.txt');
   await writeFile(copy, '副本目标的受控原内容', 'utf8');
-  await page.getByRole('button', { name: '保存副本', exact: true }).click();
+  await (await menuItem(page, '保存副本')).click();
   await nativeAction('overwrite', copy);
   await nativeAction('confirm-system', copy);
   await nativeAction('inspect-overwrite', copy);
@@ -71,7 +72,7 @@ export async function verifyNativeOverwrite(page: Page, dataDir: string, second:
   const secondBefore = await readFile(second, 'utf8');
   await page.keyboard.press('Control+n');
   await page.keyboard.insertText('不能覆盖另一打开文档😀');
-  await page.getByRole('button', { name: '另存为', exact: true }).click();
+  await (await menuItem(page, '另存为')).click();
   await nativeAction('overwrite', second);
   await nativeAction('confirm-system', second);
   await expect(page.getByRole('alert')).toContainText('目标已由另一个打开的文档占用');

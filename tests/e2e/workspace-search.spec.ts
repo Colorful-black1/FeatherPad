@@ -1,3 +1,4 @@
+import { menuItem } from '../ui-actions';
 import { expect, test } from './test-fixture';
 
 test('workspace search preserves dirty buffers, forwards filters and completes a native-style cancellation', async ({ page }) => {
@@ -93,7 +94,7 @@ test('workspace search preserves dirty buffers, forwards filters and completes a
   });
 
   await page.goto('/');
-  await page.getByRole('button', { name: '打开文件夹', exact: true }).click();
+  await (await menuItem(page, '打开文件夹')).click();
   const tree = page.getByRole('tree', { name: 'controlled-project 文件树', exact: true });
   await tree.getByRole('treeitem', { name: 'a.txt', exact: true }).click();
   const editor = page.locator('.cm-content');

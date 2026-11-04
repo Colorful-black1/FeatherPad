@@ -9,6 +9,7 @@ export function EditorDocument({ registry, id, autoFocus, group }: {
   registry: DocumentRegistry; id: DocumentId; autoFocus: boolean; group: 'primary' | 'secondary';
 }) {
   const parent = useRef<HTMLDivElement>(null);
+  const restoreFocus = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const document = registry.getDocument(id);
   const readOnlyReason = document?.summary.readOnlyReason;
@@ -49,9 +50,9 @@ export function EditorDocument({ registry, id, autoFocus, group }: {
     }
     const onScroll = () => registry.setScroll(id, view, view.scrollDOM.scrollTop, view.scrollDOM.scrollLeft);
     view.scrollDOM.addEventListener('scroll', onScroll, { passive: true });
-    if (autoFocus) view.focus();
+    if (restoreFocus.current) view.focus();
     let readyFrame = 0;
-    if (autoFocus && !readOnlyReason && performance.getEntriesByName('featherpad:editor-interactive').length === 0) {
+    if (!readOnlyReason && performance.getEntriesByName('featherpad:editor-interactive').length === 0) {
       readyFrame = requestAnimationFrame(() => {
         readyFrame = requestAnimationFrame(() => {
           if (view.contentDOM.isConnected && view.hasFocus) performance.mark('featherpad:editor-interactive');
@@ -59,14 +60,18 @@ export function EditorDocument({ registry, id, autoFocus, group }: {
       });
     }
     return () => {
+      restoreFocus.current = view.hasFocus;
       cancelAnimationFrame(readyFrame);
       view.scrollDOM.removeEventListener('scroll', onScroll);
       registry.setScroll(id, view, view.scrollDOM.scrollTop, view.scrollDOM.scrollLeft);
       detachView();
       view.destroy();
     };
-  }, [id, registry, autoFocus, readOnlyReason, indentWidth, languageId, languageRevision,
+  }, [id, registry, readOnlyReason, indentWidth, languageId, languageRevision,
     bracketMatching, closeBrackets, closing, hotExitFrozen]);
+  // A focus request must not destroy and recreate the editor. Reconfiguration
+  // restores focus only if this view owned it, leaving forms and dialogs alone.
+  useLayoutEffect(() => { if (autoFocus) registry.focus(id); }, [autoFocus, id, registry]);
   if (!document) return null;
   const textPreview = document.source?.mode === 'text-preview' && document.fragment?.kind === 'head'
     ? document.fragment : null;

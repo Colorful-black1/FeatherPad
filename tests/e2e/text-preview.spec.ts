@@ -1,3 +1,4 @@
+import { documentOptions, menuItem } from '../ui-actions';
 import { expect, test } from './test-fixture';
 
 for (const code of ['IS_BINARY', 'ENCODING_REQUIRED', 'LOSSY_ENCODING', 'LARGE_BINARY']) {
@@ -46,9 +47,10 @@ for (const code of ['IS_BINARY', 'ENCODING_REQUIRED', 'LOSSY_ENCODING', 'LARGE_B
       await expect(editor).not.toHaveClass(/cm-lineWrapping/);
     } else await expect(editor).toHaveText('a␀�<script>window.previewExecuted=true</script>');
     await expect(page.getByText('只读试开', { exact: true })).toBeVisible();
-    await expect(page.getByRole('combobox', { name: '语言模式', exact: true })).toHaveValue('auto');
-    await expect(page.getByRole('combobox', { name: '语言模式', exact: true })).toBeDisabled();
-    for (const name of ['保存', '另存为', '保存副本']) await expect(page.getByRole('button', { name, exact: true })).toBeDisabled();
+    await expect((await documentOptions(page)).getByRole('combobox', { name: '语言模式', exact: true })).toHaveValue('auto');
+    await expect((await documentOptions(page)).getByRole('combobox', { name: '语言模式', exact: true })).toBeDisabled();
+    await expect(page.getByRole('button', { name: '保存', exact: true })).toBeDisabled();
+    for (const name of ['另存为', '保存副本']) await expect(await menuItem(page, name)).toBeDisabled();
     await editor.focus();
     await page.keyboard.type('cannot edit');
     await page.keyboard.press('Control+s');

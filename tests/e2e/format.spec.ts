@@ -1,3 +1,4 @@
+import { documentOptions, menuItem, resumeEditing } from '../ui-actions';
 import { expect, test } from './test-fixture';
 
 test('a terminated real formatting worker reports failure, preserves source and can retry with one undo', async ({ page }) => {
@@ -16,9 +17,9 @@ test('a terminated real formatting worker reports failure, preserves source and 
     };
   });
   await page.goto('/'); await page.getByRole('button', { name: '新建文本', exact: true }).click();
-  await page.getByRole('combobox', { name: '语言模式', exact: true }).selectOption('json');
+  await (await documentOptions(page)).getByRole('combobox', { name: '语言模式', exact: true }).selectOption('json'); await resumeEditing(page);
   const source = '{"中文":1,"value":2}', editor = page.locator('.cm-content');
-  await editor.focus(); await page.keyboard.insertText(source); await page.getByRole('button', { name: '格式化…', exact: true }).click();
+  await editor.focus(); await page.keyboard.insertText(source); await (await menuItem(page, '格式化…')).click();
   const dialog = page.getByRole('dialog', { name: '格式化文档', exact: true });
   await dialog.getByRole('button', { name: '生成格式预览', exact: true }).click();
   await expect(dialog.getByRole('alert')).toContainText('格式化器无法启动');
@@ -34,11 +35,11 @@ test('a terminated real formatting worker reports failure, preserves source and 
 test('format worker previews JSONC before applying one undo step and Java remains unsupported', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: '新建文本', exact: true }).click();
-  await page.getByRole('combobox', { name: '语言模式', exact: true }).selectOption('jsonc');
+  await (await documentOptions(page)).getByRole('combobox', { name: '语言模式', exact: true }).selectOption('jsonc'); await resumeEditing(page);
   const editor = page.locator('.cm-content');
   const source = '{/*注释*/"large":123456789012345678901234567890,"key":1,"key":2,}';
   await editor.focus(); await page.keyboard.insertText(source);
-  await page.getByRole('button', { name: '格式化…', exact: true }).click();
+  await (await menuItem(page, '格式化…')).click();
   const dialog = page.getByRole('dialog', { name: '格式化文档', exact: true });
   await dialog.getByRole('button', { name: '生成格式预览', exact: true }).click();
   const preview = dialog.getByRole('region', { name: '格式化预览', exact: true });
@@ -57,9 +58,9 @@ test('format worker previews JSONC before applying one undo step and Java remain
   expect((await page.locator('.cm-line').allTextContents()).join('\n')).toBe(output);
   await editor.focus(); await page.keyboard.press('Control+z');
   await expect(page.locator('.cm-line')).toHaveText([source]);
-  await page.getByRole('combobox', { name: '语言模式', exact: true }).selectOption('java');
-  await expect(page.getByRole('button', { name: '格式化…', exact: true })).toBeDisabled();
-  await expect(page.getByRole('button', { name: '格式化…', exact: true })).toHaveAttribute('title', /Java仅提供高亮/);
+  await (await documentOptions(page)).getByRole('combobox', { name: '语言模式', exact: true }).selectOption('java'); await resumeEditing(page);
+  await expect((await menuItem(page, '格式化…'))).toBeDisabled();
+  await expect((await menuItem(page, '格式化…'))).toHaveAttribute('title', /Java仅提供高亮/);
 });
 
 test('invalid syntax reports a location without changing the buffer; formatted HTML stays inert', async ({ page }) => {
@@ -67,20 +68,20 @@ test('invalid syntax reports a location without changing the buffer; formatted H
   page.on('request', request => { if (request.url().startsWith('https://example.com/')) requests.push(request.url()); });
   await page.goto('/');
   await page.getByRole('button', { name: '新建文本', exact: true }).click();
-  await page.getByRole('combobox', { name: '语言模式', exact: true }).selectOption('json');
+  await (await documentOptions(page)).getByRole('combobox', { name: '语言模式', exact: true }).selectOption('json'); await resumeEditing(page);
   const editor = page.locator('.cm-content');
   await editor.focus(); await page.keyboard.insertText('{\n"x":1,}');
-  await page.getByRole('button', { name: '格式化…', exact: true }).click();
+  await (await menuItem(page, '格式化…')).click();
   const dialog = page.getByRole('dialog', { name: '格式化文档', exact: true });
   await dialog.getByRole('button', { name: '生成格式预览', exact: true }).click();
   await expect(dialog.getByRole('alert')).toContainText('行2');
   await expect(dialog.getByRole('button', { name: '应用为一次撤销', exact: true })).toBeDisabled();
   await expect(page.locator('.cm-line')).toHaveText(['{', '"x":1,}']);
   await dialog.getByRole('button', { name: '取消', exact: true }).click();
-  await page.getByRole('combobox', { name: '语言模式', exact: true }).selectOption('html');
+  await (await documentOptions(page)).getByRole('combobox', { name: '语言模式', exact: true }).selectOption('html'); await resumeEditing(page);
   await editor.focus(); await page.keyboard.press('Control+a');
   await page.keyboard.insertText('<div><script>window.formatterPwned=1;</script><img src="https://example.com/leak"></div>');
-  await page.getByRole('button', { name: '格式化…', exact: true }).click();
+  await (await menuItem(page, '格式化…')).click();
   await dialog.getByRole('button', { name: '生成格式预览', exact: true }).click();
   await expect(dialog.locator('pre')).toContainText('window.formatterPwned=1;');
   expect(await page.evaluate(() => Reflect.get(window, 'formatterPwned'))).toBeUndefined();
@@ -89,13 +90,13 @@ test('invalid syntax reports a location without changing the buffer; formatted H
 
 test('SQL requires its visible dialect and YAML formatting preserves anchors, comments and block chomp through undo', async ({ page }) => {
   await page.goto('/'); await page.getByRole('button', { name: '新建文本', exact: true }).click();
-  const language = page.getByRole('combobox', { name: '语言模式', exact: true });
+  const language = (await documentOptions(page)).getByRole('combobox', { name: '语言模式', exact: true });
   await language.selectOption('sql');
   const editor = page.locator('.cm-content');
   const sql = 'select `name` from `users` where id=:id;';
   await editor.focus(); await page.keyboard.insertText(sql);
   await expect(page.locator('.cm-line')).toHaveText([sql]);
-  await page.getByRole('button', { name: '格式化…', exact: true }).click();
+  await (await menuItem(page, '格式化…')).click();
   const dialog = page.getByRole('dialog', { name: '格式化文档', exact: true });
   await expect(dialog.getByRole('combobox', { name: 'SQL格式化方言', exact: true })).toHaveValue('sql');
   await dialog.getByRole('button', { name: '生成格式预览', exact: true }).click();
@@ -108,10 +109,11 @@ test('SQL requires its visible dialect and YAML formatting preserves anchors, co
   await expect(dialog).toBeHidden();
   await editor.focus(); await page.keyboard.press('Control+z');
   await expect(page.locator('.cm-line')).toHaveText(['select `name` from `users` where id=:id;']);
-  await language.selectOption('yaml'); await editor.focus(); await page.keyboard.press('Control+a');
+  await documentOptions(page);
+  await language.selectOption('yaml'); await resumeEditing(page); await editor.focus(); await page.keyboard.press('Control+a');
   const yaml = '# 注释\nbase: &base\n   key: value\nref: *base\ntext: |-\n  literal\n';
   await page.keyboard.insertText(yaml);
-  await page.getByRole('button', { name: '格式化…', exact: true }).click();
+  await (await menuItem(page, '格式化…')).click();
   await dialog.getByRole('button', { name: '生成格式预览', exact: true }).click();
   await expect(dialog.locator('pre')).toContainText('&base');
   await expect(dialog.locator('pre')).toContainText('*base');

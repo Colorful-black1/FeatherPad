@@ -1,3 +1,4 @@
+import { menuItem } from '../ui-actions';
 import { expect, type Page } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
@@ -49,7 +50,7 @@ export async function verifyNativeTabs(page: Page, dataDir: string, evidence: st
   for (const [name, text] of [['a.txt', '甲原文😀'], ['b.txt', '乙原文😀'], ['c.txt', '丙原文😀'],
     ['trash.txt', '回收前原文😀'], ['unknown.txt', '未知回执原件😀']]) await writeFile(path.join(root, name!), text!, 'utf8');
   async function openFolder() {
-    await page.getByRole('button', { name: '打开文件夹', exact: true }).click();
+    await (await menuItem(page, '打开文件夹')).click();
     await choose('open-folder', root);
     await expect(page.getByRole('treeitem', { name: 'a.txt', exact: true })).toBeVisible();
   }
@@ -94,7 +95,7 @@ export async function verifyNativeTabs(page: Page, dataDir: string, evidence: st
   await page.screenshot({ path: path.join(evidence, 'native-close-save-conflict.png') });
   await closing(page).getByRole('button', { name: '取消', exact: true }).click();
   const retainedCopy = path.join(dataDir, 'T107 冲突保留副本😀.txt');
-  await page.getByRole('button', { name: '另存为', exact: true }).click();
+  await (await menuItem(page, '另存为')).click();
   await choose('save', retainedCopy);
   await expect(page.getByRole('status')).toContainText('未修改');
   expect(await readFile(retainedCopy, 'utf8')).toBe(intended);
@@ -174,7 +175,7 @@ export async function verifyNativeTabs(page: Page, dataDir: string, evidence: st
   await expect(editor(page)).toHaveText('未知回执原件😀 当前副本');
   await expect(editor(page)).toHaveAttribute('contenteditable', 'false');
   const uncertainCopy = path.join(dataDir, 'T107 未知回执保留副本😀.txt');
-  await page.getByRole('button', { name: '另存为', exact: true }).click();
+  await (await menuItem(page, '另存为')).click();
   await choose('save', uncertainCopy);
   await expect(editor(page)).toHaveAttribute('contenteditable', 'true');
   expect(await readFile(uncertainCopy, 'utf8')).toBe('未知回执原件😀 当前副本');

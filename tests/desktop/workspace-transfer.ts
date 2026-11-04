@@ -1,3 +1,4 @@
+import { menuItem } from '../ui-actions';
 import { expect, type Page } from '@playwright/test';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -39,7 +40,7 @@ export async function verifyNativeWorkspaceTransfer(
   await writeFile(path.join(owned, 'copy.txt'), 'copy payload 中文😀', 'utf8');
   await writeFile(path.join(directory, 'child.txt'), 'move payload', 'utf8');
   try {
-    await page.getByRole('button', { name: '打开文件夹', exact: true }).click();
+    await (await menuItem(page, '打开文件夹')).click();
     await openFolder(owned);
     await expect(page.getByRole('tree', { name: 'transfer-owned 文件树' })).toBeVisible();
 

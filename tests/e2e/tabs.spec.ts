@@ -1,3 +1,4 @@
+import { menuItem } from '../ui-actions';
 import { expect, test, type Page } from './test-fixture';
 
 async function installFiles(page: Page) {
@@ -72,7 +73,7 @@ async function installFiles(page: Page) {
 }
 
 async function folder(page: Page) {
-  await page.getByRole('button', { name: '打开文件夹', exact: true }).click();
+  await (await menuItem(page, '打开文件夹')).click();
   await expect(page.getByRole('treeitem', { name: 'a.txt', exact: true })).toBeVisible();
 }
 const fault = (page: Page, value: string | null) => page.evaluate(value => { Reflect.set(window, 'tabFault', value); }, value);
@@ -177,7 +178,7 @@ test('Web mock: an unknown release keeps a read-only full copy that explicit Sav
   await expect(editor(page)).toHaveAttribute('contenteditable', 'false');
   await expect(editor(page)).toHaveText('a original dirty');
   await fault(page, null);
-  await page.getByRole('button', { name: '另存为', exact: true }).click();
+  await (await menuItem(page, '另存为')).click();
   await expect(editor(page)).toHaveAttribute('contenteditable', 'true');
   await expect(page.getByRole('tab', { name: 'saved-copy.txt', exact: true })).toHaveAttribute('aria-selected', 'true');
   expect(await page.evaluate(() => (Reflect.get(window, 'tabFiles') as Map<string, string>).get('a.txt'))).toBe('a original');

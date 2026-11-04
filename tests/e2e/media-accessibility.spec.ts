@@ -1,3 +1,4 @@
+import { menuItem } from '../ui-actions';
 import { expect, test } from './test-fixture';
 
 function contrast(foreground: string, background: string) {
@@ -57,7 +58,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
       background: getComputedStyle(element.closest('.cm-editor')!).backgroundColor,
     }));
     expect(contrast(colors.text, colors.background)).toBeGreaterThanOrEqual(4.5);
-    await expect(page.getByRole('button', { name: '已固定', exact: true })).toHaveCSS('opacity', '1');
+    await expect((await menuItem(page, '已固定'))).toHaveCSS('opacity', '1');
     await page.keyboard.press('Control+f');
     const query = page.getByRole('textbox', { name: '查找内容', exact: true });
     await query.fill('one');

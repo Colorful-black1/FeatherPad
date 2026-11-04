@@ -1,3 +1,4 @@
+import { documentOptions, menuItem } from '../ui-actions';
 import { expect, type Page } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -38,7 +39,7 @@ export async function verifyNativeMvp(page: Page, dataDir: string, evidence: str
     { name: '中文 文本.txt', language: 'plaintext', body: '中文😀\r\n第二行' },
   ];
   await Promise.all(fixtures.map(fixture => writeFile(path.join(nested, fixture.name), fixture.body, 'utf8')));
-  await page.getByRole('button', { name: '打开文件夹', exact: true }).click();
+  await (await menuItem(page, '打开文件夹')).click();
   await choose('open-folder', root);
   const tree = page.getByRole('tree', { name: 'G1 中文工作区 文件树', exact: true });
   await expect(tree).toBeVisible();
@@ -52,7 +53,7 @@ export async function verifyNativeMvp(page: Page, dataDir: string, evidence: str
     const file = path.join(nested, fixture.name);
     await tree.getByRole('treeitem', { name: fixture.name, exact: true }).click();
     await expect(page.locator('.cm-line')).toHaveText(fixture.body.split('\r\n'));
-    const language = page.getByRole('combobox', { name: '语言模式', exact: true });
+    const language = (await documentOptions(page)).getByRole('combobox', { name: '语言模式', exact: true });
     await expect(language).toHaveValue('auto');
     await expect(language.locator('option:checked')).toHaveText(`自动（${languageLabel(fixture.language)}）`);
     await expect(status).toContainText(languageLabel(fixture.language));

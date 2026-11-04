@@ -1,3 +1,4 @@
+import { menuItem } from '../ui-actions';
 import { expect, test } from './test-fixture';
 
 test('Web mock pages bounded large-file chunks without accumulating text or exposing save actions', async ({ page }) => {
@@ -35,8 +36,8 @@ test('Web mock pages bounded large-file chunks without accumulating text or expo
   await page.getByRole('button', { name: '打开文件', exact: true }).click();
   await expect(page.getByRole('region', { name: '大文件分块只读视图' })).toContainText('first');
   await expect(page.getByRole('button', { name: '保存', exact: true })).toBeDisabled();
-  await expect(page.getByRole('button', { name: '另存为', exact: true })).toBeDisabled();
-  await expect(page.getByRole('button', { name: '保存副本', exact: true })).toBeDisabled();
+  await expect((await menuItem(page, '另存为'))).toBeDisabled();
+  await expect((await menuItem(page, '保存副本'))).toBeDisabled();
   await expect(page.getByRole('button', { name: '上一块' })).toBeDisabled();
   await page.getByRole('button', { name: '下一块' }).click();
   await expect(page.locator('.large-file-text')).toHaveText('next\n');

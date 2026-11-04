@@ -1,3 +1,4 @@
+import { menuItem } from '../ui-actions';
 import { expect, test, type Page } from './test-fixture';
 
 async function openFixture(page: Page, mode: 'success' | 'failure' | 'uncertain' = 'success') {
@@ -53,7 +54,7 @@ async function openFixture(page: Page, mode: 'success' | 'failure' | 'uncertain'
     });
   }, { mode });
   await page.goto('/');
-  await page.getByRole('button', { name: '打开文件夹', exact: true }).click();
+  await (await menuItem(page, '打开文件夹')).click();
   await page.getByRole('treeitem', { name: 'trash.txt', exact: true }).click();
   await expect(page.getByRole('tab')).toHaveAttribute('aria-selected', 'true');
   await page.locator('.cm-content').focus();

@@ -1,3 +1,4 @@
+import { documentOptions } from '../ui-actions';
 import { chromium, expect, test } from '@playwright/test';
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -81,7 +82,7 @@ test('real Release opens GBK, preserves mixed newlines, converts bytes, rejects 
     const editedGbk = Buffer.concat([original, Buffer.from('\r\nadded')]);
     await expect.poll(async () => (await readFile(source)).equals(editedGbk)).toBe(true);
     await expect(app.page.getByRole('tab', { selected: true })).toHaveAttribute('aria-description', /没有未保存修改/);
-    await app.page.getByRole('button', { name: '编码与换行', exact: true }).click();
+    await (await documentOptions(app.page)).getByRole('button', { name: '编码与换行', exact: true }).click();
     const dialog = app.page.getByRole('dialog', { name: '编码与换行', exact: true });
     await dialog.getByRole('combobox', { name: '目标编码', exact: true }).selectOption('utf-16le');
     await dialog.getByRole('combobox', { name: '目标换行', exact: true }).selectOption('lf');
@@ -124,7 +125,7 @@ test('real Release opens GBK, preserves mixed newlines, converts bytes, rejects 
     await expect(app.page.getByRole('tab', { selected: true })).toHaveAttribute('id', tabId!);
     await expect(app.page.locator('.status-end')).toContainText('GBK · MIXED');
     expect((await readFile(source)).equals(editedGbk)).toBe(true);
-    await app.page.getByRole('button', { name: '编码与换行', exact: true }).click();
+    await (await documentOptions(app.page)).getByRole('button', { name: '编码与换行', exact: true }).click();
     const lossDialog = app.page.getByRole('dialog', { name: '编码与换行', exact: true });
     await lossDialog.getByRole('combobox', { name: '目标编码', exact: true }).selectOption('windows-1252');
     await lossDialog.getByRole('button', { name: '应用转换', exact: true }).click();

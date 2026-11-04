@@ -1,3 +1,4 @@
+import { menuItem, sidebarSection } from '../ui-actions';
 import { expect, test } from './test-fixture';
 
 test('multiple roots keep dirty buffers while reordering, switching trees and revoking a root', async ({ page }) => {
@@ -29,11 +30,12 @@ test('multiple roots keep dirty buffers while reordering, switching trees and re
       }
     } });
   });
-  await page.goto('/'); await page.getByRole('button', { name: '打开文件夹', exact: true }).click();
+  await page.goto('/'); await (await menuItem(page, '打开文件夹')).click();
   await page.getByRole('treeitem', { name: 'a.txt', exact: true }).dblclick();
   const editor = page.locator('.document-view .cm-content');
   await editor.focus(); await page.keyboard.press('Control+End'); await page.keyboard.insertText(' draft');
-  await page.getByRole('button', { name: '添加根…', exact: true }).click();
+  await (await menuItem(page, '添加根…')).click();
+  await sidebarSection(page, '工作区管理');
   const list = page.getByRole('region', { name: '工作区根', exact: true });
   await expect(list.getByRole('listitem')).toHaveCount(2);
   await expect(page.getByRole('treeitem', { name: 'b.txt', exact: true })).toBeVisible();
@@ -200,7 +202,7 @@ test('Web mock lazily pages one root and keeps empty, denied, hidden and current
   await page.keyboard.press('Control+End');
   await page.keyboard.type(' edited');
   await expect(page.getByLabel('有未保存修改', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: '打开文件夹', exact: true }).click();
+  await (await menuItem(page, '打开文件夹')).click();
   await expect(tree).toBeVisible();
   await expect(editor).toHaveText('nested edited');
   await expect(page.getByLabel('有未保存修改', { exact: true })).toBeVisible();

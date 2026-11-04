@@ -1,3 +1,4 @@
+import { menuItem } from '../ui-actions';
 import { chromium, expect, test, type Page } from '@playwright/test';
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -123,7 +124,7 @@ test('real Release text previews preserve binary bytes, reject every write and r
     expect(await app.page.evaluate(() => Reflect.get(window, 'previewExecuted'))).toBeUndefined();
     await app.page.screenshot({ path: path.join(evidence, 'binary-readonly.png') });
 
-    await app.page.getByRole('button', { name: '打开文件夹', exact: true }).click();
+    await (await menuItem(app.page, '打开文件夹')).click();
     await app.chooser.select('open-folder', root);
     await app.page.getByRole('treeitem', { name: '大型二进制.bin', exact: true }).click();
     await app.page.getByRole('button', { name: '只读试开所选文件 1', exact: true }).click();

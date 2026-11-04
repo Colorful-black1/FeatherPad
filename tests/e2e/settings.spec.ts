@@ -1,4 +1,5 @@
 import { test, expect } from './test-fixture';
+import { sidebarSection } from '../ui-actions';
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
@@ -34,6 +35,7 @@ test.beforeEach(async ({ page }) => {
   });
   await page.goto('/');
   await page.getByRole('button', { name: '打开文件', exact: true }).click();
+  await sidebarSection(page, '最近打开');
   await expect(page.locator('.document-view .cm-content')).toHaveText('body');
   await expect(page.locator('.recent-panel').getByRole('button', { name: '打开settings-test.txt', exact: true })).toBeVisible();
 });

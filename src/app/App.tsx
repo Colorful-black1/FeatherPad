@@ -3,6 +3,7 @@ import { availableMonitors, getCurrentWindow, LogicalPosition, LogicalSize } fro
 import { listen } from '@tauri-apps/api/event';
 import { currentWindowId, desktopBridge, isDesktopRuntime, type DesktopDelivery } from '../bridge/desktop';
 import { Shell } from '../shared/ui/Shell';
+import { MenuBar, type MenuAction, type MenuGroup } from '../shared/ui/MenuBar';
 import { CommandPalette } from '../shared/ui/CommandPalette';
 import { files } from '../bridge/files';
 import { WorkspaceRoots } from '../features/workspace/roots';
@@ -128,6 +129,20 @@ export function App() {
   const [startupPending, setStartupPending] = useState(() => !!Reflect.get(window, '__TAURI_INTERNALS__'));
   const [workspacePanelsReady, setWorkspacePanelsReady] = useState(() => !Reflect.get(window, '__TAURI_INTERNALS__'));
   const [autoFocus, setAutoFocus] = useState(true);
+  const documentOptionsRef = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    const closeOptions = (event: Event) => {
+      const panel = documentOptionsRef.current;
+      if (panel?.open && event.target instanceof Node && !panel.contains(event.target)
+        && !panel.querySelector('dialog[open]')) panel.open = false;
+    };
+    window.document.addEventListener('pointerdown', closeOptions);
+    window.document.addEventListener('focusin', closeOptions);
+    return () => {
+      window.document.removeEventListener('pointerdown', closeOptions);
+      window.document.removeEventListener('focusin', closeOptions);
+    };
+  }, []);
   const [openingCount, setOpeningCount] = useState(0);
   const busy = openingCount > 0;
   const setBusy = useCallback((active: boolean) => { setOpeningCount(count => count + (active ? 1 : -1)); }, []);
@@ -1260,6 +1275,36 @@ export function App() {
     else tabs.focusPrimary(id);
   }
 
+  const menuCommands = new Map(commands.list(commandAvailability).map(item => [item.id, item]));
+  function menuAction(id: AppCommandId): MenuAction {
+    return menuCommands.get(id)!;
+  }
+  const workspaceBlocked = busy || savingCount > 0 || batchBusy || closingCount > 0;
+  const workspaceActions: MenuAction[] = [
+    { id: 'workspace.openFile', title: '打开工作区文件', run: () => { void workspaceFile.open().then(error => { if (error) setError(error); }); },
+      disabledReason: workspaceBlocked ? '请等待当前文件操作。' : null },
+    { id: 'workspace.saveFile', title: '保存工作区文件', run: () => { void workspaceFile.save().then(error => { if (error) setError(error); }); },
+      disabledReason: workspaceBlocked || workspaceState.roots.length === 0 ? '请先打开文件夹并等待当前操作结束。' : null },
+    { id: 'workspace.addRoot', title: '添加根…', run: () => { void addRoot(); },
+      disabledReason: workspaceBlocked || workspaceState.roots.length >= 16 ? '工作区忙碌或已达到根目录上限。' : null },
+  ];
+  const menuGroups: MenuGroup[] = [
+    { id: 'file-menu', title: '文件', sections: [(['file.new', 'window.new', 'file.open', 'workspace.open'] as const).map(menuAction),
+      workspaceActions, (['file.save', 'file.saveAs', 'file.saveCopy', 'file.saveAll'] as const).map(menuAction),
+      (['file.close', 'tabs.reopen'] as const).map(menuAction)] },
+    { title: '编辑', sections: [(['editor.toggleComment', 'editor.toggleBlockComment'] as const).map(menuAction),
+      (['editor.moveLineUp', 'editor.moveLineDown', 'editor.copyLineUp', 'editor.copyLineDown', 'editor.insertBlankLine', 'editor.complete'] as const).map(menuAction)] },
+    { title: '选择', sections: [(['editor.selectNextOccurrence', 'editor.selectAllOccurrences'] as const).map(menuAction)] },
+    { title: '视图', sections: [(['view.sidebar', 'view.theme', 'commands.open'] as const).map(menuAction),
+      (['tabs.pin', 'tabs.split', 'tabs.closeSplit', 'editor.toggleFold'] as const).map(menuAction),
+      (['tabs.closeOthers', 'tabs.closeRight', 'tabs.closeClean'] as const).map(menuAction),
+      (['editor.fontIncrease', 'editor.fontDecrease', 'editor.fontReset'] as const).map(menuAction)] },
+    { title: '转到', sections: [(['files.quickOpen', 'navigation.goToLine', 'navigation.outline'] as const).map(menuAction),
+      (['navigation.back', 'navigation.forward'] as const).map(menuAction)] },
+    { title: '工具', sections: [(['editor.find', 'search.workspace'] as const).map(menuAction),
+      (['tools.format', 'tools.transform', 'tools.compare'] as const).map(menuAction), [menuAction('settings.open')]] },
+  ];
+
   if (startupPending) return <main className="startup-screen" role="status" aria-live="polite">
     <svg viewBox="0 0 24 24" aria-hidden="true" className="brand-mark">
       <path d="M5 21 19 3C9 2 3 8 7 16c7 2 13-3 12-13M10 14l6 0M13 10V6" />
@@ -1279,13 +1324,56 @@ export function App() {
       </button>}
       sidebarOpen={sidebarOpen}
       dark={dark}
+      menus={<MenuBar groups={menuGroups} onPick={id => { void executeCommand(id); }} />}
       headerActions={<>
-        <button type="button" className="plain-button" {...commandProps('window.new')}
-          onClick={() => void executeCommand('window.new')}>新窗口 <kbd>{commands.binding('window.new') ?? ''}</kbd></button>
-        <button type="button" className="plain-button" {...commandProps('files.quickOpen')}
-          onClick={() => void executeCommand('files.quickOpen')}>快速打开 <kbd>{commands.binding('files.quickOpen') ?? ''}</kbd></button>
-        <button type="button" className="plain-button" {...commandProps('commands.open')}
-          onClick={() => void executeCommand('commands.open')}>命令面板 <kbd>{commands.binding('commands.open') ?? ''}</kbd></button>
+        {current && <div className="quick-actions" aria-label="常用文件操作">
+          {(['file.new', 'file.open', 'file.save'] as const).map(id => <button key={id} type="button"
+            className="icon-button compact" aria-label={id === 'file.new' ? '新建文本' : id === 'file.open' ? '打开文件' : '保存'}
+            {...commandProps(id)} onClick={() => void executeCommand(id)}>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d={id === 'file.new'
+              ? 'M6 3h8l4 4v14H6ZM14 3v5h5M9 14h6M12 11v6'
+              : id === 'file.open' ? 'M3 7V5h7l2 2h9v13H3ZM3 10h18'
+              : 'M4 3h13l4 4v14H4ZM8 3v7h9V3M8 21v-7h9v7'} /></svg>
+          </button>)}
+        </div>}
+        {current && <details ref={documentOptionsRef} className="document-options" onFocusCapture={() => setAutoFocus(false)} onKeyDown={event => {
+          if (event.key === 'Escape' && !(event.target instanceof Element && event.target.closest('dialog'))) {
+            event.preventDefault(); event.stopPropagation(); event.currentTarget.open = false;
+            event.currentTarget.querySelector('summary')?.focus();
+          }
+        }}>
+          <summary>文档选项</summary>
+          <div className="document-options-panel" role="group" aria-label="当前文档选项">
+            <label className="toolbar-field">缩进
+              <select aria-label="缩进宽度" value={current.indentWidth} onChange={event => {
+                const width = Number(event.currentTarget.value);
+                if (width === 2 || width === 4 || width === 8) documents.setIndentWidth(current.id, width);
+              }}>
+                <option value="2">2 空格</option><option value="4">4 空格</option><option value="8">8 空格</option>
+              </select>
+            </label>
+            <label className="toolbar-field">语言
+              <select aria-label="语言模式" disabled={currentSource?.mode === 'text-preview' || currentSource?.mode === 'image-readonly'}
+                value={current.languageSource === 'auto' ? 'auto' : current.languageId}
+                onChange={event => { void languagePreferences.choose(current.id, event.currentTarget.value as 'auto' | LanguageId); }}>
+                <option value="auto">自动（{languageLabel(current.languageId)}）</option>
+                {languageOptions.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}
+              </select>
+            </label>
+            <label className="toolbar-check"><input type="checkbox" checked={current.bracketMatching}
+              onChange={event => documents.setBracketMatching(current.id, event.currentTarget.checked)} />匹配括号</label>
+            <label className="toolbar-check"><input type="checkbox" checked={current.closeBrackets}
+              onChange={event => documents.setCloseBrackets(current.id, event.currentTarget.checked)} />自动配对</label>
+
+            {current.format.encoding !== 'binary' && <EncodingMenu key={current.id} registry={documents} summary={current}
+              blocked={busy || savingCount > 0 || batchBusy || closingCount > 0 || exitState.phase !== 'idle'} onMessage={setNotice} />}
+          </div>
+        </details>}
+        <button type="button" className="plain-button command-center" {...commandProps('commands.open')}
+          onClick={() => void executeCommand('commands.open')}>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="6" /><path d="m15 15 5 5" /></svg>
+          <span>命令面板</span><kbd>{commands.binding('commands.open') ?? ''}</kbd>
+        </button>
       </>}
       onToggleSidebar={() => void executeCommand('view.sidebar')}
       onToggleTheme={() => void executeCommand('view.theme')}
@@ -1293,25 +1381,41 @@ export function App() {
       themeShortcut={ariaShortcut(commands.binding('view.theme'))}
       sidebar={<div className="sidebar-stack">
         {workspacePanelsReady ? <>
-          <RecentList entries={recentEntries} availableGrantIds={sessionState.availableGrantIds}
-            enabled={settingsState.settings.recentHistoryEnabled}
-            busy={busy || savingCount > 0 || batchBusy || closingCount > 0}
-            onOpen={openRecent} onRepair={repairRecent} onRemove={removeRecent} onClear={clearRecent} />
+          <div className="sidebar-heading">资源管理器</div>
+          <Explorer currentReference={currentReference} onOpen={(reference, intent) => void openTreeFile(reference, intent ?? 'preview')}
+            onTrash={setTrashEntry} mutationBlocked={busy || savingCount > 0 || batchBusy || closingCount > 0}
+            onRenamed={renamed => {
+              void applyPathMappings(renamed);
+            }} />
+          <details className="sidebar-section"><summary>工作区管理</summary>
           <RootList busy={busy || savingCount > 0 || batchBusy || closingCount > 0}
             workspaceFile={workspaceFile.document?.displayPath ?? null}
             onAdd={() => void addRoot()} onRemove={root => void removeRoot(root)}
             onOpenFile={() => void workspaceFile.open().then(error => { if (error) setError(error); })}
               onSaveFile={() => void workspaceFile.save().then(error => { if (error) setError(error); })}
               onRenamed={renamed => { void applyPathMappings(renamed); }} />
+          </details>
+          <details className="sidebar-section"><summary>最近打开 <span>{recentEntries.length}</span></summary>
+          <RecentList entries={recentEntries} availableGrantIds={sessionState.availableGrantIds}
+            enabled={settingsState.settings.recentHistoryEnabled}
+            busy={busy || savingCount > 0 || batchBusy || closingCount > 0}
+            onOpen={openRecent} onRepair={repairRecent} onRemove={removeRecent} onClear={clearRecent} />
+          </details>
+          <details className="sidebar-section"><summary>收藏 <span>{favorites.entries.length}</span></summary>
           <FavoriteList entries={favorites.entries} problem={favorites.problem} availableGrantIds={sessionState.availableGrantIds}
             busy={busy || savingCount > 0 || batchBusy || closingCount > 0} canAddFile={!!currentSource} canAddRoot={!!workspaceState.root}
             onAddFile={favorites.addFile} onAddRoot={favorites.addRoot} onOpen={favorites.open} onRepair={favorites.repair}
             onChange={favorites.change} onClear={favorites.clear} />
-          <Explorer currentReference={currentReference} onOpen={(reference, intent) => void openTreeFile(reference, intent ?? 'preview')}
-            onTrash={setTrashEntry} mutationBlocked={busy || savingCount > 0 || batchBusy || closingCount > 0}
-            onRenamed={renamed => {
-              void applyPathMappings(renamed);
-            }} />
+          </details>
+          <RecoveryPanel candidates={saveTransactions} onOpen={openTransactionCopy}
+            inventory={recoveryInventory} inventoryError={recoveryInventoryError}
+            activeRecovery={snapshot.documents.filter(document => document.dirty).map(document => ({
+              id: document.id, title: document.displayPath ?? document.title, version: document.version,
+            }))}
+            onRefresh={refreshRecoveryInventory} onCleanupInactive={cleanupInactiveRecovery}
+            missingSources={sessionState.missingSources} onForget={id => session.forgetMissing(id)}
+            onReselect={kind => { if (kind === 'workspace') void openFolder(); else void openFile(); }}
+            blocked={exitState.phase !== 'idle' || busy || savingCount > 0 || batchBusy || closingCount > 0} />
         </> : <section className="sidebar-loading" aria-busy="true">
           <h2 className="sidebar-title">资源管理器</h2>
           <p className="sidebar-empty">正在载入最近记录、收藏和目录树…</p>
@@ -1332,88 +1436,21 @@ export function App() {
         commitUnknown={replacementCommitUnknown}
         onCommit={selection => void commitReplacement(selection)} onRollback={() => void rollbackReplacement()}
         onClose={closeReplacement} />}
-      <RecoveryPanel candidates={saveTransactions} onOpen={openTransactionCopy}
-        inventory={recoveryInventory} inventoryError={recoveryInventoryError}
-        activeRecovery={snapshot.documents.filter(document => document.dirty).map(document => ({
-          id: document.id, title: document.displayPath ?? document.title, version: document.version,
-        }))}
-        onRefresh={refreshRecoveryInventory} onCleanupInactive={cleanupInactiveRecovery}
-        missingSources={sessionState.missingSources} onForget={id => session.forgetMissing(id)}
-        onReselect={kind => { if (kind === 'workspace') void openFolder(); else void openFile(); }}
-        blocked={exitState.phase !== 'idle' || busy || savingCount > 0 || batchBusy || closingCount > 0} />
       <ReadOnlyOpenChoices candidates={previewCandidates}
         busy={busy || savingCount > 0 || batchBusy || closingCount > 0 || exitState.phase !== 'idle'}
         onOpen={candidate => void openReadOnlyPreview(candidate)}
         onOpenEncoding={(candidate, encoding) => void openReadOnlyPreview(candidate, encoding)}
         onCancel={mode => setPreviewCandidates(candidates => candidates.filter(candidate => candidate.mode !== mode))} />
       {current && snapshot.activeId ? <>
-        <div className="document-toolbar" aria-label="文件操作">
-          <button className="plain-button" {...commandProps('file.new')} onClick={() => void executeCommand('file.new')}>新建文本</button>
-          <button className="plain-button" {...commandProps('file.open')} onClick={() => void executeCommand('file.open')}>打开文件</button>
-          <button className="plain-button" {...commandProps('workspace.open')} onClick={() => void executeCommand('workspace.open')}>打开文件夹</button>
-          <button className="plain-button" {...commandProps('file.save')} onClick={() => void executeCommand('file.save')}>保存</button>
-          <button className="plain-button" {...commandProps('editor.find')} onClick={() => void executeCommand('editor.find')}>查找</button>
-          <button className="plain-button" {...commandProps('search.workspace')} onClick={() => void executeCommand('search.workspace')}>目录搜索</button>
-          <button id="save-all-button" className="plain-button" {...commandProps('file.saveAll')} onClick={() => void executeCommand('file.saveAll')}>全部保存</button>
-          <button className="plain-button" {...commandProps('file.saveAs')} onClick={() => void executeCommand('file.saveAs')}>另存为</button>
-          <button className="plain-button" {...commandProps('file.saveCopy')} onClick={() => void executeCommand('file.saveCopy')}>保存副本</button>
-          {current.format.encoding !== 'binary' && <EncodingMenu key={current.id} registry={documents} summary={current}
-            blocked={busy || savingCount > 0 || batchBusy || closingCount > 0 || exitState.phase !== 'idle'} onMessage={setNotice} />}
-          <button type="button" className="plain-button tab-pin-control" {...commandProps('tabs.pin')} onClick={() => void executeCommand('tabs.pin')}>{tabState.previewId === current.id ? '固定标签' : '已固定'}</button>
-          <button type="button" className="plain-button" {...commandProps('tabs.split')}
-            onClick={() => void executeCommand('tabs.split')}>向右拆分</button>
-          {secondaryEditorId && <button type="button" className="plain-button" {...commandProps('tabs.closeSplit')}
-            onClick={() => void executeCommand('tabs.closeSplit')}>关闭拆分</button>}
-          {tabState.recentlyClosed.length > 0 && <button type="button" className="plain-button" {...commandProps('tabs.reopen')}
-            onClick={() => void executeCommand('tabs.reopen')}>重新打开关闭的标签</button>}
-          {snapshot.documents.length > 1 && <button type="button" className="plain-button" {...commandProps('tabs.closeOthers')}
-            onClick={() => void executeCommand('tabs.closeOthers')}>关闭其他</button>}
-          {snapshot.documents.length > 1 && <button type="button" className="plain-button" {...commandProps('tabs.closeRight')}
-            onClick={() => void executeCommand('tabs.closeRight')}>关闭右侧</button>}
-          {snapshot.documents.some(document => !document.dirty) && <button type="button" className="plain-button" {...commandProps('tabs.closeClean')}
-            onClick={() => void executeCommand('tabs.closeClean')}>关闭已保存</button>}
-          <label className="toolbar-field">缩进
-            <select aria-label="缩进宽度" value={current.indentWidth} onChange={event => {
-              const width = Number(event.currentTarget.value);
-              if (width === 2 || width === 4 || width === 8) documents.setIndentWidth(current.id, width);
-            }}>
-              <option value="2">2 空格</option><option value="4">4 空格</option><option value="8">8 空格</option>
-            </select>
-          </label>
-          <label className="toolbar-field">语言
-            <select aria-label="语言模式" disabled={currentSource?.mode === 'text-preview' || currentSource?.mode === 'image-readonly'}
-              value={current.languageSource === 'auto' ? 'auto' : current.languageId}
-              onChange={event => { void languagePreferences.choose(current.id, event.currentTarget.value as 'auto' | LanguageId); }}>
-              <option value="auto">自动（{languageLabel(current.languageId)}）</option>
-              {languageOptions.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}
-            </select>
-          </label>
-          <button type="button" className="plain-button" {...commandProps('tools.format')} onClick={() => void executeCommand('tools.format')}>格式化…</button>
-          <button type="button" className="plain-button" {...commandProps('tools.transform')} onClick={() => void executeCommand('tools.transform')}>文本工具…</button>
-          <button type="button" className="plain-button" {...commandProps('tools.compare')} onClick={() => void executeCommand('tools.compare')}>比较文件…</button>
-          <label className="toolbar-check"><input type="checkbox" checked={current.bracketMatching}
-            onChange={event => documents.setBracketMatching(current.id, event.currentTarget.checked)} />匹配括号</label>
-          <label className="toolbar-check"><input type="checkbox" checked={current.closeBrackets}
-            onChange={event => documents.setCloseBrackets(current.id, event.currentTarget.checked)} />自动配对</label>
-        </div>
-        <Breadcrumbs displayPath={current.displayPath} language={languageLabel(current.languageId)}>
-          <button type="button" className="plain-button breadcrumb-action" {...commandProps('navigation.back')}
-            onClick={() => void executeCommand('navigation.back')}>后退</button>
-          <button type="button" className="plain-button breadcrumb-action" {...commandProps('navigation.forward')}
-            onClick={() => void executeCommand('navigation.forward')}>前进</button>
-          <button type="button" className="plain-button breadcrumb-action" {...commandProps('navigation.goToLine')}
-            onClick={() => void executeCommand('navigation.goToLine')}>行:列</button>
-          <button type="button" className="plain-button breadcrumb-action" {...commandProps('navigation.outline')}
-            onClick={() => void executeCommand('navigation.outline')}>大纲{currentOutline.length > 0 ? ` (${currentOutline.length})` : ''}</button>
-        </Breadcrumbs>
-        <FindBar registry={documents} id={current.id} version={current.version} readOnlyReason={current.readOnlyReason}
-          request={findRequest?.id === current.id ? findRequest : null} open={findOpen} onClose={() => setFindOpen(false)} />
-        <SaveAllResults />
-        <AutoSaveStatus id={current.id} />
         <TabStrip documents={snapshot.documents} activeId={snapshot.activeId} previewId={tabState.previewId}
           busy={busy || savingCount > 0 || batchBusy || closingCount > 0} onSelect={selectTab}
           onPin={id => { if (tabs.getSnapshot().previewId === id) void executeCommand('tabs.pin', id); }}
           onClose={id => void executeCommand('file.close', id)} onReorder={ids => documents.reorder(ids)} />
+        <Breadcrumbs displayPath={current.displayPath} language={languageLabel(current.languageId)} />
+        <FindBar registry={documents} id={current.id} version={current.version} readOnlyReason={current.readOnlyReason}
+          request={findRequest?.id === current.id ? findRequest : null} open={findOpen} onClose={() => setFindOpen(false)} />
+        <SaveAllResults />
+        <AutoSaveStatus id={current.id} />
         <ConflictBanner key={`conflict-${snapshot.activeId}`} id={snapshot.activeId} registry={documents} coordinator={externalChanges} saving={saves} />
         <div className={`editor-groups ${secondaryEditorId ? 'editor-groups-split' : ''}`}>
           <div className={`editor-group ${tabState.focusedGroup === 'primary' ? 'editor-group-focused' : ''}`}

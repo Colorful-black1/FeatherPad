@@ -1,3 +1,4 @@
+import { documentOptions, menuItem, resumeEditing } from '../ui-actions';
 import { expect, test } from './test-fixture';
 
 test('text tools preview the exact main selection, sort naturally and undo once without changing outer lines', async ({ page }) => {
@@ -7,7 +8,7 @@ test('text tools preview the exact main selection, sort naturally and undo once 
   await editor.focus(); await page.keyboard.insertText(source);
   await page.keyboard.press('Control+Home'); await page.keyboard.press('ArrowDown'); await page.keyboard.press('Home');
   for (let index = 0; index < 3; index++) await page.keyboard.press('Shift+ArrowDown');
-  await page.getByRole('button', { name: '文本工具…', exact: true }).click();
+  await (await menuItem(page, '文本工具…')).click();
   const dialog = page.getByRole('dialog', { name: '文本工具预览', exact: true });
   await expect(dialog.getByLabel('文本工具范围', { exact: true })).toContainText('主选区 · 2:1—5:1');
   await dialog.getByRole('checkbox', { name: '自然排序（数字段）', exact: true }).check();
@@ -22,9 +23,9 @@ test('text tools preview the exact main selection, sort naturally and undo once 
 
 test('whole-document trim warns for Markdown and cancellation leaves text untouched', async ({ page }) => {
   await page.goto('/'); await page.getByRole('button', { name: '新建文本', exact: true }).click();
-  await page.getByRole('combobox', { name: '语言模式', exact: true }).selectOption('markdown');
+  await (await documentOptions(page)).getByRole('combobox', { name: '语言模式', exact: true }).selectOption('markdown'); await resumeEditing(page);
   await page.locator('.cm-content').focus(); await page.keyboard.insertText('Markdown行尾  \n\t缩进\t');
-  await page.getByRole('button', { name: '文本工具…', exact: true }).click();
+  await (await menuItem(page, '文本工具…')).click();
   const dialog = page.getByRole('dialog', { name: '文本工具预览', exact: true });
   await expect(dialog.getByLabel('文本工具范围', { exact: true })).toContainText('全文');
   await expect(dialog.getByRole('note').filter({ hasText: 'Markdown代码' })).toBeVisible();

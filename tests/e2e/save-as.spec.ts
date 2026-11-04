@@ -1,3 +1,4 @@
+import { menuItem } from '../ui-actions';
 import { expect, test } from './test-fixture';
 
 test('Web mock: first-save cancellation preserves the draft and copy keeps the source dirty', async ({ page }) => {
@@ -30,7 +31,7 @@ test('Web mock: first-save cancellation preserves the draft and copy keeps the s
   await page.locator('.cm-content').focus();
   await page.keyboard.press('Control+End');
   await page.keyboard.insertText(' 副本中的输入');
-  await page.getByRole('button', { name: '保存副本', exact: true }).click();
+  await (await menuItem(page, '保存副本')).click();
   await expect(page.getByText(/^副本已保存：E:/)).toBeVisible();
   await expect(page.getByRole('tab')).toContainText('保存 文件.txt');
   await expect(page.getByRole('tab')).toContainText('●');
@@ -60,7 +61,7 @@ test('Web mock: a read-only complete document becomes editable after saving else
   await page.goto('/');
   await page.getByRole('button', { name: '打开文件', exact: true }).click();
   await expect(page.locator('.cm-content')).toHaveAttribute('contenteditable', 'false');
-  await page.getByRole('button', { name: '另存为', exact: true }).click();
+  await (await menuItem(page, '另存为')).click();
   await expect(page.getByRole('tab')).toHaveText('writable.txt');
   await expect(page.locator('.cm-content')).toHaveAttribute('contenteditable', 'true');
   await page.locator('.cm-content').focus();

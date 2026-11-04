@@ -1,9 +1,10 @@
+import { documentOptions, resumeEditing } from '../ui-actions';
 import { expect, test } from './test-fixture';
 
 test('Web CodeMirror: syntax selection grows, shrinks and bracket navigation preserves text', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: '新建文本', exact: true }).click();
-  await page.getByRole('combobox', { name: '语言模式' }).selectOption('json');
+  await (await documentOptions(page)).getByRole('combobox', { name: '语言模式', exact: true }).selectOption('json'); await resumeEditing(page);
   const editor = page.locator('.cm-content');
   const status = page.getByRole('status');
   const text = '{"a": {"b": 42}}';
@@ -82,13 +83,13 @@ test('Web CodeMirror: Tab, ShiftTab and 2/4/8 settings edit mixed lines as singl
   await expect(page.locator('.cm-line')).toHaveText(['    one', '      two']);
   await page.keyboard.press('Control+z');
   await expect(page.locator('.cm-line')).toHaveText(['one', '  two']);
-  await page.getByRole('combobox', { name: '缩进宽度' }).selectOption('2');
+  await (await documentOptions(page)).getByRole('combobox', { name: '缩进宽度', exact: true }).selectOption('2'); await resumeEditing(page);
   await page.keyboard.press('Control+a');
   await page.keyboard.press('Tab');
   await expect(page.locator('.cm-line')).toHaveText(['  one', '    two']);
   await page.keyboard.press('Shift+Tab');
   await expect(page.locator('.cm-line')).toHaveText(['one', '  two']);
-  await page.getByRole('combobox', { name: '缩进宽度' }).selectOption('8');
+  await (await documentOptions(page)).getByRole('combobox', { name: '缩进宽度', exact: true }).selectOption('8'); await resumeEditing(page);
   await page.keyboard.press('Control+a');
   await page.keyboard.press('Tab');
   await expect(page.locator('.cm-line')).toHaveText(['        one', '          two']);
@@ -98,7 +99,7 @@ test('Web CodeMirror: language highlighting, bracket pairing and independent fea
   await page.goto('/');
   await page.getByRole('button', { name: '新建文本', exact: true }).click();
   const editor = page.locator('.cm-content');
-  await page.getByRole('combobox', { name: '语言模式' }).selectOption('java');
+  await (await documentOptions(page)).getByRole('combobox', { name: '语言模式', exact: true }).selectOption('java'); await resumeEditing(page);
   await editor.click();
   await page.keyboard.insertText('public class Main ');
   await page.keyboard.type('{');
@@ -110,21 +111,21 @@ test('Web CodeMirror: language highlighting, bracket pairing and independent fea
   await expect(page.locator('.cm-matchingBracket')).toHaveCount(2);
   await page.keyboard.press('Backspace');
   await expect(editor).toHaveText('public class Main ');
-  await page.getByRole('checkbox', { name: '自动配对' }).uncheck();
+  await (await documentOptions(page)).getByRole('checkbox', { name: '自动配对', exact: true }).uncheck(); await resumeEditing(page);
   await page.keyboard.insertText('(');
   await expect(editor).toHaveText('public class Main (');
-  await page.getByRole('checkbox', { name: '匹配括号' }).uncheck();
+  await (await documentOptions(page)).getByRole('checkbox', { name: '匹配括号', exact: true }).uncheck(); await resumeEditing(page);
   await page.keyboard.press('Control+a');
   await page.keyboard.press('Backspace');
-  await page.getByRole('checkbox', { name: '自动配对' }).check();
+  await (await documentOptions(page)).getByRole('checkbox', { name: '自动配对', exact: true }).check(); await resumeEditing(page);
   await page.keyboard.type('[');
   await expect(editor).toHaveText('[]');
-  await expect(page.getByRole('combobox', { name: '语言模式' })).toHaveValue('java');
+  await expect((await documentOptions(page)).getByRole('combobox', { name: '语言模式', exact: true })).toHaveValue('java');
   await expect(page.getByRole('status')).toContainText('Java（手动）');
   await page.getByRole('button', { name: '新建文本', exact: true }).click();
-  await expect(page.getByRole('combobox', { name: '语言模式' })).toHaveValue('auto');
+  await expect((await documentOptions(page)).getByRole('combobox', { name: '语言模式', exact: true })).toHaveValue('auto');
   await page.getByRole('tab', { name: /无标题 1/ }).click();
-  await expect(page.getByRole('combobox', { name: '语言模式' })).toHaveValue('java');
+  await expect((await documentOptions(page)).getByRole('combobox', { name: '语言模式', exact: true })).toHaveValue('java');
   await page.screenshot({ path: test.info().outputPath('editor-web.png') });
 });
 

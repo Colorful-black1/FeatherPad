@@ -14,6 +14,27 @@
 
 ## 实施证据（未来逐任务追加）
 
+### 2026-11-04 使用反馈：顶部菜单与侧栏整理完成
+
+- 生产界面改为顶部文件/编辑/选择/视图/转到/工具菜单，复用原命令的禁用状态和实时快捷键；保留紧凑新建/打开/保存入口，文档选项按需展开，标签置于路径导航之前。侧栏优先文件树，工作区管理/最近/收藏默认折叠，恢复入口移入侧栏。设计与相关 SPEC/计划已同步，不新增 M 阶段或 IPC。
+- 配套修复 CodeMirror 焦点请求不再重建视图、选项/对话框不被重配置抢焦点、选项面板点击外部关闭、菜单避免将焦点返回隐藏控件；关闭全部保存结果返回文件菜单。测试只更新真实可见入口与相应焦点位置，原业务断言、故障检查、性能预算均保留。
+- 最新 Web 统一运行为102 passed/12 failed/2.3分钟；12项均为旧入口/侧栏展开/焦点返回假设，修复后受影响23项全部通过（37.9秒，exit0），复用其余102项，114个场景均有通过记录。日志 `.artifacts/UI-top-menu/logs/{web-complete,affected-final}.log`。此前菜单/编码9项、diff/Markdown/选项5项也实际通过；早期失败和trace保留，未修改Worker预算或测试超时。
+- 1440×900、800×560、深色与Web 200%截图已视觉检查；不声明真实Windows DPI或目标机性能验收。最终全量lint、构建内类型检查、`pnpm tauri build --bundles nsis`均exit0；Rust Release编译1m00s，复用原MSVC/Rust/NSIS，Cargo离线，无新依赖/系统工具。主包943.53kB的既有500kB警告保留，未调阈值。
+- 真实Release `smoke + encoding` 共2 passed/11.7秒/exit0，日志 `.artifacts/UI-top-menu/logs/native-final.log`。独立受控数据目录中验证真实菜单、快捷键/选区与焦点、离线重载和IPC拒绝；编码场景实际打开GBK、保留混合换行、转换并核对磁盘字节、拒绝有损重开并恢复未保存Unicode。证据根 `.artifacts/native/2026-11-04T15-37-45-911Z-44b22ae7-e452-438d-8a63-5cb2349d47a6/`，WebView2 156.0.4314.58；真实窗口截图已视觉核对并复制到 `.artifacts/UI-top-menu/native-preview.png`。
+- 最新exe17,905,152 bytes，SHA256 `4278B73F5C8D67AF9297166BAD941AB15C7641651E2AAAA9F493E07911F52551`；安装器4,825,771 bytes，SHA256 `D19D2CBBFB30CC01B16D36606725BF180CF14CBDB8F931E609D030D2EFD28639`，仍在 `src-tauri/target/release/` 与其 `bundle/nsis/`。构建记录 `.artifacts/UI-top-menu/{build.json,logs/release-nsis.log}`。本次为反馈修复，不重写M4历史构建与验收哈希，不声明完整桌面故障矩阵重验。
+- `git diff --check` exit0；文档校验仍exit1，仅既有 `docs/DELIVERY-CHECK.md` 所链接的 `.artifacts/delivery-validation.json` 缺失，未补造历史产物。菜单与选项复用原命令/处理函数，未新增授权、网络能力或数据模型；保存结果关闭焦点和弹出层外部关闭已补定向断言。
+
+### 2026-11-04 使用说明精简：只保留 NSIS 安装器
+
+- 按用户要求，README 打包说明只保留一条 Git Bash 下生成 Windows x64 NSIS 安装器的命令，补充复制安装、产物位置和 WebView2 要求；删除单独 Release EXE 与便携 ZIP 的打包步骤，未改生产配置或重新打包。
+- README Bash 代码块 `bash -n` 与 `git diff --check` exit0。`node scripts/validate-docs.mjs` exit1，唯一失败是既有 `docs/DELIVERY-CHECK.md` 引用的 `.artifacts/delivery-validation.json` 当前缺失，与本次 README 修改无关；未伪造或补写历史验收产物。
+
+### 2026-11-04 使用说明：Git Bash 启动与 EXE 打包
+
+- README 新增 Git Bash 下初始化并启动/停止真实 Tauri 桌面程序、Release EXE、NSIS 安装器及完整便携包命令，说明产物路径与 Windows 工具链要求；未改生产代码。
+- 环境探针 exit0；通过真实 Git Bash 执行 README 启动命令，Vite HTTP 200，Rust dev 编译成功（3m11s），确认 `target/debug/featherpad.exe` 原生窗口已显示。关闭窗口并 Ctrl+C 后开发会话 exit1（人工中断），进程数与 1420 监听数均为0，停止核查 exit0。
+- README Bash 代码块 `bash -n`、`node scripts/validate-docs.mjs`、`git diff --check` 均 exit0；同一 Git Bash 环境执行 `pnpm tauri build --help` exit0，确认 NSIS/no-bundle 参数。打包步骤复用现有脚本与 M4 构建证据，本轮未重新构建 Release/安装器，不新增阶段验收声明。
+
 ### 2026-11-04 M4收尾补充：按需视图与性能测量
 
 - 发布前补充按需加载Markdown/HTML/图片视图及设置、格式化、转换、比较对话框；普通文本首屏不初始化这些可选UI，加载期间沿用原registry/undo，失败可重试。新增按需对话框的焦点/组合输入交接测试，旧断言不变。

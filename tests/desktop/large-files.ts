@@ -1,3 +1,4 @@
+import { menuItem } from '../ui-actions';
 import { expect, type Page } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
@@ -29,7 +30,7 @@ export async function verifyNativeLargeFiles(
   await expect(page.locator('.large-file-text')).toContainText('x');
   await expect(page.locator('.cm-content')).toHaveCount(0);
   await expect(page.getByRole('button', { name: '保存', exact: true })).toBeDisabled();
-  await expect(page.getByRole('button', { name: '另存为', exact: true })).toBeDisabled();
+  await expect((await menuItem(page, '另存为'))).toBeDisabled();
   const beforeLength = (await page.locator('.large-file-text').textContent())?.length ?? 0;
   expect(beforeLength).toBeLessThan(64 * 1024 + 16);
   await expect(page.getByRole('button', { name: '上一块' })).toBeDisabled();
@@ -71,7 +72,7 @@ export async function verifyNativeLargeFiles(
   const headFirstScreenUpperBoundMs = performance.now() - headOpenStarted;
   const headProcessTree = await measureProcessTree(process.cwd(), processId);
   await expect(page.getByRole('button', { name: '保存', exact: true })).toBeDisabled();
-  await expect(page.getByRole('button', { name: '另存为', exact: true })).toBeDisabled();
+  await expect((await menuItem(page, '另存为'))).toBeDisabled();
   expect(createHash('sha256').update(await readFile(headTarget)).digest('hex')).toBe(headHash);
   await page.screenshot({ path: path.join(evidence, 'native-release-head-preview.png') });
   return {

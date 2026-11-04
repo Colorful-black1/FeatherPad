@@ -1,3 +1,4 @@
+import { menuItem, sidebarSection } from '../ui-actions';
 import { chromium, expect, test, type Page } from '@playwright/test';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -172,7 +173,7 @@ test('real Release persists recent files, repairs missing grants, and honors pri
     await find.getByRole('textbox', { name: '查找内容', exact: true }).fill(searchToken);
     await find.getByRole('button', { name: '关闭查找', exact: true }).click();
 
-    await app.page.getByRole('button', { name: '打开文件夹', exact: true }).click();
+    await (await menuItem(app.page, '打开文件夹')).click();
     await app.chooser.select('open-folder', workspace);
     await expect(app.page.getByRole('tree', { name: 'workspace-folder 文件树', exact: true })).toBeVisible();
     await expect.poll(async () => (await storedEntries()).length).toBe(2);
@@ -217,7 +218,8 @@ test('real Release persists recent files, repairs missing grants, and honors pri
     await stop(app);
 
     app = await launch();
-    const recent = app.page.locator('.recent-panel');
+    await sidebarSection(app.page, '最近打开');
+    const recent = app.page.locator('.recent-panel').filter({ has: app.page.locator('#recent-heading') });
     await expect(recent.getByRole('button', { name: '打开original.txt', exact: true })).toBeVisible();
     await recent.getByRole('button', { name: '打开original.txt', exact: true }).click();
     await expect(app.page.locator('.cm-content')).toHaveText(originalBody);

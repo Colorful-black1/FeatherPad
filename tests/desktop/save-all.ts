@@ -1,3 +1,4 @@
+import { menuItem } from '../ui-actions';
 import { expect, type Page } from '@playwright/test';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -6,7 +7,7 @@ export async function verifyNativeSaveAll(page: Page, dataDir: string, second: s
   chooseDestination: (action: 'save' | 'cancel', destination?: string) => Promise<void>, evidence: string) {
   // Move the first conflicted buffer to a fresh native destination before building the batch.
   await page.getByRole('tab', { name: /中文 fixture.txt/ }).click();
-  await page.getByRole('button', { name: '另存为', exact: true }).click();
+  await (await menuItem(page, '另存为')).click();
   const alternate = path.join(dataDir, '批次 第一项😀.txt');
   await chooseDestination('save', alternate);
   await expect(page.getByRole('tab', { name: '批次 第一项😀.txt', exact: true })).toHaveAttribute('aria-selected', 'true');
@@ -29,7 +30,7 @@ export async function verifyNativeSaveAll(page: Page, dataDir: string, second: s
   await page.keyboard.press('Control+n');
   await page.keyboard.insertText('第五项不应处理😀');
 
-  await page.getByRole('button', { name: '全部保存', exact: true }).click();
+  await (await menuItem(page, '全部保存')).click();
   await chooseDestination('cancel'); // Only the fourth (untitled) item needs a picker.
   const results = page.getByRole('region', { name: '全部保存', exact: true });
   await expect(results).toContainText('本次处理结束：已处理 4 / 5 份');

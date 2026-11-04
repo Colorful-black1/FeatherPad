@@ -1,3 +1,4 @@
+import { documentOptions, resumeEditing } from '../ui-actions';
 import { expect, type Page } from '@playwright/test';
 import path from 'node:path';
 
@@ -25,14 +26,14 @@ export async function verifyNativeEditor(page: Page, evidence: string) {
   await expect(status).toContainText('行 1，列 6');
   await page.keyboard.press('Control+a');
   await expect(status).toContainText('已选 10 字符');
-  await page.getByRole('combobox', { name: '缩进宽度' }).selectOption('2');
+  await (await documentOptions(page)).getByRole('combobox', { name: '缩进宽度', exact: true }).selectOption('2'); await resumeEditing(page);
   await page.keyboard.press('Control+Home');
   await page.keyboard.press('Tab');
   await expect(page.locator('.cm-line')).toHaveText(['  alpha', 'beta']);
   await page.keyboard.press('Control+z');
   await expect(page.locator('.cm-line')).toHaveText(['alpha', 'beta']);
 
-  await page.getByRole('combobox', { name: '语言模式' }).selectOption('java');
+  await (await documentOptions(page)).getByRole('combobox', { name: '语言模式', exact: true }).selectOption('java'); await resumeEditing(page);
   await editor.focus();
   await page.keyboard.press('Control+a');
   await page.keyboard.press('Backspace');
@@ -46,10 +47,10 @@ export async function verifyNativeEditor(page: Page, evidence: string) {
   await expect(page.locator('.cm-matchingBracket')).toHaveCount(2);
   await page.keyboard.press('Backspace');
   await expect(editor).toHaveText('public class Main ');
-  await page.getByRole('checkbox', { name: '自动配对' }).uncheck();
+  await (await documentOptions(page)).getByRole('checkbox', { name: '自动配对', exact: true }).uncheck(); await resumeEditing(page);
   await page.keyboard.insertText('(');
   await expect(editor).toHaveText('public class Main (');
-  await page.getByRole('checkbox', { name: '匹配括号' }).uncheck();
+  await (await documentOptions(page)).getByRole('checkbox', { name: '匹配括号', exact: true }).uncheck(); await resumeEditing(page);
   await page.screenshot({ path: path.join(evidence, 'native-release-editor.png') });
 
   await page.getByRole('button', { name: '新建文本', exact: true }).click();
@@ -76,7 +77,7 @@ export async function verifyNativeEditor(page: Page, evidence: string) {
   await expect(editor).toHaveText('clipboardclipboard');
 
   await page.getByRole('button', { name: '新建文本', exact: true }).click();
-  await page.getByRole('combobox', { name: '语言模式' }).selectOption('json');
+  await (await documentOptions(page)).getByRole('combobox', { name: '语言模式', exact: true }).selectOption('json'); await resumeEditing(page);
   await editor.focus();
   const syntaxText = '{"a": {"b": 42}}';
   await page.keyboard.insertText(syntaxText);

@@ -1,3 +1,4 @@
+import { documentOptions, resumeEditing } from '../ui-actions';
 import { expect, test } from './test-fixture';
 
 test('completed previews reuse a bounded worker while each new version renders current content', async ({ page }) => {
@@ -15,7 +16,7 @@ test('completed previews reuse a bounded worker while each new version renders c
   });
   await page.goto('/');
   await page.getByRole('button', { name: '新建文本', exact: true }).click();
-  await page.getByRole('combobox', { name: '语言模式' }).selectOption('markdown');
+  await (await documentOptions(page)).getByRole('combobox', { name: '语言模式', exact: true }).selectOption('markdown'); await resumeEditing(page);
   const editor = page.locator('.cm-content'); await editor.focus();
   await page.keyboard.insertText('# First version');
   await page.getByRole('button', { name: '分屏', exact: true }).click();
@@ -60,7 +61,7 @@ test('a nonresponsive preview worker is terminated at budget and retry retains t
   });
   await page.goto('/');
   await page.getByRole('button', { name: '新建文本', exact: true }).click();
-  await page.getByRole('combobox', { name: '语言模式' }).selectOption('markdown');
+  await (await documentOptions(page)).getByRole('combobox', { name: '语言模式', exact: true }).selectOption('markdown'); await resumeEditing(page);
   const editor = page.locator('.cm-content'); await editor.focus();
   await page.keyboard.insertText('# Kept after timeout');
   await page.getByRole('button', { name: '分屏', exact: true }).click();

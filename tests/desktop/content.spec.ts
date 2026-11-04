@@ -1,3 +1,4 @@
+import { menuItem } from '../ui-actions';
 import { chromium, expect, test } from '@playwright/test';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -74,7 +75,7 @@ test('real Release isolates image and HTML views and compares independent disk s
     await open(gif); const image = page.getByRole('img', { name: '动画.gif', exact: true });
     await expect(image).toBeVisible(); await expect(page.getByLabel('图片尺寸与大小', { exact: true })).toContainText('8 × 8');
     await expect(page.getByRole('button', { name: '保存', exact: true })).toBeDisabled();
-    await expect(page.getByRole('button', { name: '另存为', exact: true })).toBeDisabled();
+    await expect((await menuItem(page, '另存为'))).toBeDisabled();
     await page.getByRole('spinbutton', { name: '图片缩放百分比', exact: true }).fill('800');
     const frames = new Set<string>(), capture = await context.newCDPSession(page);
     const box = await image.boundingBox(); if (!box) throw new Error('GIF viewport missing');
@@ -113,7 +114,7 @@ test('real Release isolates image and HTML views and compares independent disk s
     expect(await page.evaluate(() => Reflect.get(window, 'contentPwned'))).toBeUndefined(); expect(requests).toEqual([]);
     await page.screenshot({ path: path.join(evidence, 'html-isolated.png') });
     await modes.getByRole('button', { name: '源码', exact: true }).click(); await expect(page.locator('.cm-line')).toHaveText(lines);
-    await page.getByRole('button', { name: '比较文件…', exact: true }).click(); const diff = page.getByRole('dialog', { name: '双文件对比', exact: true });
+    await (await menuItem(page, '比较文件…')).click(); const diff = page.getByRole('dialog', { name: '双文件对比', exact: true });
     await diff.getByRole('button', { name: '选择左侧磁盘文件…', exact: true }).click(); await chooser.select('open', left);
     await diff.getByRole('button', { name: '选择右侧磁盘文件…', exact: true }).click(); await chooser.select('open', right);
     await diff.getByRole('button', { name: '生成对比', exact: true }).click();

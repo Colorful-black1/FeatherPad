@@ -26,7 +26,7 @@ export function SaveAllResults() {
 
   function dismiss() {
     saveAll.dismiss();
-    document.getElementById('save-all-button')?.focus();
+    document.getElementById('file-menu')?.focus();
   }
 
   return <section className="save-all-results" aria-labelledby="save-all-heading">

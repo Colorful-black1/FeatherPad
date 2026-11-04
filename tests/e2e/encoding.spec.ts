@@ -1,3 +1,4 @@
+import { documentOptions } from '../ui-actions';
 import { test, expect } from './test-fixture';
 
 test.beforeEach(async ({ page }) => {
@@ -43,7 +44,7 @@ test.beforeEach(async ({ page }) => {
 test('Web mock: encoding loss defaults to cancel, explicit conversion and its text changes undo together', async ({ page }) => {
   const editor = page.locator('.cm-content');
   await editor.focus(); await page.keyboard.insertText('A😀中\nB');
-  const trigger = page.getByRole('button', { name: '编码与换行', exact: true });
+  const trigger = (await documentOptions(page)).getByRole('button', { name: '编码与换行', exact: true });
   await trigger.click();
   const dialog = page.getByRole('dialog', { name: '编码与换行', exact: true });
   await expect(dialog.getByRole('button', { name: '取消', exact: true })).toBeFocused();
@@ -71,7 +72,7 @@ test('Web mock: UTF16 BOM and newline-only intent are accessible and undoable at
   const editor = page.locator('.cm-content');
   await editor.focus(); await page.keyboard.insertText('中文\nsecond');
   await page.evaluate(() => { document.documentElement.style.zoom = '2'; });
-  await page.getByRole('button', { name: '编码与换行', exact: true }).click();
+  await (await documentOptions(page)).getByRole('button', { name: '编码与换行', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '编码与换行', exact: true });
   await dialog.getByRole('combobox', { name: '目标编码', exact: true }).selectOption('utf-16le');
   await expect(dialog.getByRole('combobox', { name: '目标BOM', exact: true })).toHaveValue('utf16le');

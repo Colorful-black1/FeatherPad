@@ -1,3 +1,4 @@
+import { documentOptions, resumeEditing } from '../ui-actions';
 import { expect, test } from './test-fixture';
 
 test('typing and undo survive a delayed optional Markdown module', async ({ page }) => {
@@ -10,7 +11,7 @@ test('typing and undo survive a delayed optional Markdown module', async ({ page
     await page.goto('/');
     await page.getByRole('button', { name: '新建文本', exact: true }).click();
     await page.locator('.cm-content').focus(); await page.keyboard.insertText('before load');
-    await page.getByRole('combobox', { name: '语言模式' }).selectOption('markdown');
+    await (await documentOptions(page)).getByRole('combobox', { name: '语言模式', exact: true }).selectOption('markdown'); await resumeEditing(page);
     await expect(page.getByRole('status').filter({ hasText: '正在加载视图' })).toBeVisible();
     await page.locator('.cm-content').focus(); await page.keyboard.press('Control+End');
     await page.keyboard.insertText(' while loading');
@@ -32,7 +33,7 @@ test('an unavailable optional view preserves source and offers a working retry',
   await page.goto('/');
   await page.getByRole('button', { name: '新建文本', exact: true }).click();
   await page.locator('.cm-content').focus(); await page.keyboard.insertText('kept source');
-  await page.getByRole('combobox', { name: '语言模式' }).selectOption('markdown');
+  await (await documentOptions(page)).getByRole('combobox', { name: '语言模式', exact: true }).selectOption('markdown'); await resumeEditing(page);
   await expect(page.getByRole('alert').filter({ hasText: '视图加载失败' })).toBeVisible();
   await expect(page.locator('.cm-content')).toHaveText('kept source');
   await page.getByRole('button', { name: '重试', exact: true }).click();
@@ -47,7 +48,7 @@ test('a newly loaded viewer waits for active composition and keeps its committed
   try {
     await page.goto('/');
     await page.getByRole('button', { name: '新建文本', exact: true }).click();
-    await page.getByRole('combobox', { name: '语言模式' }).selectOption('markdown');
+    await (await documentOptions(page)).getByRole('combobox', { name: '语言模式', exact: true }).selectOption('markdown'); await resumeEditing(page);
     const editor = page.locator('.cm-content'); await editor.focus();
     await editor.dispatchEvent('compositionstart', { data: '' });
     const fetched = page.waitForResponse(/\/assets\/MarkdownView-[^/]+\.js$/);

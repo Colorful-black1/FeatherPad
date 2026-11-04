@@ -1,12 +1,13 @@
+import { menuItem, sidebarSection } from '../ui-actions';
 import { expect, test } from './test-fixture';
 
 test('F6 cycles visible regions in both directions and preserves editor selection and undo', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto('/');
-  const header = page.getByRole('button', { name: /^新窗口/ });
+  const header = page.getByRole('menubar').getByRole('menuitem', { name: '文件', exact: true });
   const toggle = page.getByRole('button', { name: '切换资源管理器', exact: true });
-  const all = page.locator('.recent-panel').getByRole('button', { name: '全部', exact: true });
+  const all = page.locator('.sidebar-section > summary').filter({ hasText: '工作区管理' });
   const create = page.getByRole('button', { name: '新建文本', exact: true });
   const status = page.getByRole('status', { name: '应用状态', exact: true });
   await expect(header).toBeVisible();
@@ -28,7 +29,7 @@ test('F6 cycles visible regions in both directions and preserves editor selectio
   await page.keyboard.press('Control+a');
   const selected = await page.evaluate(() => window.getSelection()?.toString());
   const tab = page.getByRole('tab', { name: /无标题 1/ });
-  for (const target of [status, header, toggle, all, create, tab, editor]) {
+  for (const target of [status, header, toggle, all, tab, editor]) {
     await page.keyboard.press('F6');
     await expect(target).toBeFocused();
   }
@@ -46,19 +47,20 @@ test('F6 cycles visible regions in both directions and preserves editor selectio
 test('region memory returns to a prior control, skips a closed sidebar and stays inside modal dialogs', async ({ page }) => {
   await page.goto('/');
   await page.keyboard.press('Control+n');
+  await sidebarSection(page, '最近打开');
   const filter = page.locator('.recent-panel').getByRole('button', { name: '文件', exact: true });
   const toggle = page.getByRole('button', { name: '切换资源管理器', exact: true });
-  const create = page.getByRole('button', { name: '新建文本', exact: true });
+  const tab = page.getByRole('tab', { name: '无标题 1', exact: true });
   await filter.focus();
   await page.keyboard.press('F6');
-  await expect(create).toBeFocused();
+  await expect(tab).toBeFocused();
   await page.keyboard.press('Shift+F6');
   await expect(filter).toBeFocused();
   await page.keyboard.press('Control+b');
   await expect(page.getByRole('complementary', { name: '资源管理器' })).toHaveCount(0);
   await expect(toggle).toBeFocused();
   await page.keyboard.press('F6');
-  await expect(create).toBeFocused();
+  await expect(tab).toBeFocused();
   await page.keyboard.press('Shift+F6');
   await expect(toggle).toBeFocused();
   await page.keyboard.press('Enter');
@@ -80,7 +82,7 @@ test('narrow sidebar focuses on open, closes on Escape or entry into the documen
   await page.goto('/');
   const toggle = page.getByRole('button', { name: '切换资源管理器', exact: true });
   const sidebar = page.getByRole('complementary', { name: '资源管理器' });
-  const all = page.locator('.recent-panel').getByRole('button', { name: '全部', exact: true });
+  const all = page.locator('.sidebar-section > summary').filter({ hasText: '工作区管理' });
   const create = page.getByRole('button', { name: '新建文本', exact: true });
   await toggle.click();
   await expect(all).toBeFocused();
@@ -143,7 +145,7 @@ test('Web mock: selecting an already open tree file closes the narrow overlay wi
   });
   await page.setViewportSize({ width: 800, height: 560 });
   await page.goto('/');
-  await page.getByRole('button', { name: '打开文件夹', exact: true }).click();
+  await (await menuItem(page, '打开文件夹')).click();
   const file = page.getByRole('treeitem', { name: 'one.txt', exact: true });
   await expect(file).toBeVisible();
   await file.focus();

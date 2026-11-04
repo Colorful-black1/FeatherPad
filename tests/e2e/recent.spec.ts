@@ -1,3 +1,4 @@
+import { menuItem, sidebarSection } from '../ui-actions';
 import { expect, test } from './test-fixture';
 
 test('Web mock records successful opens, repairs missing entries, persists removal and honors privacy restart state', async ({ page }) => {
@@ -116,12 +117,13 @@ test('Web mock records successful opens, repairs missing entries, persists remov
   await openFile.click();
   await expect(page.locator('.cm-content')).toHaveText('note-a.txt');
 
+  await sidebarSection(page, '最近打开');
   const recent = page.getByRole('region', { name: '最近' });
   await expect(recent.getByRole('button', { name: '打开note-a.txt', exact: true })).toBeVisible();
   await openFile.click();
   await expect(recent.locator(`[data-recent-id="file:${'1'.repeat(64)}"]`)).toHaveCount(1);
 
-  await page.getByRole('button', { name: '打开文件夹', exact: true }).click();
+  await (await menuItem(page, '打开文件夹')).click();
   await expect(recent.getByRole('button', { name: '打开controlled-workspace', exact: true })).toBeVisible();
   await recent.getByRole('button', { name: '文件', exact: true }).click();
   await expect(recent.getByRole('button', { name: '打开controlled-workspace', exact: true })).toHaveCount(0);
