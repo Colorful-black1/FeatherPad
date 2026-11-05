@@ -1,10 +1,11 @@
-import { useEffect, useState, useSyncExternalStore, type CSSProperties, type DragEvent, type KeyboardEvent } from 'react';
+import { useEffect, useState, useSyncExternalStore, type CSSProperties, type DragEvent, type KeyboardEvent, type MouseEvent } from 'react';
 import type { DirectoryEntry, FileRef, RenamedDocument } from '../../shared/contracts/files';
 import { EntryInput } from './EntryInput';
 import { creationParent, findDirectoryEntry } from './file-actions';
 import { workspace, type WorkspaceSnapshot, type WorkspaceStore } from './store';
 import { defaultIgnoredDirectories, parsePatternLines } from './filters';
 import { dragPayload, parseDragPayload, transferConfirmation, transferMode, workspaceDragType } from './drag-drop';
+import { ExplorerContextMenu, type ExplorerMenuTarget } from './ExplorerContextMenu';
 
 interface ExplorerProps {
   currentReference: FileRef | undefined;
@@ -12,6 +13,9 @@ interface ExplorerProps {
   onRenamed?: ((documents: readonly RenamedDocument[]) => void) | undefined;
   onTrash?: ((entry: DirectoryEntry) => void) | undefined;
   mutationBlocked?: boolean;
+  onNewText?: () => void;
+  onChooseFile?: () => void;
+  onChooseFolder?: () => void;
   store?: WorkspaceStore;
 }
 
@@ -229,7 +233,7 @@ function DirectoryContents({
         store={store}
       />
     </div>)}
-    {creating && <EntryInput
+    {creating && record.loaded && !record.loading && !record.error && <EntryInput
       depth={depth}
       mode={editing.mode}
       onSubmit={async name => {
@@ -255,10 +259,12 @@ function DirectoryContents({
   </div>;
 }
 
-export function Explorer({ currentReference, onOpen, onRenamed, onTrash, mutationBlocked = false, store = workspace }: ExplorerProps) {
+export function Explorer({ currentReference, onOpen, onRenamed, onTrash, onNewText, onChooseFile, onChooseFolder,
+  mutationBlocked = false, store = workspace }: ExplorerProps) {
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);
   const [editing, setEditing] = useState<EditingEntry | null>(null);
   const [focusPath, setFocusPath] = useState<string | null>(null);
+  const [menuTarget, setMenuTarget] = useState<ExplorerMenuTarget | null>(null);
   const root = snapshot.root;
   const currentInRoot = snapshot.roots.some(item => currentReference?.grantId === item.grant.grantId);
   const selectedEntry = snapshot.selectedPath
@@ -270,6 +276,31 @@ export function Explorer({ currentReference, onOpen, onRenamed, onTrash, mutatio
   const createRecord = createParent ? snapshot.records[createParent.relativePath] : null;
   const canCreate = Boolean(createParent && createRecord?.loaded
     && !createRecord.loading && !createRecord.error);
+  const menuEntry = menuTarget?.path ? findDirectoryEntry(snapshot, menuTarget.path) : null;
+  const menuParent = menuTarget && root ? creationParent({ ...snapshot, selectedPath: menuTarget.path }) : null;
+  const menuParentEntry = menuParent?.relativePath ? findDirectoryEntry(snapshot, menuParent.relativePath) : null;
+  const editReason = mutationBlocked || editing ? '请先结束当前操作。' : null;
+  const createReason = editReason ?? (!menuParent ? '请先打开文件夹。'
+    : menuParentEntry?.isReadOnly || (menuParentEntry && menuParentEntry.kind !== 'directory') ? '此目录不支持新建。' : null);
+  const renameReason = editReason ?? (!menuEntry || ['junction', 'symlink'].includes(menuEntry.kind)
+    ? '此项目不支持修改。' : null);
+
+  useEffect(() => { setMenuTarget(null); }, [root?.grant.grantId]);
+
+  useEffect(() => {
+    if (currentReference && currentInRoot) void store.locate(currentReference);
+  }, [currentReference?.grantId, currentReference?.relativePath, currentInRoot, store]);
+
+  useEffect(() => {
+    if (!snapshot.selectedPath) return;
+    const frame = requestAnimationFrame(() => {
+      const tree = document.querySelector<HTMLElement>('[data-workspace-tree]');
+      const row = [...(tree?.querySelectorAll<HTMLElement>('[role="treeitem"]') ?? [])]
+        .find(candidate => candidate.dataset.treeKey === snapshot.selectedPath);
+      row?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [snapshot.selectedPath, root?.grant.grantId]);
 
   useEffect(() => {
     if (!focusPath) return;
@@ -292,16 +323,36 @@ export function Explorer({ currentReference, onOpen, onRenamed, onTrash, mutatio
     if (nextFocus) setFocusPath(nextFocus);
   }
 
-  function beginCreate(mode: 'create-file' | 'create-directory') {
-    const parent = createParent;
-    if (!canCreate || !parent) return;
+  function beginCreate(mode: 'create-file' | 'create-directory', parent = createParent) {
+    if (!parent || mutationBlocked || editing) return;
     if (parent.relativePath) {
       const entry = findDirectoryEntry(snapshot, parent.relativePath);
       if (entry?.kind === 'directory' && !snapshot.expanded[parent.relativePath]) {
         store.toggleDirectory(entry);
       }
     }
+    if (snapshot.records[parent.relativePath]?.error) store.refresh(parent);
     setEditing({ mode, parent });
+  }
+
+  function showMenu(event: MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>) {
+    if (!(event.target instanceof Element) || event.target.closest('input, textarea, [role="menu"]')) return;
+    const row = event.target.closest<HTMLElement>('[role="treeitem"]');
+    // Keep native menus on controls such as filters and the inline name editor.
+    if (!row && event.target.closest('button, label, summary, details')) return;
+    event.preventDefault(); event.stopPropagation();
+    const path = row?.dataset.treeKey ?? null;
+    const entry = path ? findDirectoryEntry(snapshot, path) : null;
+    if (entry) store.select(entry);
+    const origin = row ?? event.target.closest<HTMLElement>('.tree-root-label') ?? event.currentTarget;
+    const bounds = origin.getBoundingClientRect();
+    let x = bounds.left + 12;
+    let y = bounds.top + Math.min(bounds.height, 28);
+    if ('clientX' in event && (event.clientX !== 0 || event.clientY !== 0)) {
+      x = event.clientX; y = event.clientY;
+    }
+    setMenuTarget({ path, grantId: root?.grant.grantId ?? null, origin,
+      x, y });
   }
 
   async function transferToRoot(event: DragEvent<HTMLElement>) {
@@ -318,7 +369,8 @@ export function Explorer({ currentReference, onOpen, onRenamed, onTrash, mutatio
     else onRenamed?.(result.value.renamedDocuments);
   }
 
-  return <section className="workspace-explorer" aria-label="文件树" onKeyDown={event => {
+  return <section className="workspace-explorer" aria-label="文件树" tabIndex={-1} onContextMenu={showMenu} onKeyDown={event => {
+    if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) { showMenu(event); return; }
     if (event.key !== 'Delete' || editing || mutationBlocked || !onTrash || !(event.target instanceof HTMLElement)) return;
     const key = event.target.closest<HTMLElement>('[role="treeitem"]')?.dataset.treeKey;
     const entry = key ? findDirectoryEntry(snapshot, key) : null;
@@ -355,7 +407,12 @@ export function Explorer({ currentReference, onOpen, onRenamed, onTrash, mutatio
         </button>}
       </div>
     </div>
-    {!root && <p className="sidebar-empty">尚未打开文件夹</p>}
+    {(onChooseFile || onChooseFolder) && <div className="explorer-open-actions">
+      {onChooseFile && <button type="button" className="plain-button" disabled={mutationBlocked} onClick={onChooseFile}>打开文件…</button>}
+      {onChooseFolder && <button type="button" className="plain-button" disabled={mutationBlocked} onClick={onChooseFolder}>打开文件夹…</button>}
+    </div>}
+    <p className="explorer-help">右键文件、文件夹或空白处，查看可用操作</p>
+    {!root && <p className="sidebar-empty">尚未打开文件夹，请点击上方“打开文件夹”。</p>}
     {root && <>
       <label className="explorer-filter">
         <input type="checkbox" checked={snapshot.showHidden} onChange={event => store.setShowHidden(event.target.checked)} />
@@ -385,7 +442,7 @@ export function Explorer({ currentReference, onOpen, onRenamed, onTrash, mutatio
         </label>
         <small>默认排除 {defaultIgnoredDirectories.join('、')}；显式包含规则可临时覆盖其余默认目录。</small>
       </details>
-      <div className="tree-root-label" data-drop-target="true"
+      <div className="tree-root-label" data-drop-target="true" tabIndex={0}
         onDragOver={event => {
           event.preventDefault();
           event.dataTransfer.dropEffect = event.ctrlKey ? 'copy' : 'move';
@@ -410,5 +467,28 @@ export function Explorer({ currentReference, onOpen, onRenamed, onTrash, mutatio
         />
       </div>
     </>}
+    {menuTarget && menuTarget.grantId === (root?.grant.grantId ?? null) && <ExplorerContextMenu
+      target={menuTarget} onClose={() => setMenuTarget(null)} sections={[
+        ...(menuEntry?.kind === 'file' ? [[{ id: 'open', title: '打开文件', run: () => onOpen(menuEntry.ref, 'pinned') }]]
+          : menuEntry?.kind === 'directory' ? [[{ id: 'expand', title: snapshot.expanded[menuEntry.ref.relativePath] ? '折叠文件夹' : '展开文件夹',
+            run: () => store.toggleDirectory(menuEntry) }]] : []),
+        [
+          { id: 'create-file', title: '新建文件…', disabledReason: createReason, run: () => beginCreate('create-file', menuParent) },
+          { id: 'create-directory', title: '新建文件夹…', disabledReason: createReason, run: () => beginCreate('create-directory', menuParent) },
+          ...(onNewText ? [{ id: 'new-text', title: '新建未命名文本', disabledReason: editReason, run: onNewText }] : []),
+        ],
+        ...(menuEntry ? [[
+          { id: 'rename', title: '重命名…', binding: 'F2', disabledReason: renameReason,
+            run: () => beginEditing({ mode: 'rename', parent: menuEntry.ref, entry: menuEntry }) },
+          ...(onTrash ? [{ id: 'trash', title: '移至回收站', binding: 'Delete', disabledReason: renameReason,
+            run: () => onTrash(menuEntry) }] : []),
+        ]] : []),
+        [
+          ...(onChooseFile ? [{ id: 'choose-file', title: '打开其他文件…', disabledReason: editReason, run: onChooseFile }] : []),
+          ...(onChooseFolder ? [{ id: 'choose-folder', title: '打开文件夹…', disabledReason: editReason, run: onChooseFolder }] : []),
+          { id: 'refresh', title: '刷新目录', disabledReason: editReason ?? (!root ? '请先打开文件夹。' : null),
+            run: () => store.refresh(menuParent) },
+        ],
+      ]} />}
   </section>;
 }

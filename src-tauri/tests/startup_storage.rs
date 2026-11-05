@@ -22,6 +22,76 @@ fn fixture() -> (PathBuf, PathBuf, RecoveryStore) {
 }
 
 #[test]
+fn completed_journals_are_quiet_but_cleanup_failures_and_unknown_evidence_warn() {
+    use featherpad_lib::{
+        models::SaveRequest,
+        services::save_journal::{SaveJournal, SaveStage},
+    };
+    let (root, transactions, recovery) = fixture();
+    let request = SaveRequest {
+        document_id: uuid::Uuid::new_v4().to_string(),
+        request_id: uuid::Uuid::new_v4().to_string(),
+        document_version: 1,
+        expected_disk_revision: String::new(),
+        text: "saved body".into(),
+        format: TextFormat {
+            encoding: "utf-8".into(),
+            bom: "none".into(),
+            line_ending: "lf".into(),
+        },
+        newline_map: None,
+    };
+    let journal = SaveJournal::prepare_creation(
+        &transactions,
+        &request,
+        &root.join("saved.txt"),
+        b"saved body",
+    )
+    .unwrap();
+    journal.stage(SaveStage::Committed).unwrap();
+    let receipt_id = journal.manifest.receipt_id.clone();
+    let directory = journal.directory.clone();
+    let backup = journal.manifest.backup.clone();
+    drop(journal);
+
+    for _ in 0..2 {
+        let scan = scan_save_transactions(&transactions, &recovery).unwrap();
+        assert!(scan.warnings.is_empty(), "{:?}", scan.warnings);
+        assert!(scan.candidates.is_empty());
+        assert!(scan.bytes > 0);
+        assert_eq!(fs::read(directory.join("body.bin")).unwrap(), b"saved body");
+        assert!(directory.join("original.bin").is_file());
+        assert!(load_save_transaction(&transactions, &receipt_id, &recovery).is_err());
+    }
+
+    fs::write(&backup, b"retained backup").unwrap();
+    fs::write(directory.join("unknown.bin"), b"unknown evidence").unwrap();
+    let scan = scan_save_transactions(&transactions, &recovery).unwrap();
+    assert!(scan.warnings.iter().any(|warning| warning.contains("备份")));
+    assert!(scan.warnings.iter().any(|warning| warning.contains("未知证据")));
+    assert!(scan.candidates.is_empty());
+    assert_eq!(fs::read(&backup).unwrap(), b"retained backup");
+    assert_eq!(fs::read(directory.join("unknown.bin")).unwrap(), b"unknown evidence");
+
+    fs::write(
+        directory.join("cleanup-pending.json"),
+        serde_json::to_vec(&serde_json::json!({
+            "receiptId": receipt_id, "stage": "cleanup-pending",
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let pending = scan_save_transactions(&transactions, &recovery).unwrap();
+    assert!(pending.warnings.iter().any(|warning| warning.contains("清理曾失败")));
+    assert!(pending.candidates.is_empty());
+
+    fs::write(directory.join("body.bin"), b"damaged").unwrap();
+    let damaged = scan_save_transactions(&transactions, &recovery).unwrap();
+    assert!(damaged.warnings.iter().any(|warning| warning.contains("无法完整核对")));
+    assert!(damaged.candidates.is_empty());
+}
+
+#[test]
 fn unfinished_save_evidence_is_retained_and_obeys_the_discard_marker() {
     let (root, transactions, recovery) = fixture();
     let document_id = uuid::Uuid::new_v4().to_string();

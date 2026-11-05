@@ -1326,12 +1326,13 @@ export function App() {
       headerActions={<>
         {current && <div className="quick-actions" aria-label="常用文件操作">
           {(['file.new', 'file.open', 'file.save'] as const).map(id => <button key={id} type="button"
-            className="icon-button compact" aria-label={id === 'file.new' ? '新建文本' : id === 'file.open' ? '打开文件' : '保存'}
+            className="plain-button quick-file-action" aria-label={id === 'file.new' ? '新建文本' : id === 'file.open' ? '打开文件' : '保存'}
             {...commandProps(id)} onClick={() => void executeCommand(id)}>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d={id === 'file.new'
               ? 'M6 3h8l4 4v14H6ZM14 3v5h5M9 14h6M12 11v6'
               : id === 'file.open' ? 'M3 7V5h7l2 2h9v13H3ZM3 10h18'
               : 'M4 3h13l4 4v14H4ZM8 3v7h9V3M8 21v-7h9v7'} /></svg>
+            <span>{id === 'file.new' ? '新建' : id === 'file.open' ? '打开' : '保存'}</span>
           </button>)}
         </div>}
         {current && <details ref={documentOptionsRef} className="document-options" onFocusCapture={() => setAutoFocus(false)} onKeyDown={event => {
@@ -1381,6 +1382,9 @@ export function App() {
         {workspacePanelsReady ? <>
           <div className="sidebar-heading">资源管理器</div>
           <Explorer currentReference={currentReference} onOpen={(reference, intent) => void openTreeFile(reference, intent ?? 'preview')}
+            onNewText={() => void executeCommand('file.new')}
+            onChooseFile={() => void executeCommand('file.open')}
+            onChooseFolder={() => void executeCommand('workspace.open')}
             onTrash={setTrashEntry} mutationBlocked={busy || savingCount > 0 || batchBusy || closingCount > 0}
             onRenamed={renamed => {
               void applyPathMappings(renamed);

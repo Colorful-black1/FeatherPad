@@ -76,6 +76,7 @@ export class WorkspaceStore {
   private readonly rootStates = new Map<string, WorkspaceSnapshot>();
   private showHidden = false;
   private selectedPath: string | null = null;
+  private locateVersion = 0;
   private rootError: string | null = null;
   private filters: WorkspaceFilters = { ...defaultWorkspaceFilters };
   private syncStatus: WorkspaceSnapshot['syncStatus'] = { kind: 'ready', message: null };
@@ -494,6 +495,7 @@ export class WorkspaceStore {
   }
 
   async locate(reference: FileRef): Promise<boolean> {
+    const locateVersion = ++this.locateVersion;
     if (this.root?.grant.grantId !== reference.grantId && this.roots.some(root => root.grant.grantId === reference.grantId)) {
       this.activateRoot(reference.grantId);
     }
@@ -502,13 +504,16 @@ export class WorkspaceStore {
       this.publish();
       return false;
     }
+    const generation = this.generation;
+    const isCurrent = () => generation === this.generation && locateVersion === this.locateVersion;
     const segments = reference.relativePath.split('/').filter(Boolean);
     if (segments.length === 0) return false;
     let parent = this.root.grant;
     for (let index = 0; index < segments.length; index++) {
       const record = await this.ensureDirectory(parent);
-      if (!record) return false;
+      if (!record || !isCurrent()) return false;
       const entry = await this.findEntry(parent, segments[index]!);
+      if (!isCurrent()) return false;
       if (!entry) {
         this.rootError = `无法定位“${reference.relativePath}”；目录可能已被外部修改。`;
         this.publish();

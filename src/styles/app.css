@@ -32,6 +32,9 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round
 .menu-separator { height: 1px; margin: var(--space-1); background: var(--border); }
 .heading-actions { align-items: center; }
 .quick-actions { display: flex; gap: 2px; }
+.quick-file-action { display: inline-flex; align-items: center; gap: var(--space-1); white-space: nowrap; }
+.quick-file-action svg { width: 14px; height: 14px; }
+.explorer-context-menu { position: fixed; z-index: 100; max-height: calc(100dvh - 16px); min-width: min(224px, calc(100vw - 16px)); max-width: calc(100vw - 16px); }
 .heading-actions .command-center { display: flex; align-items: center; gap: var(--space-2); min-height: 28px; min-width: 160px; color: var(--text-secondary); border-color: var(--border); }
 .command-center svg { width: 14px; height: 14px; }
 .command-center kbd { margin-left: auto; }
@@ -102,6 +105,9 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round
 .sidebar-stack > .workspace-explorer { flex: 1 0 180px; min-height: 180px; }
 .workspace-explorer { display: flex; min-height: 100%; flex-direction: column; }
 .explorer-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-1); padding: 0 var(--space-2) var(--space-1); }
+.explorer-open-actions { display: flex; flex-wrap: wrap; gap: var(--space-1); padding: var(--space-1) var(--space-3); }
+.explorer-open-actions .plain-button { padding: var(--space-1) var(--space-2); font-size: 11px; }
+.explorer-help { margin: var(--space-1) var(--space-3) var(--space-2); color: var(--text-secondary); font-size: 11px; }
 .explorer-heading .sidebar-title { flex: 1 0 100%; padding: var(--space-2) var(--space-2) var(--space-1); }
 .explorer-actions { display: flex; flex-wrap: wrap; gap: 2px; }
 .icon-button.compact { width: 28px; height: 28px; }

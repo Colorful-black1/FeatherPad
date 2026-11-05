@@ -138,6 +138,20 @@ it('keeps a failed directory visible for retry and refuses a file outside its ro
   expect(store.getSnapshot().rootError).toContain('不在');
 });
 
+it('keeps the latest active file selected when automatic locate requests overlap', async () => {
+  const first = entry('first.txt', 'first.txt');
+  const latest = entry('latest.txt', 'latest.txt');
+  let finish!: (value: ResultEnvelope<DirectoryPage>) => void;
+  const store = new WorkspaceStore(() => new Promise(resolve => { finish = resolve; }));
+  store.setRoot({ grant, displayName: 'fixture-root' });
+  const earlier = store.locate(first.ref);
+  const later = store.locate(latest.ref);
+  finish({ ok: true, value: { items: [first, latest], nextCursor: null } });
+  expect(await earlier).toBe(false);
+  expect(await later).toBe(true);
+  expect(store.getSnapshot().selectedPath).toBe('latest.txt');
+});
+
 it('refreshes an expanded child and discards its older in-flight page', async () => {
   const folder = entry('folder', 'folder', 'directory');
   const staleFile = entry('stale.txt', 'folder/stale.txt');

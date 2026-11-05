@@ -172,6 +172,21 @@ fn inspect_entry(
         ));
     }
 
+    // Successful saves intentionally retain the journal body/original as evidence.
+    // Their presence alone is not a cleanup failure; external leftovers and
+    // unknown entries have already produced warnings above.
+    if matches!(latest_stage, 4 | 5) {
+        if latest_stage == 5 {
+            warnings.push(format!(
+                "保存事务“{receipt_id}”已提交，但备份清理曾失败；已保留事务证据。"
+            ));
+        }
+        return Ok(EntryScan {
+            warnings,
+            candidate: None,
+        });
+    }
+
     let discarded = match recovery.is_discarded(&manifest.document_id, manifest.document_version) {
         Ok(discarded) => discarded,
         Err(error) => {
@@ -189,10 +204,6 @@ fn inspect_entry(
     if discarded {
         warnings.push(format!(
             "保存事务“{receipt_id}”对应版本已明确放弃；证据仍保留，但不作为恢复候选。"
-        ));
-    } else if matches!(latest_stage, 4 | 5) {
-        warnings.push(format!(
-            "保存事务“{receipt_id}”已提交但尚未清理，已保留事务证据。"
         ));
     } else {
         candidate = Some(SaveTransactionCandidate {
