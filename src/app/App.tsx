@@ -1306,9 +1306,7 @@ export function App() {
   ];
 
   if (startupPending) return <main className="startup-screen" role="status" aria-live="polite">
-    <svg viewBox="0 0 24 24" aria-hidden="true" className="brand-mark">
-      <path d="M5 21 19 3C9 2 3 8 7 16c7 2 13-3 12-13M10 14l6 0M13 10V6" />
-    </svg>
+    <img src="/favicon.svg" alt="" aria-hidden="true" className="brand-mark" />
     <p>正在恢复本地会话…</p>
   </main>;
 

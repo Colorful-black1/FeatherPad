@@ -15,6 +15,7 @@ import { prepareRawHtml } from './raw-html';
 import { Outline } from './Outline';
 import { useMarkdownScroll } from './scroll-sync';
 import { ExportDialog } from './ExportDialog';
+import { loadMarkdownMode, saveMarkdownMode, type MarkdownMode } from '../../shared/ui/view-preferences';
 
 export interface MarkdownViewProps {
   registry: DocumentRegistry; id: DocumentId; autoFocus: boolean;
@@ -23,14 +24,13 @@ export interface MarkdownViewProps {
   onActivate?: () => void;
   onOpenFile?: (reference: FileRef) => void;
 }
-type MarkdownMode = 'source' | 'read' | 'split';
-
 export function MarkdownView({ registry, id, autoFocus, group, dark, allowHtml, onActivate, onOpenFile }: MarkdownViewProps) {
   const root = useRef<HTMLDivElement>(null);
-  const [mode, setMode] = useState<MarkdownMode>('source');
+  const [modePreference] = useState(loadMarkdownMode);
+  const [mode, setMode] = useState<MarkdownMode>(modePreference.value);
   const [ratio, setRatio] = useState(50);
   const [compact, setCompact] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(modePreference.warning);
   const [directory, setDirectory] = useState<FileRef | null>(null);
   const [syncScroll, setSyncScroll] = useState(true);
   const [exportOpen, setExportOpen] = useState(false);
@@ -109,6 +109,8 @@ export function MarkdownView({ registry, id, autoFocus, group, dark, allowHtml, 
 
   function changeMode(next: MarkdownMode) {
     setMode(next);
+    const warning = saveMarkdownMode(next);
+    setNotice(warning);
     if (next !== 'read') requestAnimationFrame(() => {
       root.current?.querySelector<HTMLElement>('.cm-content')?.focus();
     });
