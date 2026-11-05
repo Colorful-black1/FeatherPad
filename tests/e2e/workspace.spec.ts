@@ -34,7 +34,7 @@ test('multiple roots keep dirty buffers while reordering, switching trees and re
   await page.getByRole('treeitem', { name: 'a.txt', exact: true }).dblclick();
   const editor = page.locator('.document-view .cm-content');
   await editor.focus(); await page.keyboard.press('Control+End'); await page.keyboard.insertText(' draft');
-  await (await menuItem(page, '添加根…')).click();
+  await (await menuItem(page, '添加文件夹…')).click();
   await sidebarSection(page, '工作区管理');
   const list = page.getByRole('region', { name: '工作区根', exact: true });
   await expect(list.getByRole('listitem')).toHaveCount(2);
@@ -208,9 +208,39 @@ test('Web mock lazily pages one root and keeps empty, denied, hidden and current
   await expect(page.getByLabel('有未保存修改', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: '定位当前文件' }).click();
 
+  const sourceRow = tree.getByRole('treeitem', { name: 'nested.txt', exact: true });
+  const targetRoot = page.locator('.tree-root-label');
+  await expect(targetRoot).not.toHaveAttribute('data-drag-over', 'true');
+  const nativeDialogs: string[] = [];
+  page.on('dialog', async dialog => { nativeDialogs.push(dialog.type()); await dialog.dismiss(); });
+  await sourceRow.dragTo(targetRoot);
+  const moveDialog = page.getByRole('dialog', { name: '移动文件', exact: true });
+  await expect(moveDialog).toBeVisible();
+  await expect(moveDialog).toContainText('folder/nested.txt');
+  await expect(moveDialog).toContainText('目标文件夹');
+  await expect(moveDialog.getByRole('button', { name: '取消移动', exact: true })).toBeFocused();
+  await moveDialog.getByRole('button', { name: '取消移动', exact: true }).click();
+  await expect(moveDialog).not.toBeVisible();
+  await expect(sourceRow).toBeVisible();
+  expect(nativeDialogs).toEqual([]);
+  await expect(targetRoot).not.toHaveAttribute('data-drag-over', 'true');
+  await sourceRow.focus();
+  await sourceRow.press('Shift+F10');
+  const actions = page.getByRole('menu', { name: '资源管理器操作', exact: true });
+  await expect(actions).toBeVisible();
+  await expect(actions.getByRole('menuitem', { name: '重命名…', exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(sourceRow).toBeFocused();
+
   await page.getByRole('button', { name: '重命名选中项' }).click();
   const renameInput = page.getByRole('textbox', { name: '重命名' });
   await expect(renameInput).toHaveValue('nested.txt');
+  await renameInput.fill('中文.txt');
+  await renameInput.dispatchEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true });
+  await expect(renameInput).toBeVisible();
+  await expect(renameInput).toHaveValue('中文.txt');
+  await renameInput.dispatchEvent('keydown', { key: 'Escape', keyCode: 229, bubbles: true });
+  await expect(renameInput).toBeVisible();
   await renameInput.fill('renamed.txt');
   await page.getByRole('button', { name: '确定', exact: true }).click();
   await expect(tree.getByRole('treeitem', { name: 'renamed.txt', exact: true })).toBeVisible();
@@ -219,6 +249,11 @@ test('Web mock lazily pages one root and keeps empty, denied, hidden and current
 
   await page.getByRole('button', { name: '新建文件', exact: true }).click();
   const createInput = page.getByRole('textbox', { name: '新建文件名称' });
+  await createInput.fill('中文文件.txt');
+  await createInput.dispatchEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true });
+  await expect(createInput).toBeVisible();
+  await createInput.dispatchEvent('keydown', { key: 'Escape', isComposing: true, bubbles: true });
+  await expect(createInput).toHaveValue('中文文件.txt');
   await createInput.fill('CON');
   await createInput.press('Enter');
   await expect(page.locator('.tree-input-error')).toContainText('保留设备名');

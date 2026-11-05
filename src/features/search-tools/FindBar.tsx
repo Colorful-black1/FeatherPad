@@ -219,6 +219,7 @@ export function FindBar({ registry, id, version, readOnlyReason, open, request, 
   }
 
   function handleSearchKey(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
     if (event.key === 'Enter') {
       event.preventDefault();
       navigate(event.shiftKey ? -1 : 1);
@@ -226,13 +227,13 @@ export function FindBar({ registry, id, version, readOnlyReason, open, request, 
   }
 
   if (!open) return null;
-  const currentMatch = freshScan?.matches[Math.min(currentIndex, Math.max(0, freshScan.matches.length - 1))];
   const resultLabel = !pattern ? '尚未查找'
     : !freshScan ? '查找中…'
       : freshScan.error ? freshScan.error.message
         : freshScan.truncated ? `显示前 ${SEARCH_MATCH_LIMIT.toLocaleString('zh-CN')} 处`
           : `${freshScan.matches.length.toLocaleString('zh-CN')} 处`;
   return <section className="find-bar" aria-label="文件内查找替换" onKeyDown={event => {
+    if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
     if (event.key === 'Escape') {
       event.preventDefault();
       close();
@@ -247,7 +248,6 @@ export function FindBar({ registry, id, version, readOnlyReason, open, request, 
       </label>
       <span className={`find-result${freshScan?.error ? ' find-result-error' : ''}`} role="status" aria-live="polite">
         {resultLabel}{!freshScan?.error && freshScan && freshScan.matches.length > 0 ? ` · ${Math.min(currentIndex + 1, freshScan.matches.length)}/${freshScan.matches.length}` : ''}
-        {currentMatch ? ` · ${matchLabel(registry, id, currentMatch)}` : ''}
       </span>
       <span className="find-navigation">
         <button className="plain-button" type="button" onClick={() => navigate(-1)} disabled={!freshScan?.matches.length} aria-label="上一个匹配">上一处</button>
@@ -255,6 +255,7 @@ export function FindBar({ registry, id, version, readOnlyReason, open, request, 
         <button className="plain-button" type="button" onClick={close} aria-label="关闭查找">关闭</button>
       </span>
     </div>
+    <details className="find-extra"><summary>查找选项{isCaseSensitive || isWholeWord || isRegex || scopeEnabled ? '（已启用）' : ''}</summary>
     <div className="find-row find-options">
       <label className="toolbar-check"><input type="checkbox" checked={isCaseSensitive} onChange={event => setCaseSensitive(event.currentTarget.checked)} />区分大小写</label>
       <label className="toolbar-check"><input type="checkbox" checked={isWholeWord} onChange={event => setWholeWord(event.currentTarget.checked)} />整词</label>
@@ -273,6 +274,8 @@ export function FindBar({ registry, id, version, readOnlyReason, open, request, 
       }} />仅选区</label>
       <span className="find-hint">支持 Unicode 词边界；整词不进行中文分词</span>
     </div>
+    </details>
+    <details className="find-extra"><summary>替换</summary>
     <div className="find-row find-replace-row">
       <label className="find-field"><span>替换为</span>
         <input aria-label="替换内容" value={replacement} disabled={!!readOnlyReason}
@@ -290,6 +293,7 @@ export function FindBar({ registry, id, version, readOnlyReason, open, request, 
       </span>
       {readOnlyReason && <span className="find-warning">只读文档仅支持查找</span>}
     </div>
+    </details>
     {(freshScan?.error || actionError || status || scopeWasReset || requestedScope && scopeEnabled) && <div className="find-message-row">
       {freshScan?.error && <span role="alert">{freshScan.error.message}{freshScan.error.index >= 0 ? `（位置 ${freshScan.error.index + 1}）` : ''}</span>}
       {actionError && <span role="alert">{actionError}</span>}

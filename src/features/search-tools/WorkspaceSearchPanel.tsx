@@ -1,9 +1,10 @@
-import { useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { FileRef } from '../../shared/contracts/files';
 import type { SearchFileResult, SearchMatch } from '../../bridge/search';
 import type { WorkspaceRoot } from '../workspace/store';
 import { findMatches, type SearchQuery } from './search-query';
 import type { WorkspaceSearchStore } from './workspace-search';
+import { parsePatternLines } from '../workspace/filters';
 
 export interface WorkspaceSearchDraft {
   roots: FileRef[];
@@ -16,16 +17,17 @@ export interface WorkspaceSearchDraft {
 }
 
 function patterns(value: string) {
-  return value.split(/[,\n]/).map(item => item.trim()).filter(Boolean).slice(0, 256);
+  return parsePatternLines(value.replace(/,/g, '\n'));
 }
 
-export function WorkspaceSearchPanel({ store, roots, onSearch, onPreviewReplace, onOpen, onClose }: {
+export function WorkspaceSearchPanel({ store, roots, onSearch, onPreviewReplace, onOpen, onClose, onChooseFolder }: {
   store: WorkspaceSearchStore;
   roots: readonly WorkspaceRoot[];
   onSearch: (draft: WorkspaceSearchDraft) => void;
   onPreviewReplace: (draft: WorkspaceSearchDraft, replacement: string) => void;
   onOpen: (file: SearchFileResult, match: SearchMatch) => void;
   onClose: () => void;
+  onChooseFolder: () => void;
 }) {
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);
   const [pattern, setPattern] = useState(snapshot.options?.query.pattern ?? '');
@@ -40,11 +42,20 @@ export function WorkspaceSearchPanel({ store, roots, onSearch, onPreviewReplace,
   const [includeHidden, setIncludeHidden] = useState(snapshot.options?.includeHidden ?? false);
   const [selectedRoots, setSelectedRoots] = useState<Set<string>>(() =>
     new Set(snapshot.options?.roots.map(root => root.grantId) ?? roots.map(root => root.grant.grantId)));
+  const previousRoots = useRef(new Set(roots.map(root => root.grant.grantId)));
+  useEffect(() => {
+    const previous = previousRoots.current;
+    previousRoots.current = new Set(roots.map(root => root.grant.grantId));
+    setSelectedRoots(current => new Set(roots.filter(root => current.has(root.grant.grantId)
+      || !previous.has(root.grant.grantId)).map(root => root.grant.grantId)));
+  }, [roots]);
   const busy = snapshot.phase === 'running' || snapshot.phase === 'cancelling';
   const query: SearchQuery = { pattern, isRegex, isCaseSensitive, isWholeWord };
   const validation = (() => {
     if (!pattern) return '请输入至少一个字符。';
-    if (selectedRoots.size === 0) return '请选择至少一个搜索范围。';
+    if (!roots.some(root => selectedRoots.has(root.grant.grantId))) return '请选择至少一个搜索文件夹。';
+    try { patterns(includeText); patterns(excludeText); }
+    catch (cause) { return cause instanceof Error ? cause.message : '文件过滤规则无效。'; }
     const checked = findMatches(query, '');
     return checked.ok ? null : checked.error.message;
   })();
@@ -73,18 +84,28 @@ export function WorkspaceSearchPanel({ store, roots, onSearch, onPreviewReplace,
 
   return <section className="workspace-search-panel" aria-labelledby="workspace-search-title">
     <header>
-      <div><p className="welcome-eyebrow">WORKSPACE SEARCH</p><h2 id="workspace-search-title">在文件和文件夹中查找</h2></div>
+      <div><p className="welcome-eyebrow">目录搜索</p><h2 id="workspace-search-title">在文件和文件夹中查找</h2></div>
       <button type="button" className="plain-button" aria-label="关闭目录搜索" onClick={onClose}>关闭</button>
     </header>
     <form onSubmit={event => { event.preventDefault(); submit(); }}>
       <label className="workspace-search-pattern">搜索内容
         <input autoFocus type="search" value={pattern} onChange={event => setPattern(event.currentTarget.value)}
-          placeholder="文字或安全正则表达式" />
+          placeholder="输入要查找的文字" />
       </label>
+      {roots.length === 0 ? <div className="search-empty-state">
+        <p>先打开文件夹才能搜索。</p>
+        <button type="button" className="primary-button" onClick={onChooseFolder}>打开文件夹…</button>
+      </div> : <p className="search-scope-summary">搜索位置：{roots.filter(root => selectedRoots.has(root.grant.grantId)).map(root => root.displayName).join('、') || '尚未选择文件夹'}</p>}
+      <details className="search-replace-details"><summary>跨文件替换</summary>
       <label className="workspace-search-replacement">替换为
         <input type="text" value={replacement} onChange={event => setReplacement(event.currentTarget.value)}
           placeholder="留空表示删除匹配内容" />
       </label>
+      <button type="button" className="plain-button" disabled={!!validation || busy || roots.length === 0}
+        onClick={previewReplacement}>预览跨文件替换</button>
+      <small>先预览匹配内容，确认后再修改文件。</small>
+      </details>
+      <details className="search-advanced"><summary>搜索选项与范围{isRegex || isCaseSensitive || isWholeWord || includeText || excludeText || includeHidden || followDirectoryLinks || !respectGitignore ? '（已自定义）' : ''}</summary>
       <div className="workspace-search-options">
         <label><input type="checkbox" checked={isCaseSensitive} onChange={event => setIsCaseSensitive(event.currentTarget.checked)} />区分大小写</label>
         <label><input type="checkbox" checked={isWholeWord} onChange={event => setIsWholeWord(event.currentTarget.checked)} />整词</label>
@@ -102,18 +123,19 @@ export function WorkspaceSearchPanel({ store, roots, onSearch, onPreviewReplace,
           })} />{root.displayName}</label>)}
       </fieldset>
       <div className="workspace-search-globs">
-        <label>包含 glob<input value={includeText} onChange={event => setIncludeText(event.currentTarget.value)}
+        <label>包含文件规则<input aria-label="包含 glob" value={includeText} onChange={event => setIncludeText(event.currentTarget.value)}
           placeholder="*.ts, src/**" /></label>
-        <label>排除 glob<input value={excludeText} onChange={event => setExcludeText(event.currentTarget.value)}
+        <label>排除文件规则<input aria-label="排除 glob" value={excludeText} onChange={event => setExcludeText(event.currentTarget.value)}
           placeholder="*.min.js, dist/**" /></label>
       </div>
+      <small>例如 *.md 匹配 Markdown 文件，docs/** 匹配 docs 内的文件；多条规则用逗号分隔。最多 256 条，每条不超过 1024 字符。</small>
+      </details>
       <div className="workspace-search-actions">
         {busy ? <button type="button" className="plain-button" onClick={() => void store.cancel()}>
           {snapshot.phase === 'cancelling' ? '正在取消…' : '取消搜索'}</button>
           : <button type="submit" className="primary-button" disabled={!!validation || roots.length === 0}>开始搜索</button>}
-        <button type="button" className="plain-button" disabled={!!validation || busy || roots.length === 0}
-          onClick={previewReplacement}>预览跨文件替换</button>
-        {validation && <span role="alert">{validation}</span>}
+        {validation && pattern.length > 0 && roots.length > 0 ? <span role="alert">{validation}</span>
+          : !pattern && roots.length > 0 && <span className="search-instruction">输入文字，搜索所选文件夹内的文件。</span>}
       </div>
     </form>
     <div className="workspace-search-status" aria-live="polite">

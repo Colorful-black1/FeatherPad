@@ -6,7 +6,7 @@ test('Web mock favorites persist names and ordering independently of disabled hi
     type Ref = { grantId: string; relativePath: string };
     const root: Ref = { grantId: '11111111-1111-4111-8111-111111111111', relativePath: '' };
     const file: Ref = { grantId: '22222222-2222-4222-8222-222222222222', relativePath: '' };
-    const metadata = { displayPath: 'E:/favorites/file.txt', sizeBytes: 7, modifiedAt: '2026-11-03T00:00:00Z', isReadOnly: false, diskRevision: 'a'.repeat(64) };
+    const metadata = { displayPath: 'E:/favorites/long-folder-name-for-readability/another-folder/file.txt', sizeBytes: 7, modifiedAt: '2026-11-03T00:00:00Z', isReadOnly: false, diskRevision: 'a'.repeat(64) };
     let version = 1;
     let settings = JSON.parse(localStorage.getItem('favorites-test-settings') ?? '{"recentHistoryEnabled":false}') as Record<string, unknown>;
     let fail = false;
@@ -42,11 +42,16 @@ test('Web mock favorites persist names and ordering independently of disabled hi
   const panel = page.getByRole('region', { name: '收藏', exact: true });
   await panel.getByRole('button', { name: '收藏当前文件', exact: true }).click();
   await expect(panel.getByRole('listitem')).toHaveCount(1);
+  const favorite = panel.locator('.favorite-open');
+  await expect(favorite).toHaveAttribute('title', /long-folder-name-for-readability/);
+  const width = await favorite.evaluate(element => ({ available: element.clientWidth, content: element.scrollWidth }));
+  expect(width.content).toBeLessThanOrEqual(width.available);
+  await page.screenshot({ path: test.info().outputPath('favorite-long-path.png') });
   await panel.getByRole('button', { name: '重命名收藏 file.txt', exact: true }).click();
   await panel.getByRole('textbox', { name: '收藏名称 file.txt', exact: true }).fill('我的文档');
   await panel.getByRole('button', { name: '确定', exact: true }).click();
   await (await menuItem(page, '打开文件夹')).click();
-  await panel.getByRole('button', { name: '收藏当前根', exact: true }).click();
+  await panel.getByRole('button', { name: '收藏当前文件夹', exact: true }).click();
   await expect(panel.getByRole('listitem')).toHaveCount(2);
   await panel.getByRole('button', { name: '上移收藏 fav-root', exact: true }).click();
   await expect(panel.getByRole('listitem').first()).toContainText('fav-root');
@@ -57,7 +62,8 @@ test('Web mock favorites persist names and ordering independently of disabled hi
   await expect(panel.getByRole('listitem').last()).toContainText('我的文档');
   await expect(panel.getByRole('listitem').last()).toContainText('授权失效');
   await panel.getByRole('listitem').last().getByRole('button', { name: '重新选择', exact: true }).click();
-  await expect(panel.getByRole('button', { name: '我的文档E:/favorites/file.txt', exact: true })).toBeEnabled();
+  await expect(panel.getByRole('button', { name: '我的文档', exact: true })).toBeEnabled();
+  await expect(panel.getByRole('button', { name: '我的文档', exact: true })).toHaveAttribute('aria-description', /long-folder-name-for-readability/);
   await panel.getByRole('button', { name: '移除收藏 我的文档', exact: true }).click();
   await expect(panel.getByRole('listitem')).toHaveCount(1);
   await panel.getByRole('button', { name: '清空', exact: true }).click();

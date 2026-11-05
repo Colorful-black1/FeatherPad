@@ -68,7 +68,7 @@ export function ExplorerContextMenu({ target, sections, onClose }: {
     }}>
     {sections.map((section, index) => <div role="group" key={index}>
       {index > 0 && <div role="separator" className="menu-separator" />}
-      {section.map(action => <button key={action.id} type="button" role="menuitem" tabIndex={-1}
+      {section.map(action => <button key={action.id} type="button" role="menuitem" tabIndex={-1} aria-label={action.title}
         className="menu-action" aria-disabled={!!action.disabledReason} title={action.disabledReason ?? undefined}
         onClick={() => {
           if (action.disabledReason) return;

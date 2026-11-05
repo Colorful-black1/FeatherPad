@@ -29,6 +29,7 @@ test.beforeEach(async ({ page }) => {
         case 'stat_document': return ok(metadata);
         case 'start_watch': return ok({ watchId: 'test-watch' });
         case 'stop_watch': return ok({ stopped: true });
+        case 'release_document': return ok({ released: true });
         default: throw new Error(`Unexpected business command ${command}`);
       }
     } });
@@ -38,6 +39,50 @@ test.beforeEach(async ({ page }) => {
   await sidebarSection(page, '最近打开');
   await expect(page.locator('.document-view .cm-content')).toHaveText('body');
   await expect(page.locator('.recent-panel').getByRole('button', { name: '打开settings-test.txt', exact: true })).toBeVisible();
+});
+
+test('shortcut management preserves the settings draft and searching privacy finds appearance fields', async ({ page }) => {
+  await page.getByRole('button', { name: '打开设置', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '设置', exact: true });
+  await dialog.getByRole('spinbutton', { name: '编辑字号', exact: true }).fill('22');
+  await dialog.getByRole('button', { name: '自定义快捷键…', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: '命令面板', exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('spinbutton', { name: '编辑字号', exact: true })).toHaveValue('22');
+  await expect(page.locator('.document-view .cm-scroller')).toHaveCSS('font-size', '22px');
+  await dialog.getByRole('tab', { name: '隐私', exact: true }).click();
+  await dialog.getByRole('searchbox', { name: '搜索设置', exact: true }).fill('字体');
+  await expect(dialog.getByRole('combobox', { name: '编辑器字体', exact: true })).toBeVisible();
+  await expect(dialog.locator('.settings-search-scope')).toContainText('全部分类');
+  await expect(dialog.locator('.settings-row').filter({ hasText: '编辑器字体' })).toContainText('外观');
+  await dialog.getByRole('button', { name: '取消并还原预览', exact: true }).click();
+  await expect(page.locator('.document-view .cm-scroller')).toHaveCSS('font-size', '14px');
+});
+
+test('invalid settings stay next to their fields and provide a route back from other categories', async ({ page }) => {
+  await page.getByRole('button', { name: '打开设置', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '设置', exact: true });
+  const size = dialog.getByRole('spinbutton', { name: '编辑字号', exact: true });
+  await size.fill('99');
+  await expect(size).toHaveAttribute('aria-invalid', 'true');
+  await expect(dialog.locator('#setting-error-fontSize')).toContainText('8–40');
+  await expect(dialog.getByRole('button', { name: '保存设置', exact: true })).toBeDisabled();
+  await dialog.getByRole('tab', { name: '隐私', exact: true }).click();
+  await dialog.locator('.settings-error-links').getByRole('button', { name: '编辑字号', exact: true }).click();
+  await expect(size).toBeFocused();
+  await size.fill('20');
+  await expect(size).toHaveAttribute('aria-invalid', 'false');
+  await expect(dialog.getByRole('button', { name: '保存设置', exact: true })).toBeEnabled();
+  await expect(dialog.locator('.settings-error-links')).toHaveCount(0);
+});
+
+test('welcome page offers a recent file directly after closing its tab', async ({ page }) => {
+  await page.getByRole('button', { name: '关闭 settings-test.txt', exact: true }).click();
+  const recent = page.getByRole('region', { name: '继续上次编辑', exact: true });
+  await expect(recent).toBeVisible();
+  await recent.getByRole('button', { name: /settings-test.txt/ }).click();
+  await expect(page.locator('.document-view .cm-content')).toHaveText('body');
 });
 
 test('system theme follows media and cancelling a theme/font preview restores the prior effective settings', async ({ page }) => {
@@ -154,7 +199,7 @@ test('settings category tabs support roving focus, arrows, Home/End and a labell
   await expect(page.locator('.document-view .cm-scroller')).toHaveCSS('font-size', '14px');
 });
 
-test('empty category search keeps its Tab exit, ignores composition arrows and shortcut navigation restores editor focus', async ({ page }) => {
+test('cross-category search keeps its Tab exit, ignores composition arrows and returns from shortcut management', async ({ page }) => {
   await page.getByRole('button', { name: '打开设置', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '设置', exact: true });
   await dialog.getByRole('searchbox', { name: '搜索设置', exact: true }).fill('编辑字号');
@@ -163,7 +208,7 @@ test('empty category search keeps its Tab exit, ignores composition arrows and s
   const system = dialog.getByRole('tab', { name: '系统', exact: true });
   await expect(system).toBeFocused();
   const panel = dialog.getByRole('tabpanel', { name: '系统', exact: true });
-  await expect(panel).toContainText('没有匹配设置');
+  await expect(panel.getByRole('spinbutton', { name: '编辑字号', exact: true })).toBeVisible();
   await system.dispatchEvent('keydown', { key: 'ArrowUp', isComposing: true, bubbles: true });
   await expect(system).toHaveAttribute('aria-selected', 'true');
   await page.keyboard.press('Tab');
@@ -175,10 +220,11 @@ test('empty category search keeps its Tab exit, ignores composition arrows and s
   const shortcuts = dialog.getByRole('button', { name: '自定义快捷键…', exact: true });
   await shortcuts.focus();
   await page.keyboard.press('Enter');
-  await expect(dialog).toHaveCount(0);
+  await expect(dialog).not.toBeVisible();
   await expect(page.getByRole('dialog', { name: '命令面板', exact: true }).getByRole('combobox', { name: '搜索命令', exact: true })).toBeFocused();
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('textbox', { name: '文档内容', exact: true })).toBeFocused();
+  await expect(dialog).toBeVisible();
+  await expect(shortcuts).toBeFocused();
 });
 
 test('compact settings tabs update orientation and keep previews through resizing, high contrast and 200% CSS zoom', async ({ page }) => {

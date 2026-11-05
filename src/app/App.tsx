@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type SetStateAction } from 'react';
 import { availableMonitors, getCurrentWindow, LogicalPosition, LogicalSize } from '@tauri-apps/api/window';
 import { listen } from '@tauri-apps/api/event';
 import { currentWindowId, desktopBridge, isDesktopRuntime, type DesktopDelivery } from '../bridge/desktop';
@@ -9,6 +9,8 @@ import { files } from '../bridge/files';
 import { WorkspaceRoots } from '../features/workspace/roots';
 import { RootList } from '../features/workspace/RootList';
 import { FavoriteList } from '../features/workspace/FavoriteList';
+import { WelcomeRecent } from '../features/workspace/WelcomeRecent';
+import { NoticeBanner, type NoticeTone } from '../shared/ui/NoticeBanner';
 import { favoriteGrantIds, favoritesSetting, mutateFavorites, readFavorites } from '../features/workspace/favorites';
 import { useFavorites } from './use-favorites';
 import { useWorkspaceFile } from './use-workspace-file';
@@ -153,7 +155,15 @@ export function App() {
   const closingIds = useRef(new Set<DocumentId>());
   const [savingCount, setSavingCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notification, setNotification] = useState<{ message: string | null; tone: NoticeTone }>({ message: null, tone: 'info' });
+  const notice = notification.message;
+  const noticeTone = notification.tone;
+  const setNotice = useCallback((value: SetStateAction<string | null>, tone: NoticeTone = 'warning') => {
+    setNotification(previous => {
+      const message = typeof value === 'function' ? value(previous.message) : value;
+      return typeof value === 'function' && message === previous.message ? previous : { message, tone };
+    });
+  }, []);
   const [findOpen, setFindOpen] = useState(false);
   const [findRequest, setFindRequest] = useState<FindRequest | null>(null);
   const [workspaceSearchOpen, setWorkspaceSearchOpen] = useState(false);
@@ -256,16 +266,16 @@ export function App() {
     void globalShortcutBridge.configure(enabled, shortcut).then(result => {
       if (!active) return;
       if (!result.ok) setError(`全局唤起未注册：${result.error.message} 设置已保留，可修正后重试。`);
-      else if (enabled) setNotice(`全局唤起已启用：${shortcut}。`);
+      else if (enabled) setNotice(`全局唤起已启用：${shortcut}。`, 'success');
     });
     return () => { active = false; };
-  }, [globalLaunchEnabled, globalLaunchShortcut]);
+  }, [globalLaunchEnabled, globalLaunchShortcut, setNotice]);
   useEffect(() => () => {
     if (Reflect.get(window, '__TAURI_INTERNALS__')) {
       void globalShortcutBridge.configure(false, 'Ctrl+Shift+Space');
     }
   }, []);
-  useEffect(() => languagePreferences.start(setNotice), []);
+  useEffect(() => languagePreferences.start(setNotice), [setNotice]);
   useEffect(() => autoSaves.start(), []);
   useEffect(() => workspaceSync.start(), [workspaceSync]);
   useEffect(() => {
@@ -279,7 +289,7 @@ export function App() {
       active = false;
       unlisten?.();
     };
-  }, [workspaceSearch]);
+  }, [workspaceSearch, setNotice]);
   useEffect(() => {
     const live = documents.getSnapshot();
     navigationHistory.retainDocuments(new Set(live.documents.map(document => document.id)));
@@ -318,6 +328,11 @@ export function App() {
     });
     void (async () => {
       const notices: string[] = [];
+      let startupHasWarnings = false;
+      const warn = (...warnings: string[]) => {
+        if (warnings.length > 0) startupHasWarnings = true;
+        notices.push(...warnings);
+      };
       try {
         const loadedSettings = await settings.load();
         const restoreGrantIds = loadedSettings.ok
@@ -330,14 +345,14 @@ export function App() {
           ? `${previous}；无法读取会话状态：${loaded.error.message}`
           : `无法读取会话状态：${loaded.error.message}`);
         else {
-          if (loaded.value.warning) notices.push(loaded.value.warning);
+          if (loaded.value.warning) warn(loaded.value.warning);
           if (loaded.value.session) {
             const restored = await session.restoreSources(
               loaded.value.session,
               loaded.value.restoredGrantIds,
             );
             sources = restored.sources;
-            notices.push(...restored.warnings);
+            warn(...restored.warnings);
             deferredWindowRestore = async () => {
               const warnings: string[] = [];
               const savedWindow = loaded.value.session!.windows.find(window => window.windowId === currentId)
@@ -383,13 +398,13 @@ export function App() {
             notices.push(`已恢复 ${recovery.value.restored.length} 个未保存文档。`);
           }
           if (recovery.value.corruptEntries > 0) {
-            notices.push(`检测到 ${recovery.value.corruptEntries} 个损坏恢复副本，已隔离且未删除。`);
+            warn(`检测到 ${recovery.value.corruptEntries} 个损坏恢复副本，已隔离且未删除。`);
           }
-          notices.push(...recovery.value.warnings);
+          warn(...recovery.value.warnings);
         }
         if (loaded.ok && loaded.value.session) {
           const applied = session.apply(loaded.value.session);
-          notices.push(...applied.warnings);
+          warn(...applied.warnings);
         }
       } catch {
         setError(previous => previous
@@ -400,7 +415,7 @@ export function App() {
           stopRecovery = recoveries.start();
           stopSession = session.start();
           stopExternal = externalChanges.start();
-          if (notices.length > 0) setNotice(notices.join(' '));
+          if (notices.length > 0) setNotice(notices.join(' '), startupHasWarnings ? 'warning' : 'info');
         }
         if (active) setStartupPending(false);
         releaseStartup();
@@ -424,7 +439,7 @@ export function App() {
       stopSettings();
       if (hotExit.getSnapshot().phase !== 'idle') hotExit.resume();
     };
-  }, [refreshRecoveryInventory]);
+  }, [refreshRecoveryInventory, setNotice]);
 
   const rememberRecentCandidate = useCallback(async (candidate: RecentCandidate): Promise<RecentEntry | null> => {
     session.markGrantAvailable(candidate.ref.grantId);
@@ -678,7 +693,7 @@ export function App() {
       offset: target.offset,
       label: `${document.summary.displayPath ?? document.summary.title}:${target.line}:${target.column}`,
     });
-    if (target.clamped) setNotice(`目标行列超出当前文档范围，已移动到 ${target.line}:${target.column}。`);
+    if (target.clamped) setNotice(`目标行列超出当前文档范围，已移动到 ${target.line}:${target.column}。`, 'info');
   }, [currentNavigationTarget, navigationHistory, setNotice]);
 
   const processDesktopDelivery = useCallback(async (delivery: DesktopDelivery) => {
@@ -841,7 +856,7 @@ export function App() {
     try {
       const result = await saves.saveAs(id, intent);
       if (!result.ok) { if (result.error.code !== 'CANCELLED') setError(result.error.message); }
-      else if (intent === 'copy') setNotice(`副本已保存：${result.value.metadata.displayPath}`);
+      else if (intent === 'copy') setNotice(`副本已保存：${result.value.metadata.displayPath}`, 'success');
     } finally { setSavingCount(count => count - 1); }
   }, [setError, setNotice, setSavingCount]);
 
@@ -1123,7 +1138,7 @@ export function App() {
     } finally {
       setReplacementBusy(false);
     }
-  }, []);
+  }, [setNotice]);
 
   const commitReplacement = useCallback(async (selected: readonly FileRef[]) => {
     const plan = replacementPlan;
@@ -1285,7 +1300,7 @@ export function App() {
       disabledReason: workspaceBlocked ? '请等待当前文件操作。' : null },
     { id: 'workspace.saveFile', title: '保存工作区文件', run: () => { void workspaceFile.save().then(error => { if (error) setError(error); }); },
       disabledReason: workspaceBlocked || workspaceState.roots.length === 0 ? '请先打开文件夹并等待当前操作结束。' : null },
-    { id: 'workspace.addRoot', title: '添加根…', run: () => { void addRoot(); },
+    { id: 'workspace.addRoot', title: '添加文件夹…', run: () => { void addRoot(); },
       disabledReason: workspaceBlocked || workspaceState.roots.length >= 16 ? '工作区忙碌或已达到根目录上限。' : null },
   ];
   const menuGroups: MenuGroup[] = [
@@ -1397,7 +1412,7 @@ export function App() {
               onSaveFile={() => void workspaceFile.save().then(error => { if (error) setError(error); })}
               onRenamed={renamed => { void applyPathMappings(renamed); }} />
           </details>
-          <details className="sidebar-section"><summary>最近打开 <span>{recentEntries.length}</span></summary>
+          <details className="sidebar-section" open={recentEntries.length > 0 || !settingsState.settings.recentHistoryEnabled}><summary>最近打开 <span>{recentEntries.length}</span></summary>
           <RecentList entries={recentEntries} availableGrantIds={sessionState.availableGrantIds}
             enabled={settingsState.settings.recentHistoryEnabled}
             busy={busy || savingCount > 0 || batchBusy || closingCount > 0}
@@ -1425,11 +1440,12 @@ export function App() {
       </div>}
       status={<><span>{closingCount > 0 || current?.closing ? '正在关闭…' : batchBusy ? '正在全部保存…' : savingCount > 0 ? '正在保存…' : busy ? '正在打开…' : current ? current.readOnlyReason ? '只读' : current.dirty ? '未保存修改' : current.displayPath ? '未修改' : '未命名' : '就绪'}</span>{current && current.format.encoding !== 'binary' && <><span role="group" aria-label="光标与字数" aria-live="off"><EditorStatus registry={documents} id={current.id} summary={current} /></span><span aria-label="编辑字号">{settingsState.settings.fontSize}px</span></>}<span className="status-end">{current?.format.encoding === 'binary' ? '图片 · 只读' : current ? `${current.format.encoding.toUpperCase()}${current.format.bom === 'none' ? '' : ' BOM'} · ${current.format.lineEnding.toUpperCase()}` : '轻羽 FeatherPad'}</span></>}
     >
-      {error && <div className="notice error-notice" role="alert"><span>{error}</span><button onClick={() => setError(null)}>关闭提示</button></div>}
-      {notice && <div className="notice error-notice" aria-live="polite"><span>{notice}</span><button onClick={() => setNotice(null)}>关闭提示</button></div>}
+      {error && <NoticeBanner message={error} tone="error" onClose={() => setError(null)} />}
+      {notice && <NoticeBanner message={notice} tone={noticeTone} onClose={() => setNotice(null)} />}
       {tabState.warning && <p className="notice" role="alert">{tabState.warning}</p>}
       {commandState.warning && <p className="notice" role="alert">{commandState.warning}</p>}
       {workspaceSearchOpen && <WorkspaceSearchPanel store={workspaceSearch} roots={workspaceState.roots}
+        onChooseFolder={() => void openFolder()}
         onSearch={startWorkspaceSearch} onOpen={(file, match) => void openWorkspaceSearchResult(file, match)}
         onPreviewReplace={(draft, replacement) => void previewWorkspaceReplace(draft, replacement)}
         onClose={() => setWorkspaceSearchOpen(false)} />}
@@ -1482,6 +1498,8 @@ export function App() {
             <button className="plain-button" {...commandProps('workspace.open')} onClick={() => void executeCommand('workspace.open')}>打开文件夹</button>
             <button className="plain-button" {...commandProps('tools.compare')} onClick={() => void executeCommand('tools.compare')}>比较文件…</button>
           </div>
+          <WelcomeRecent entries={recentEntries} busy={busy || savingCount > 0 || batchBusy || closingCount > 0}
+            onOpen={openRecent} onRepair={repairRecent} />
         </div>
       </div>}
       {paletteMode && <CommandPalette mode={paletteMode} items={paletteMode === 'files' ? quickFiles?.items ?? [] : commands.list(commandAvailability)}
@@ -1559,20 +1577,20 @@ export function App() {
         onTrashed={result => {
           documents.markTrashed(result);
           setTrashEntry(null);
-          setNotice(`已移至系统回收站。${result.missingDocumentIds.length ? '已打开的内容仍保留，可另存为新文件。' : ''}`);
+          setNotice(`已移至系统回收站。${result.missingDocumentIds.length ? '已打开的内容仍保留，可另存为新文件。' : ''}`, 'success');
           requestAnimationFrame(() => {
             const id = documents.getSnapshot().activeId;
             if (id) documents.focus(id);
             else window.document.querySelector<HTMLButtonElement>('[aria-label="刷新目录树"]')?.focus();
           });
         }} onClose={() => setTrashEntry(null)} />}
-      {settingsOpen && <SettingsDialog coordinator={settings} onClose={() => {
+      {settingsOpen && <SettingsDialog coordinator={settings} suspended={paletteMode !== null} onClose={() => {
         setSettingsOpen(false);
         requestAnimationFrame(() => {
           if (settingsOrigin.current?.isConnected) settingsOrigin.current.focus();
           else { const id = documents.getSnapshot().activeId; if (id) documents.focus(id); }
         });
-      }} onShortcuts={() => { setSettingsOpen(false); openPalette('commands'); }} />}
+      }} onShortcuts={() => { openPalette('commands'); }} />}
       {exitState.phase !== 'idle' && <HotExitDialog snapshot={exitState}
         onRetry={async () => { await hotExit.prepare(); }}
         onSaveAs={saveExitDrafts}

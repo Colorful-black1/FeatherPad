@@ -21,6 +21,8 @@ export async function verifyNativeSearch(page: Page, dataDir: string, openFile: 
     await page.keyboard.press('Control+f');
     const findBar = page.locator('.find-bar');
     await expect(findBar).toBeVisible();
+    await findBar.getByText(/^查找选项/).click();
+    await findBar.getByText('替换', { exact: true }).click();
     const query = findBar.getByRole('textbox', { name: '查找内容' });
     await query.fill('cat');
     await expect(findBar.locator('.find-result')).toContainText('3 处');

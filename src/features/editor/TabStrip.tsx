@@ -70,8 +70,11 @@ export function TabStrip({ documents, activeId, previewId, busy, onSelect, onPin
             {document.format.encoding === 'binary' && <span aria-hidden="true">▧ </span>}
             <span>{document.title}</span>{parent && <small>{parent}</small>}
           </span>
+          {preview && <span className="tab-preview-badge" aria-hidden="true" title="单击其他文件会复用此标签；点击旁边的固定按钮可保留">预览</span>}
           {document.dirty && <span className="dirty-marker" aria-label="有未保存修改">●</span>}
         </button>
+        {preview && <button type="button" className="tab-pin" disabled={busy}
+          aria-label={`固定 ${document.title}`} title="保留此标签，避免被其他预览替换" onClick={() => onPin(document.id)}>固定</button>}
         <button type="button" className="tab-close" aria-label={`关闭 ${document.title}${parent ? `，${parent}` : ''}${document.dirty ? '，有未保存修改' : ''}${document.readOnlyReason ? '，只读' : ''}`}
           tabIndex={selected ? 0 : -1} disabled={busy || document.closing}
           title="关闭标签（Ctrl+W）" onClick={() => onClose(document.id)}>×</button>

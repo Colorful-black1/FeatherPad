@@ -9,6 +9,8 @@ test('Web search: Unicode-safe options, navigation, capture replacement and sing
   await page.keyboard.insertText('cat scatter CAT 2 dog 3');
   await page.keyboard.press('Control+f');
   const findBar = page.locator('.find-bar');
+  await findBar.getByText(/^查找选项/).click();
+  await findBar.getByText('替换', { exact: true }).click();
   await expect(findBar).toBeVisible();
   const query = findBar.getByRole('textbox', { name: '查找内容' });
   await query.fill('cat');
@@ -51,6 +53,8 @@ test('Web search: CtrlF captures the current selection as a replaceable scope', 
   for (let index = 0; index < 3; index++) await page.keyboard.press('Shift+ArrowRight');
   await page.keyboard.press('Control+f');
   const findBar = page.locator('.find-bar');
+  await findBar.getByText(/^查找选项/).click();
+  await findBar.getByText('替换', { exact: true }).click();
   await findBar.getByRole('textbox', { name: '查找内容' }).fill('cat');
   await expect(findBar).toContainText('查找范围：当前选区');
   await expect(findBar.locator('.find-result')).toContainText('1 处');
@@ -68,6 +72,8 @@ test('Web search: replacing one result resumes at the following match', async ({
   await page.keyboard.insertText('cat cat cat');
   await page.keyboard.press('Control+f');
   const findBar = page.locator('.find-bar');
+  await findBar.getByText(/^查找选项/).click();
+  await findBar.getByText('替换', { exact: true }).click();
   await findBar.getByRole('textbox', { name: '查找内容' }).fill('cat');
   await expect(findBar.locator('.find-result')).toContainText('3 处');
   await findBar.getByRole('button', { name: '下一个匹配' }).click();
@@ -99,6 +105,8 @@ test('Web search: a new query terminates stale worker work promptly', async ({ p
   await page.locator('.cm-content').focus();
   await page.keyboard.press('Control+f');
   const findBar = page.locator('.find-bar');
+  await findBar.getByText(/^查找选项/).click();
+  await findBar.getByText('替换', { exact: true }).click();
   const query = findBar.getByRole('textbox', { name: '查找内容' });
   await findBar.getByRole('checkbox', { name: '安全正则' }).check();
   await query.fill('(a+)+$');
@@ -135,6 +143,8 @@ test('Web mock: read-only documents can search but replacement controls stay dis
   await page.locator('.cm-content').focus();
   await page.keyboard.press('Control+f');
   const findBar = page.locator('.find-bar');
+  await findBar.getByText(/^查找选项/).click();
+  await findBar.getByText('替换', { exact: true }).click();
   await findBar.getByRole('textbox', { name: '查找内容' }).fill('Feather');
   await expect(findBar.locator('.find-result')).toContainText('2 处');
   await expect(findBar.getByRole('textbox', { name: '替换内容' })).toBeDisabled();

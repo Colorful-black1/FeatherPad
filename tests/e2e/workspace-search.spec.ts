@@ -104,6 +104,7 @@ test('workspace search preserves dirty buffers, forwards filters and completes a
   await page.keyboard.press('Control+Shift+f');
 
   const panel = page.getByRole('region', { name: /在文件和文件夹中查找/ });
+  await panel.getByText('搜索选项与范围', { exact: true }).click();
   await panel.getByLabel('搜索内容', { exact: true }).fill('alpha');
   await panel.getByLabel('包含 glob').fill('*.txt, src/**');
   await panel.getByLabel('排除 glob').fill('*.min.js');

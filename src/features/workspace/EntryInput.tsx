@@ -65,6 +65,7 @@ export function EntryInput({
         maxLength={255}
         onChange={event => { setName(event.currentTarget.value); setError(null); }}
         onKeyDown={event => {
+          if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
           if (event.key === 'Enter') {
             event.preventDefault();
             void submit();

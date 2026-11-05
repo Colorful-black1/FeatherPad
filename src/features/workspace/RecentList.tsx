@@ -85,7 +85,7 @@ export function RecentList({
         {visible.map(entry => {
           const missing = failed.has(entry.id) || !available.has(entry.ref.grantId);
           return <li key={entry.id} data-missing={missing || undefined}>
-            <button type="button" className="recent-open" disabled={disabled}
+            <button type="button" className="recent-open" disabled={disabled} title={entry.displayPath}
               aria-label={`${missing ? '重试打开' : '打开'}${entry.title}`}
               data-recent-kind={entry.kind} data-recent-id={entry.id}
               onClick={() => void run(entry.id, () => onOpen(entry), entry)}>

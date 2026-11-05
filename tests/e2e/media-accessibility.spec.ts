@@ -80,6 +80,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
     expect(focus.style).toBe('solid');
     expect(Number.parseFloat(focus.width)).toBeGreaterThanOrEqual(2);
     expect(contrast(focus.color, focus.background)).toBeGreaterThanOrEqual(3);
+    await page.locator('.find-bar').getByText('替换', { exact: true }).click();
     const primary = await page.getByRole('button', { name: /^全部替换/ }).evaluate(element => {
       const style = getComputedStyle(element);
       return { text: style.color, background: style.backgroundColor, adjustment: style.forcedColorAdjust };

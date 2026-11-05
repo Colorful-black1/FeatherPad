@@ -28,7 +28,7 @@ export function FavoriteList({ entries, problem, availableGrantIds, busy, canAdd
     </div>
     <div className="root-actions">
       <button className="plain-button" disabled={disabled || !canAddFile} onClick={() => void run(onAddFile)}>收藏当前文件</button>
-      <button className="plain-button" disabled={disabled || !canAddRoot} onClick={() => void run(onAddRoot)}>收藏当前根</button>
+      <button className="plain-button" disabled={disabled || !canAddRoot} onClick={() => void run(onAddRoot)}>收藏当前文件夹</button>
     </div>
     {problem && <p className="tree-state tree-error" role="alert">{problem} 原记录已保留，可在设置中导出后修复。</p>}
     {confirmClear && <div className="recent-confirm" role="group" aria-label="确认清空收藏">
@@ -43,8 +43,9 @@ export function FavoriteList({ entries, problem, availableGrantIds, busy, canAdd
     <ul className="recent-list">{entries.map((entry, index) => {
       const missing = !availableGrantIds.includes(entry.ref.grantId) || failed.has(entry.id);
       return <li key={entry.id} className={missing ? 'recent-missing' : ''}>
-        <button className="recent-open" disabled={disabled || missing} onClick={() => void run(() => onOpen(entry), entry)} title={entry.displayPath}>
-          <span className="recent-label"><span className="recent-title">{entry.name}</span><small>{missing ? '项目缺失或授权失效' : entry.displayPath}</small></span>
+        <button className="recent-open favorite-open" aria-label={entry.name} aria-description={entry.displayPath}
+          disabled={disabled || missing} onClick={() => void run(() => onOpen(entry), entry)} title={entry.displayPath}>
+          <span className="recent-copy"><span className="recent-title">{entry.name}</span><small title={entry.displayPath}>{missing ? '项目缺失或授权失效' : entry.displayPath}</small></span>
         </button>
         {editing === entry.id ? <form className="root-actions" onSubmit={event => {
           event.preventDefault(); void run(async () => { const error = await onChange({ kind: 'rename', id: entry.id, name }); if (!error) setEditing(null); return error; });

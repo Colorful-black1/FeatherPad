@@ -7,7 +7,7 @@ test('F6 cycles visible regions in both directions and preserves editor selectio
   await page.goto('/');
   const header = page.getByRole('menubar').getByRole('menuitem', { name: '文件', exact: true });
   const toggle = page.getByRole('button', { name: '切换资源管理器', exact: true });
-  const all = page.locator('.sidebar-section > summary').filter({ hasText: '工作区管理' });
+  const all = page.locator('.explorer-open-actions').getByRole('button', { name: '打开文件…', exact: true });
   const create = page.getByRole('button', { name: '新建文本', exact: true });
   const status = page.getByRole('status', { name: '应用状态', exact: true });
   await expect(header).toBeVisible();
@@ -82,7 +82,7 @@ test('narrow sidebar focuses on open, closes on Escape or entry into the documen
   await page.goto('/');
   const toggle = page.getByRole('button', { name: '切换资源管理器', exact: true });
   const sidebar = page.getByRole('complementary', { name: '资源管理器' });
-  const all = page.locator('.sidebar-section > summary').filter({ hasText: '工作区管理' });
+  const all = page.locator('.explorer-open-actions').getByRole('button', { name: '打开文件…', exact: true });
   const create = page.getByRole('button', { name: '新建文本', exact: true });
   await toggle.click();
   await expect(all).toBeFocused();

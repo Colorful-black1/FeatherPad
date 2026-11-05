@@ -3,8 +3,9 @@ import type { DirectoryEntry, FileRef, RenamedDocument } from '../../shared/cont
 import { EntryInput } from './EntryInput';
 import { creationParent, findDirectoryEntry } from './file-actions';
 import { workspace, type WorkspaceSnapshot, type WorkspaceStore } from './store';
-import { defaultIgnoredDirectories, parsePatternLines } from './filters';
-import { dragPayload, parseDragPayload, transferConfirmation, transferMode, workspaceDragType } from './drag-drop';
+import { FilterRules } from './FilterRules';
+import { dragPayload, parseDragPayload, transferMode, workspaceDragType, startWorkspaceDrag, endWorkspaceDrag, highlightDropTarget, clearDropTarget } from './drag-drop';
+import { useFileTransfer } from './use-file-transfer';
 import { ExplorerContextMenu, type ExplorerMenuTarget } from './ExplorerContextMenu';
 
 interface ExplorerProps {
@@ -73,23 +74,19 @@ function EntryRow({
   const renaming = editing?.mode === 'rename'
     && editing.entry?.ref.relativePath === entry.ref.relativePath;
   const transferable = !['junction', 'symlink'].includes(entry.kind);
+  const transfer = useFileTransfer(store, onRenamed);
 
   async function transferTo(event: DragEvent<HTMLElement>) {
     if (!expandable) return;
     event.preventDefault();
     event.stopPropagation();
+    clearDropTarget(event.currentTarget);
     const payload = parseDragPayload(event.dataTransfer.getData(workspaceDragType));
     if (!payload || payload.grantId !== entry.ref.grantId) return;
     const source = findDirectoryEntry(snapshot, payload.relativePath);
     if (!source || source.revision !== payload.revision || source.ref.relativePath === entry.ref.relativePath) return;
     const mode = transferMode(event.ctrlKey);
-    if (mode === 'move' && !window.confirm(transferConfirmation(source, entry.name, mode))) return;
-    const result = await store.transferEntry(source, entry.ref, mode);
-    if (!result.ok) {
-      window.alert(result.error.message);
-      return;
-    }
-    onRenamed?.(result.value.renamedDocuments);
+    transfer.request(source, entry.ref, snapshot.root?.displayPath ?? snapshot.root?.displayName ?? entry.name, mode);
   }
 
   function activate() {
@@ -167,15 +164,19 @@ function EntryRow({
       draggable={transferable && !renaming}
       onDragStart={event => {
         if (!transferable) return;
+        startWorkspaceDrag(entry);
         event.dataTransfer.effectAllowed = 'copyMove';
         event.dataTransfer.setData(workspaceDragType, JSON.stringify(dragPayload(entry)));
         event.dataTransfer.setData('text/plain', entry.name);
       }}
+      onDragEnd={endWorkspaceDrag}
       onDragOver={event => {
         if (!expandable) return;
+        highlightDropTarget(event, entry.ref);
         event.preventDefault();
         event.dataTransfer.dropEffect = event.ctrlKey ? 'copy' : 'move';
       }}
+      onDragLeave={event => clearDropTarget(event.currentTarget)}
       onDrop={event => void transferTo(event)}
       data-drop-target={expandable ? true : undefined}
       onClick={activate}
@@ -188,6 +189,7 @@ function EntryRow({
       {entry.isReadOnly && <span className="tree-badge">只读</span>}
       {(entry.kind === 'junction' || entry.kind === 'symlink') && <span className="tree-badge">链接</span>}
     </button>}
+    {transfer.view}
     {expanded && <DirectoryContents
       reference={entry.ref}
       depth={depth + 1}
@@ -265,7 +267,13 @@ export function Explorer({ currentReference, onOpen, onRenamed, onTrash, onNewTe
   const [editing, setEditing] = useState<EditingEntry | null>(null);
   const [focusPath, setFocusPath] = useState<string | null>(null);
   const [menuTarget, setMenuTarget] = useState<ExplorerMenuTarget | null>(null);
+  const transfer = useFileTransfer(store, onRenamed);
   const root = snapshot.root;
+  const [menuRoot, setMenuRoot] = useState(root?.grant.grantId);
+  if (menuRoot !== root?.grant.grantId) {
+    setMenuRoot(root?.grant.grantId);
+    setMenuTarget(null);
+  }
   const currentInRoot = snapshot.roots.some(item => currentReference?.grantId === item.grant.grantId);
   const selectedEntry = snapshot.selectedPath
     ? findDirectoryEntry(snapshot, snapshot.selectedPath)
@@ -285,11 +293,9 @@ export function Explorer({ currentReference, onOpen, onRenamed, onTrash, onNewTe
   const renameReason = editReason ?? (!menuEntry || ['junction', 'symlink'].includes(menuEntry.kind)
     ? '此项目不支持修改。' : null);
 
-  useEffect(() => { setMenuTarget(null); }, [root?.grant.grantId]);
-
   useEffect(() => {
     if (currentReference && currentInRoot) void store.locate(currentReference);
-  }, [currentReference?.grantId, currentReference?.relativePath, currentInRoot, store]);
+  }, [currentReference, currentInRoot, store]);
 
   useEffect(() => {
     if (!snapshot.selectedPath) return;
@@ -357,16 +363,14 @@ export function Explorer({ currentReference, onOpen, onRenamed, onTrash, onNewTe
 
   async function transferToRoot(event: DragEvent<HTMLElement>) {
     event.preventDefault();
+    clearDropTarget(event.currentTarget);
     if (!root) return;
     const payload = parseDragPayload(event.dataTransfer.getData(workspaceDragType));
     if (!payload || payload.grantId !== root.grant.grantId) return;
     const source = findDirectoryEntry(snapshot, payload.relativePath);
     if (!source || source.revision !== payload.revision) return;
     const mode = transferMode(event.ctrlKey);
-    if (mode === 'move' && !window.confirm(transferConfirmation(source, root.displayName, mode))) return;
-    const result = await store.transferEntry(source, root.grant, mode);
-    if (!result.ok) window.alert(result.error.message);
-    else onRenamed?.(result.value.renamedDocuments);
+    transfer.request(source, root.grant, root.displayPath ?? root.displayName, mode);
   }
 
   return <section className="workspace-explorer" aria-label="文件树" tabIndex={-1} onContextMenu={showMenu} onKeyDown={event => {
@@ -418,35 +422,14 @@ export function Explorer({ currentReference, onOpen, onRenamed, onTrash, onNewTe
         <input type="checkbox" checked={snapshot.showHidden} onChange={event => store.setShowHidden(event.target.checked)} />
         显示隐藏项
       </label>
-      <details className="workspace-filter-rules">
-        <summary>搜索与遍历过滤</summary>
-        <label><input type="checkbox" checked={snapshot.filters.respectGitignore}
-          onChange={event => store.setFilters({ ...snapshot.filters, respectGitignore: event.target.checked })} />
-          遵循 .gitignore</label>
-        <label><input type="checkbox" checked={snapshot.filters.followDirectoryLinks}
-          onChange={event => store.setFilters({ ...snapshot.filters, followDirectoryLinks: event.target.checked })} />
-          跟随目录链接（按 canonical 身份防循环）</label>
-        <label>包含 glob（每行一个）
-          <textarea aria-label="包含 glob" defaultValue={snapshot.filters.include.join('\n')}
-            onBlur={event => {
-              try { store.setFilters({ ...snapshot.filters, include: parsePatternLines(event.currentTarget.value) }); }
-              catch { store.setFilters(snapshot.filters); }
-            }} />
-        </label>
-        <label>排除 glob（每行一个）
-          <textarea aria-label="排除 glob" defaultValue={snapshot.filters.exclude.join('\n')}
-            onBlur={event => {
-              try { store.setFilters({ ...snapshot.filters, exclude: parsePatternLines(event.currentTarget.value) }); }
-              catch { store.setFilters(snapshot.filters); }
-            }} />
-        </label>
-        <small>默认排除 {defaultIgnoredDirectories.join('、')}；显式包含规则可临时覆盖其余默认目录。</small>
-      </details>
+      <FilterRules key={root.grant.grantId} filters={snapshot.filters} onChange={filters => store.setFilters(filters)} />
       <div className="tree-root-label" data-drop-target="true" tabIndex={0}
         onDragOver={event => {
+          highlightDropTarget(event, root.grant);
           event.preventDefault();
           event.dataTransfer.dropEffect = event.ctrlKey ? 'copy' : 'move';
         }}
+        onDragLeave={event => clearDropTarget(event.currentTarget)}
         onDrop={event => void transferToRoot(event)}>{root.displayName}</div>
       {snapshot.syncStatus.message && <p className={`tree-state ${snapshot.syncStatus.kind === 'unavailable' ? 'tree-error' : ''}`}
         role={snapshot.syncStatus.kind === 'unavailable' ? 'alert' : 'status'}>{snapshot.syncStatus.message}</p>}
@@ -467,6 +450,7 @@ export function Explorer({ currentReference, onOpen, onRenamed, onTrash, onNewTe
         />
       </div>
     </>}
+    {transfer.view}
     {menuTarget && menuTarget.grantId === (root?.grant.grantId ?? null) && <ExplorerContextMenu
       target={menuTarget} onClose={() => setMenuTarget(null)} sections={[
         ...(menuEntry?.kind === 'file' ? [[{ id: 'open', title: '打开文件', run: () => onOpen(menuEntry.ref, 'pinned') }]]

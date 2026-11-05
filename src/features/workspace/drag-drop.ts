@@ -1,4 +1,5 @@
-import type { DirectoryEntry, TransferMode } from '../../shared/contracts/files';
+import type { DragEvent } from 'react';
+import type { DirectoryEntry, FileRef, TransferMode } from '../../shared/contracts/files';
 
 export const workspaceDragType = 'application/x-featherpad-entry';
 
@@ -38,4 +39,20 @@ export function transferConfirmation(source: DirectoryEntry, targetName: string,
   return mode === 'copy'
     ? `将“${source.name}”复制到“${targetName}”？目标已存在时不会覆盖。`
     : `将“${source.name}”移动到“${targetName}”？目标已存在时不会覆盖。`;
+}
+let dragging: WorkspaceDragPayload | null = null;
+
+export function startWorkspaceDrag(entry: DirectoryEntry) { dragging = dragPayload(entry); }
+export function clearDropTarget(element: HTMLElement) { delete element.dataset.dragOver; }
+export function endWorkspaceDrag() {
+  dragging = null;
+  document.querySelectorAll<HTMLElement>('[data-drag-over]').forEach(clearDropTarget);
+}
+export function highlightDropTarget(event: DragEvent<HTMLElement>, target: FileRef) {
+  const sameRoot = dragging?.grantId === target.grantId;
+  const descendant = sameRoot && (target.relativePath === dragging?.relativePath
+    || target.relativePath.startsWith(`${dragging?.relativePath}/`));
+  const sameParent = sameRoot && !event.ctrlKey && target.relativePath === dragging?.relativePath.split('/').slice(0, -1).join('/');
+  if (dragging && !descendant && !sameParent && event.dataTransfer.types.includes(workspaceDragType)) event.currentTarget.dataset.dragOver = 'true';
+  else clearDropTarget(event.currentTarget);
 }

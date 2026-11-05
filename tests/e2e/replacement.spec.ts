@@ -85,6 +85,7 @@ test('workspace replacement shows only writable files, requires final confirmati
   await expect(page.getByRole('tree', { name: 'controlled-project 文件树', exact: true })).toBeVisible();
   await page.keyboard.press('Control+Shift+f');
   const search = page.getByRole('region', { name: /在文件和文件夹中查找/ });
+  await search.getByText('跨文件替换', { exact: true }).click();
   await search.getByLabel('搜索内容', { exact: true }).fill('alpha');
   await search.getByLabel('替换为', { exact: true }).fill('omega');
   await search.getByRole('button', { name: '预览跨文件替换', exact: true }).click();
