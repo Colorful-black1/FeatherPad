@@ -61,6 +61,7 @@ export async function verifyNativeOverwrite(page: Page, dataDir: string, second:
   await nativeAction('confirm-system', copy);
   await nativeAction('inspect-overwrite', copy);
   await nativeAction('confirm-overwrite', copy);
+  await page.locator('.status-notices > summary').click();
   await expect(page.getByText(`副本已保存：${copy}`, { exact: true })).toBeVisible();
   expect(await readFile(copy, 'utf8')).toBe(`${draft} 覆盖副本的新内容`);
   expect(await readFile(destination, 'utf8')).toBe(draft);

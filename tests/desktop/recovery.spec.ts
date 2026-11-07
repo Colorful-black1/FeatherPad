@@ -245,7 +245,7 @@ test('real Release hot exit flushes dirty buffers, restores sources, and fences 
     await expect(editor(app.page)).toHaveText('保底版本😀');
     expect(await readFile(damagedBody, 'utf8')).toBe('受控损坏证据，保留');
     const recoveryPanel = app.page.locator('.recovery-panel');
-    await recoveryPanel.locator('summary').click();
+    await app.page.getByRole('button', { name: '显示本地恢复', exact: true }).click();
     await recoveryPanel.getByRole('button', { name: '打开恢复副本：transaction-source.txt', exact: true }).click();
     await expect(editor(app.page)).toHaveText('事务待保存😀下一行');
     await expect(recoveryPanel.getByRole('status')).toContainText('已打开');

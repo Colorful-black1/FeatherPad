@@ -1,4 +1,4 @@
-import { menuItem } from '../ui-actions';
+import { menuItem, explorerAction } from '../ui-actions';
 import { expect, type Page } from '@playwright/test';
 import { execFile } from 'node:child_process';
 import { mkdir, readFile, readdir, rm, stat, symlink, unlink, writeFile } from 'node:fs/promises';
@@ -145,9 +145,11 @@ export async function verifyNativeWorkspace(
     await tree.getByRole('button', { name: '重试', exact: true }).click();
     await expect(tree.getByRole('treeitem', { name: '恢复后可见.txt', exact: true })).toBeVisible();
 
+    await page.getByRole('button', { name: '文件筛选', exact: true }).click();
     await page.getByRole('checkbox', { name: '显示隐藏项' }).check();
     await expect(tree.getByRole('treeitem', { name: '隐藏.txt', exact: true })).toBeVisible();
     await page.getByRole('checkbox', { name: '显示隐藏项' }).uncheck();
+    await page.getByRole('dialog', { name: '文件筛选', exact: true }).getByRole('button', { name: '完成', exact: true }).click();
 
     const alphaRow = tree.getByRole('treeitem', { name: 'alpha', exact: true });
     await alphaRow.focus();
@@ -169,7 +171,7 @@ export async function verifyNativeWorkspace(
     await expect(editor).toHaveText('原生目录内容第二行 dirty');
     await expect(page.getByRole('tab', { name: /打开 中文😀\.txt 有未保存修改/ })).toBeVisible();
 
-    await page.getByRole('button', { name: '定位当前文件', exact: true }).click();
+    await explorerAction(page, '定位当前文件');
     await expect(tree.getByRole('treeitem', { name: '打开 中文😀.txt', exact: true }))
       .toHaveAttribute('aria-current', 'page');
 
@@ -246,7 +248,7 @@ export async function verifyNativeWorkspace(
     expect((await stat(path.join(alpha, '树内目录'))).isDirectory()).toBe(true);
 
     await tree.getByRole('treeitem', { name: createdName, exact: true }).click();
-    await page.getByRole('button', { name: '重命名选中项', exact: true }).click();
+    await page.getByRole('treeitem', { selected: true }).press('F2');
     const renameCreated = page.getByRole('textbox', { name: '重命名' });
     await expect(renameCreated).toHaveValue(createdName);
     await expect(page.getByText('后缀 .txt', { exact: true })).toBeVisible();
@@ -295,7 +297,7 @@ export async function verifyNativeWorkspace(
       exact: true,
     })).toBeVisible();
     await nestedFolder.click();
-    await page.getByRole('button', { name: '重命名选中项', exact: true }).click();
+    await page.getByRole('treeitem', { selected: true }).press('F2');
     const renameDirectory = page.getByRole('textbox', { name: '重命名' });
     await renameDirectory.fill('树内目录-改名');
     await renameDirectory.press('Enter');

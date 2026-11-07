@@ -3,9 +3,9 @@ export type MarkdownMode = 'source' | 'read' | 'split';
 interface Preference<T> { value: T; warning: string | null }
 const sidebarKey = 'featherpad.view.sidebar-width.v1';
 const markdownKey = 'featherpad.view.markdown-mode.v1';
-export const sidebarMinWidth = 180;
+export const sidebarMinWidth = 220;
 export const sidebarMaxWidth = 640;
-export const sidebarDefaultWidth = 232;
+export const sidebarDefaultWidth = 280;
 
 function read(key: string): Preference<string | null> {
   try { return { value: window.localStorage.getItem(key), warning: null }; }
@@ -16,8 +16,8 @@ export function loadSidebarWidth(): Preference<number> {
   const stored = read(sidebarKey);
   if (stored.value === null) return { ...stored, value: sidebarDefaultWidth };
   const width = stored.value.length <= 16 ? Number(stored.value) : NaN;
-  return Number.isInteger(width) && width >= sidebarMinWidth && width <= sidebarMaxWidth
-    ? { value: width, warning: null }
+  return Number.isInteger(width) && width >= 180 && width <= sidebarMaxWidth
+    ? { value: Math.max(sidebarMinWidth, width), warning: null }
     : { value: sidebarDefaultWidth, warning: '侧栏宽度记录无效，已恢复默认宽度。' };
 }
 

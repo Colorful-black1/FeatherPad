@@ -315,6 +315,7 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
         const copy = path.join(dataDir, '副本 保存😀.txt');
         await (await menuItem(page, '保存副本')).click();
         await chooseDestination('save', copy);
+        await page.locator('.status-notices > summary').click();
         await expect(page.getByText(`副本已保存：${copy}`, { exact: true })).toBeVisible();
         await expect(page.getByRole('status')).toContainText('未保存修改');
         await expect(page.getByRole('tab', { name: /首次 保存😀.txt/ })).toHaveAttribute('aria-selected', 'true');

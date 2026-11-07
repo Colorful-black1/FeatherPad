@@ -60,7 +60,7 @@ async function openFixture(page: Page, mode: 'success' | 'failure' | 'uncertain'
   await page.locator('.cm-content').focus();
   await page.keyboard.press('Control+End');
   await page.keyboard.insertText(' dirty😀');
-  await page.getByRole('button', { name: '移至回收站', exact: true }).click();
+  await page.getByRole('treeitem', { selected: true }).press('Delete');
   const dialog = page.getByRole('dialog', { name: '移至回收站' });
   await expect(dialog).toContainText('1 个有未保存修改');
   return dialog;
@@ -77,7 +77,7 @@ test('Web mock: cancel keeps the file; confirmed recycling preserves the buffer 
   await expect(dialog).not.toBeVisible();
   expect((await calls(page)).filter(call => call.command === 'trash_entry')).toHaveLength(0);
   await expect(page.getByRole('treeitem', { name: 'trash.txt' })).toBeVisible();
-  await page.getByRole('button', { name: '移至回收站', exact: true }).click();
+  await page.getByRole('treeitem', { selected: true }).press('Delete');
   dialog = page.getByRole('dialog');
   await dialog.getByRole('button', { name: '保留草稿并移至回收站' }).click();
   await expect(dialog).not.toBeVisible();

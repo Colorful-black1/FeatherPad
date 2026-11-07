@@ -32,6 +32,9 @@ test('Web mock: first-save cancellation preserves the draft and copy keeps the s
   await page.keyboard.press('Control+End');
   await page.keyboard.insertText(' 副本中的输入');
   await (await menuItem(page, '保存副本')).click();
+  await expect(page.getByText(/^副本已保存：E:/)).not.toBeVisible();
+  await expect(page.locator('#editor-area > .notice')).toHaveCount(0);
+  await page.locator('.status-notices > summary').click();
   await expect(page.getByText(/^副本已保存：E:/)).toBeVisible();
   await expect(page.locator('.notice[data-tone="success"]')).toContainText('副本已保存');
   await expect(page.getByRole('tab')).toContainText('保存 文件.txt');

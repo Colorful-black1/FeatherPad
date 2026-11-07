@@ -1,4 +1,4 @@
-import { menuItem, sidebarSection } from '../ui-actions';
+import { menuItem, sidebarSection, explorerAction } from '../ui-actions';
 import { expect, test } from './test-fixture';
 
 test('multiple roots keep dirty buffers while reordering, switching trees and revoking a root', async ({ page }) => {
@@ -38,12 +38,16 @@ test('multiple roots keep dirty buffers while reordering, switching trees and re
   await sidebarSection(page, '工作区管理');
   const list = page.getByRole('region', { name: '工作区根', exact: true });
   await expect(list.getByRole('listitem')).toHaveCount(2);
+  await page.getByRole('button', { name: '返回资源管理器', exact: true }).click();
   await expect(page.getByRole('treeitem', { name: 'b.txt', exact: true })).toBeVisible();
+  await sidebarSection(page, '工作区管理');
   const first = list.getByRole('listitem').filter({ hasText: 'E:/one/notes' });
   await first.getByRole('button', { name: '下移根 notes', exact: true }).click();
   await expect(list.getByRole('listitem').last()).toContainText('E:/one/notes');
   await first.getByRole('button', { pressed: false }).first().click();
+  await page.getByRole('button', { name: '返回资源管理器', exact: true }).click();
   await expect(page.getByRole('treeitem', { name: 'a.txt', exact: true })).toBeVisible();
+  await sidebarSection(page, '工作区管理');
   await first.getByRole('button', { name: '移除根 notes', exact: true }).click();
   await expect(list.getByRole('listitem')).toHaveCount(1);
   await expect(editor).toHaveText('original draft');
@@ -160,7 +164,7 @@ test('Web mock lazily pages one root and keeps empty, denied, hidden and current
     });
   });
   await page.goto('/');
-  await page.getByRole('button', { name: '打开文件夹' }).click();
+  await page.getByRole('button', { name: '打开文件夹', exact: true }).click();
   const tree = page.getByRole('tree', { name: 'controlled-project 文件树' });
   await expect(tree).toBeVisible();
   await expect(tree.getByRole('treeitem', { name: /folder/ })).toBeVisible();
@@ -176,11 +180,13 @@ test('Web mock lazily pages one root and keeps empty, denied, hidden and current
 
   await tree.getByRole('treeitem', { name: 'nested.txt' }).click();
   await expect(page.locator('.cm-content')).toHaveText('nested');
-  await expect(page.getByRole('button', { name: '定位当前文件' })).toBeEnabled();
+  await page.getByRole('button', { name: '资源管理器更多操作', exact: true }).click();
+  await expect(page.getByRole('menuitem', { name: '定位当前文件', exact: true })).not.toHaveAttribute('aria-disabled', 'true');
+  await page.keyboard.press('Escape');
 
   await tree.getByRole('treeitem', { name: /folder/ }).click();
   await expect(tree.getByRole('treeitem', { name: 'nested.txt' })).toHaveCount(0);
-  await page.getByRole('button', { name: '定位当前文件' }).click();
+  await explorerAction(page, '定位当前文件');
   await expect(tree.getByRole('treeitem', { name: 'nested.txt' })).toHaveAttribute('aria-current', 'page');
 
   await tree.getByRole('treeitem', { name: /empty/ }).click();
@@ -189,7 +195,9 @@ test('Web mock lazily pages one root and keeps empty, denied, hidden and current
   await expect(tree.getByRole('alert')).toContainText('controlled denied directory');
   await expect(tree.getByRole('button', { name: '重试' })).toBeVisible();
 
+  await page.getByRole('button', { name: '文件筛选', exact: true }).click();
   await page.getByRole('checkbox', { name: '显示隐藏项' }).check();
+  await page.getByRole('dialog', { name: '文件筛选', exact: true }).getByRole('button', { name: '完成', exact: true }).click();
   await expect(tree.getByRole('treeitem', { name: /\.hidden/ })).toBeVisible();
   await expect(tree.getByRole('treeitem', { name: /denied/ })).toHaveCount(0);
 
@@ -206,7 +214,7 @@ test('Web mock lazily pages one root and keeps empty, denied, hidden and current
   await expect(tree).toBeVisible();
   await expect(editor).toHaveText('nested edited');
   await expect(page.getByLabel('有未保存修改', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: '定位当前文件' }).click();
+  await explorerAction(page, '定位当前文件');
 
   const sourceRow = tree.getByRole('treeitem', { name: 'nested.txt', exact: true });
   const targetRoot = page.locator('.tree-root-label');
@@ -232,7 +240,7 @@ test('Web mock lazily pages one root and keeps empty, denied, hidden and current
   await page.keyboard.press('Escape');
   await expect(sourceRow).toBeFocused();
 
-  await page.getByRole('button', { name: '重命名选中项' }).click();
+  await page.getByRole('treeitem', { selected: true }).press('F2');
   const renameInput = page.getByRole('textbox', { name: '重命名' });
   await expect(renameInput).toHaveValue('nested.txt');
   await renameInput.fill('中文.txt');

@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore, type CSSProperties, type DragEvent, type KeyboardEvent, type MouseEvent } from 'react';
+import { useEffect, useState, useSyncExternalStore, type CSSProperties, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import type { DirectoryEntry, FileRef, RenamedDocument } from '../../shared/contracts/files';
 import { EntryInput } from './EntryInput';
 import { creationParent, findDirectoryEntry } from './file-actions';
@@ -17,6 +17,8 @@ interface ExplorerProps {
   onNewText?: () => void;
   onChooseFile?: () => void;
   onChooseFolder?: () => void;
+  onManageWorkspace?: () => void;
+  openEditors?: ReactNode;
   store?: WorkspaceStore;
 }
 
@@ -261,25 +263,23 @@ function DirectoryContents({
   </div>;
 }
 
-export function Explorer({ currentReference, onOpen, onRenamed, onTrash, onNewText, onChooseFile, onChooseFolder,
+export function Explorer({ currentReference, onOpen, onRenamed, onTrash, onNewText, onChooseFile, onChooseFolder, onManageWorkspace, openEditors,
   mutationBlocked = false, store = workspace }: ExplorerProps) {
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);
   const [editing, setEditing] = useState<EditingEntry | null>(null);
   const [focusPath, setFocusPath] = useState<string | null>(null);
   const [menuTarget, setMenuTarget] = useState<ExplorerMenuTarget | null>(null);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [rootCollapsed, setRootCollapsed] = useState(false);
   const transfer = useFileTransfer(store, onRenamed);
   const root = snapshot.root;
   const [menuRoot, setMenuRoot] = useState(root?.grant.grantId);
   if (menuRoot !== root?.grant.grantId) {
     setMenuRoot(root?.grant.grantId);
     setMenuTarget(null);
+    setRootCollapsed(false);
   }
   const currentInRoot = snapshot.roots.some(item => currentReference?.grantId === item.grant.grantId);
-  const selectedEntry = snapshot.selectedPath
-    ? findDirectoryEntry(snapshot, snapshot.selectedPath)
-    : null;
-  const canRename = selectedEntry
-    && !['junction', 'symlink'].includes(selectedEntry.kind);
   const createParent = creationParent(snapshot);
   const createRecord = createParent ? snapshot.records[createParent.relativePath] : null;
   const canCreate = Boolean(createParent && createRecord?.loaded
@@ -294,7 +294,9 @@ export function Explorer({ currentReference, onOpen, onRenamed, onTrash, onNewTe
     ? '此项目不支持修改。' : null);
 
   useEffect(() => {
-    if (currentReference && currentInRoot) void store.locate(currentReference);
+    if (currentReference && currentInRoot) void store.locate(currentReference).then(located => {
+      if (located) setRootCollapsed(false);
+    });
   }, [currentReference, currentInRoot, store]);
 
   useEffect(() => {
@@ -345,7 +347,7 @@ export function Explorer({ currentReference, onOpen, onRenamed, onTrash, onNewTe
     if (!(event.target instanceof Element) || event.target.closest('input, textarea, [role="menu"]')) return;
     const row = event.target.closest<HTMLElement>('[role="treeitem"]');
     // Keep native menus on controls such as filters and the inline name editor.
-    if (!row && event.target.closest('button, label, summary, details')) return;
+    if (!row && event.target.closest('button, label, summary, details') && !event.target.closest('.tree-root-label')) return;
     event.preventDefault(); event.stopPropagation();
     const path = row?.dataset.treeKey ?? null;
     const entry = path ? findDirectoryEntry(snapshot, path) : null;
@@ -380,7 +382,7 @@ export function Explorer({ currentReference, onOpen, onRenamed, onTrash, onNewTe
     const entry = key ? findDirectoryEntry(snapshot, key) : null;
     if (entry && !['junction', 'symlink'].includes(entry.kind)) { event.preventDefault(); onTrash(entry); }
   }}>
-    <div className="explorer-heading">
+    <div className="explorer-heading explorer-titlebar">
       <h2 className="sidebar-title">资源管理器</h2>
       <div className="explorer-actions">
         {root && <button type="button" className="icon-button compact" disabled={!canCreate || !!editing}
@@ -391,50 +393,48 @@ export function Explorer({ currentReference, onOpen, onRenamed, onTrash, onNewTe
           onClick={() => beginCreate('create-directory')} aria-label="新建文件夹" title="新建文件夹">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7V5h7l2 2h9v13H3ZM3 9h18M12 12v5M9.5 14.5h5" /></svg>
         </button>}
-        {root && <button type="button" className="icon-button compact" disabled={!canRename || !!editing}
-          onClick={() => { if (selectedEntry) setEditing({ mode: 'rename', parent: selectedEntry.ref, entry: selectedEntry }); }}
-          aria-label="重命名选中项" title="重命名（F2）">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 16-1 5 5-1L19 9l-4-4L4 16ZM13 7l4 4" /></svg>
-        </button>}
-        {root && onTrash && <button type="button" className="icon-button compact" disabled={!canRename || !!editing || mutationBlocked}
-          onClick={() => { if (selectedEntry) onTrash(selectedEntry); }} aria-label="移至回收站" title="移至回收站（Delete）">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7" /></svg>
-        </button>}
         {root && <button type="button" className="icon-button compact" disabled={!!editing}
           onClick={() => store.refresh()} aria-label="刷新目录树" title="刷新">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6" /></svg>
         </button>}
-        {root && <button type="button" className="icon-button compact" disabled={!currentInRoot}
-          onClick={() => { if (currentReference) void store.locate(currentReference); }}
-          aria-label="定位当前文件" title="定位当前文件">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M12 2v4M12 18v4M2 12h4M18 12h4" /></svg>
+        {root && <button type="button" className="icon-button compact" aria-label="文件筛选" title="文件筛选" onClick={() => setFilterOpen(true)}
+          data-active={snapshot.showHidden || snapshot.filters.include.length > 0 || snapshot.filters.exclude.length > 0 || !snapshot.filters.respectGitignore || snapshot.filters.followDirectoryLinks}>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8v6l-4 2v-8Z" /></svg>
         </button>}
+        <button type="button" className="icon-button compact" aria-label="资源管理器更多操作" title="更多操作" aria-haspopup="menu" onClick={event => {
+          const bounds = event.currentTarget.getBoundingClientRect();
+          setMenuTarget({ path: null, grantId: root?.grant.grantId ?? null, origin: event.currentTarget, x: bounds.left, y: bounds.bottom });
+        }}><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /></svg></button>
       </div>
     </div>
-    {(onChooseFile || onChooseFolder) && <div className="explorer-open-actions">
-      {onChooseFile && <button type="button" className="plain-button" disabled={mutationBlocked} onClick={onChooseFile}>打开文件…</button>}
-      {onChooseFolder && <button type="button" className="plain-button" disabled={mutationBlocked} onClick={onChooseFolder}>打开文件夹…</button>}
+    <div className="explorer-scroll">
+    {openEditors}
+    {!root && <div className="explorer-empty">
+      <h3>尚未打开文件夹</h3>
+    {onChooseFolder && <div className="explorer-open-actions">
+      <button type="button" className="plain-button" disabled={mutationBlocked} onClick={onChooseFolder}>打开文件夹…</button>
     </div>}
-    <p className="explorer-help">右键文件、文件夹或空白处，查看可用操作</p>
-    {!root && <p className="sidebar-empty">尚未打开文件夹，请点击上方“打开文件夹”。</p>}
+    </div>}
     {root && <>
-      <label className="explorer-filter">
-        <input type="checkbox" checked={snapshot.showHidden} onChange={event => store.setShowHidden(event.target.checked)} />
-        显示隐藏项
-      </label>
-      <FilterRules key={root.grant.grantId} filters={snapshot.filters} onChange={filters => store.setFilters(filters)} />
-      <div className="tree-root-label" data-drop-target="true" tabIndex={0}
+      {snapshot.roots.length > 1 && <label className="explorer-root-picker"><span className="visually-hidden">切换文件夹</span>
+        <select aria-label="切换文件夹" value={root.grant.grantId} onChange={event => store.activateRoot(event.currentTarget.value)}>
+          {snapshot.roots.map(item => <option key={item.grant.grantId} value={item.grant.grantId}>{item.displayName}</option>)}
+        </select>
+      </label>}
+      <button type="button" className="tree-root-label" data-drop-target="true" aria-expanded={!rootCollapsed}
+        onClick={() => setRootCollapsed(value => !value)}
         onDragOver={event => {
           highlightDropTarget(event, root.grant);
           event.preventDefault();
           event.dataTransfer.dropEffect = event.ctrlKey ? 'copy' : 'move';
         }}
         onDragLeave={event => clearDropTarget(event.currentTarget)}
-        onDrop={event => void transferToRoot(event)}>{root.displayName}</div>
-      {snapshot.syncStatus.message && <p className={`tree-state ${snapshot.syncStatus.kind === 'unavailable' ? 'tree-error' : ''}`}
-        role={snapshot.syncStatus.kind === 'unavailable' ? 'alert' : 'status'}>{snapshot.syncStatus.message}</p>}
-      {snapshot.rootError && <p className="tree-state tree-error" role="alert">{snapshot.rootError}</p>}
-      <div className="tree" role="tree" aria-label={`${root.displayName} 文件树`} data-workspace-tree>
+        onDrop={event => void transferToRoot(event)} title={root.displayPath ?? root.displayName}><span aria-hidden="true">{rootCollapsed ? '▸' : '▾'}</span><span className="tree-root-name">{root.displayName}</span></button>
+      {(snapshot.rootError || snapshot.syncStatus.kind === 'unavailable') ? <details className="explorer-problem">
+        <summary>⚠ 文件夹暂不可用</summary><p>{snapshot.rootError ?? snapshot.syncStatus.message}</p>
+        <button type="button" className="plain-button" onClick={() => store.refresh()}>重新读取</button>
+      </details> : snapshot.syncStatus.message && <p className="explorer-sync" title={snapshot.syncStatus.message} role="status">{snapshot.syncStatus.message}</p>}
+      <div className="tree" role="tree" aria-label={`${root.displayName} 文件树`} data-workspace-tree hidden={rootCollapsed}>
         <DirectoryContents
           reference={root.grant}
           depth={0}
@@ -450,6 +450,12 @@ export function Explorer({ currentReference, onOpen, onRenamed, onTrash, onNewTe
         />
       </div>
     </>}
+    </div>
+    {root && filterOpen && <FilterRules key={root.grant.grantId} filters={snapshot.filters} onChange={filters => store.setFilters(filters)}
+      showHidden={snapshot.showHidden} onShowHidden={value => store.setShowHidden(value)} onClose={() => {
+        setFilterOpen(false);
+        requestAnimationFrame(() => document.querySelector<HTMLButtonElement>('[aria-label="文件筛选"]')?.focus());
+      }} />}
     {transfer.view}
     {menuTarget && menuTarget.grantId === (root?.grant.grantId ?? null) && <ExplorerContextMenu
       target={menuTarget} onClose={() => setMenuTarget(null)} sections={[
@@ -457,6 +463,10 @@ export function Explorer({ currentReference, onOpen, onRenamed, onTrash, onNewTe
           : menuEntry?.kind === 'directory' ? [[{ id: 'expand', title: snapshot.expanded[menuEntry.ref.relativePath] ? '折叠文件夹' : '展开文件夹',
             run: () => store.toggleDirectory(menuEntry) }]] : []),
         [
+          ...(onManageWorkspace ? [{ id: 'manage-workspace', title: '工作区管理…', run: onManageWorkspace }] : []),
+          { id: 'filter-files', title: '文件筛选…', disabledReason: !root ? '请先打开文件夹。' : null, run: () => setFilterOpen(true) },
+          { id: 'locate-current', title: '定位当前文件', disabledReason: !currentInRoot ? '当前文件不属于工作区。' : null,
+            run: () => { if (currentReference) void store.locate(currentReference); } },
           { id: 'create-file', title: '新建文件…', disabledReason: createReason, run: () => beginCreate('create-file', menuParent) },
           { id: 'create-directory', title: '新建文件夹…', disabledReason: createReason, run: () => beginCreate('create-directory', menuParent) },
           ...(onNewText ? [{ id: 'new-text', title: '新建未命名文本', disabledReason: editReason, run: onNewText }] : []),

@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, type MouseEvent } from 'react';
 import type { Favorite, FavoriteAction } from './favorites';
+import { ExplorerContextMenu, type ExplorerMenuTarget } from './ExplorerContextMenu';
 
 export function FavoriteList({ entries, problem, availableGrantIds, busy, canAddFile, canAddRoot, onAddFile, onAddRoot, onOpen, onRepair, onChange, onClear }: {
   entries: readonly Favorite[]; problem: string | null; availableGrantIds: readonly string[]; busy: boolean;
@@ -11,6 +12,7 @@ export function FavoriteList({ entries, problem, availableGrantIds, busy, canAdd
   const [editing, setEditing] = useState<string | null>(null), [name, setName] = useState('');
   const [failed, setFailed] = useState<ReadonlySet<string>>(() => new Set());
   const [confirmClear, setConfirmClear] = useState(false);
+  const [menu, setMenu] = useState<{ entry: Favorite; target: ExplorerMenuTarget } | null>(null);
   const disabled = busy || working || problem !== null;
   async function run(action: () => Promise<string | null>, mark?: Favorite) {
     if (disabled) return;
@@ -21,8 +23,15 @@ export function FavoriteList({ entries, problem, availableGrantIds, busy, canAdd
       return error;
     } finally { setWorking(false); }
   }
+  function showMenu(entry: Favorite, event: MouseEvent<HTMLElement>) {
+    if (event.target instanceof Element && event.target.closest('input')) return;
+    event.preventDefault();
+    const bounds = event.currentTarget.getBoundingClientRect();
+    setMenu({ entry, target: { path: entry.ref.relativePath, grantId: entry.ref.grantId, origin: event.currentTarget,
+      x: event.type === 'contextmenu' ? event.clientX : bounds.left, y: event.type === 'contextmenu' ? event.clientY : bounds.bottom } });
+  }
   return <section className="recent-panel" aria-labelledby="favorites-heading">
-    <div className="recent-heading"><h2 id="favorites-heading" className="sidebar-title">收藏</h2><span>{entries.length}/100</span>
+    <div className="recent-heading"><h2 id="favorites-heading" className="visually-hidden">收藏</h2><span>{entries.length}/100</span>
       {entries.length > 0 && <button type="button" className="recent-clear" disabled={disabled}
         onClick={() => setConfirmClear(true)}>清空</button>}
     </div>
@@ -40,26 +49,36 @@ export function FavoriteList({ entries, problem, availableGrantIds, busy, canAdd
     </div>}
     {message && <p className="tree-state tree-error" role="alert">{message}</p>}
     {!entries.length && !problem && <p className="sidebar-empty">收藏独立于最近记录，可按自己的顺序整理。</p>}
-    <ul className="recent-list">{entries.map((entry, index) => {
+    <ul className="recent-list">{entries.map(entry => {
       const missing = !availableGrantIds.includes(entry.ref.grantId) || failed.has(entry.id);
-      return <li key={entry.id} className={missing ? 'recent-missing' : ''}>
+      return <li key={entry.id} className={missing ? 'recent-missing' : ''} onContextMenu={event => showMenu(entry, event)}>
         <button className="recent-open favorite-open" aria-label={entry.name} aria-description={entry.displayPath}
           disabled={disabled || missing} onClick={() => void run(() => onOpen(entry), entry)} title={entry.displayPath}>
-          <span className="recent-copy"><span className="recent-title">{entry.name}</span><small title={entry.displayPath}>{missing ? '项目缺失或授权失效' : entry.displayPath}</small></span>
+          <span className="recent-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d={entry.kind === 'file'
+            ? 'M6 3h8l4 4v14H6ZM14 3v5h5' : 'M3 7V5h7l2 2h9v13H3ZM3 9h18'} /></svg></span>
+          <span className="recent-copy"><span className="recent-title">{entry.name}</span><small title={entry.displayPath}>{missing ? '需要重新选择' : entry.displayPath}</small></span>
         </button>
         {editing === entry.id ? <form className="root-actions" onSubmit={event => {
           event.preventDefault(); void run(async () => { const error = await onChange({ kind: 'rename', id: entry.id, name }); if (!error) setEditing(null); return error; });
         }}><input autoFocus aria-label={`收藏名称 ${entry.name}`} maxLength={128} value={name} onChange={event => setName(event.target.value)} />
           <button className="plain-button" disabled={disabled}>确定</button>
           <button type="button" className="plain-button" disabled={disabled} onClick={() => setEditing(null)}>取消</button></form>
-          : <div className="recent-actions">
+          : <div className="recent-actions favorite-actions">
             {missing && <button disabled={disabled} onClick={() => void run(() => onRepair(entry), entry)}>重新选择</button>}
-            <button disabled={disabled} aria-label={`重命名收藏 ${entry.name}`} onClick={() => { setEditing(entry.id); setName(entry.name); }}>命名</button>
-            <button disabled={disabled || index === 0} aria-label={`上移收藏 ${entry.name}`} onClick={() => void run(() => onChange({ kind: 'move', id: entry.id, delta: -1 }))}>↑</button>
-            <button disabled={disabled || index === entries.length - 1} aria-label={`下移收藏 ${entry.name}`} onClick={() => void run(() => onChange({ kind: 'move', id: entry.id, delta: 1 }))}>↓</button>
-            <button disabled={disabled} aria-label={`移除收藏 ${entry.name}`} onClick={() => void run(() => onChange({ kind: 'remove', id: entry.id }))}>移除</button>
+            <button type="button" className="sidebar-row-action" disabled={disabled} aria-label={`收藏操作 ${entry.name}`} aria-haspopup="menu"
+              title="更多操作" onClick={event => showMenu(entry, event)}>⋯</button>
           </div>}
       </li>;
     })}</ul>
+    {menu && <ExplorerContextMenu label="收藏操作" target={menu.target} onClose={() => setMenu(null)} sections={[[
+      { id: 'rename', title: `重命名收藏 ${menu.entry.name}`, disabledReason: disabled ? '请等待当前操作。' : null,
+        run: () => { setEditing(menu.entry.id); setName(menu.entry.name); } },
+      { id: 'up', title: `上移收藏 ${menu.entry.name}`, disabledReason: disabled || entries[0]?.id === menu.entry.id ? '当前无法上移。' : null,
+        run: () => { void run(() => onChange({ kind: 'move', id: menu.entry.id, delta: -1 })); } },
+      { id: 'down', title: `下移收藏 ${menu.entry.name}`, disabledReason: disabled || entries.at(-1)?.id === menu.entry.id ? '当前无法下移。' : null,
+        run: () => { void run(() => onChange({ kind: 'move', id: menu.entry.id, delta: 1 })); } },
+      { id: 'remove', title: `移除收藏 ${menu.entry.name}`, disabledReason: disabled ? '请等待当前操作。' : null,
+        run: () => { void run(() => onChange({ kind: 'remove', id: menu.entry.id })); } },
+    ]]} />}
   </section>;
 }

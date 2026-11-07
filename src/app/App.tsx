@@ -10,7 +10,10 @@ import { WorkspaceRoots } from '../features/workspace/roots';
 import { RootList } from '../features/workspace/RootList';
 import { FavoriteList } from '../features/workspace/FavoriteList';
 import { WelcomeRecent } from '../features/workspace/WelcomeRecent';
-import { NoticeBanner, type NoticeTone } from '../shared/ui/NoticeBanner';
+import { ErrorDialog, NoticeBanner, type NoticeTone } from '../shared/ui/NoticeBanner';
+import { StatusNotices } from '../shared/ui/StatusNotices';
+import { SidebarActivities, SidebarPanel, type SidebarView } from '../shared/ui/SidebarViews';
+import { OpenEditors } from '../features/workspace/OpenEditors';
 import { favoriteGrantIds, favoritesSetting, mutateFavorites, readFavorites } from '../features/workspace/favorites';
 import { useFavorites } from './use-favorites';
 import { useWorkspaceFile } from './use-workspace-file';
@@ -105,6 +108,10 @@ export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsOrigin = useRef<HTMLElement | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(() => window.matchMedia('(min-width: 1100px)').matches);
+  const [sidebarView, setSidebarView] = useState<SidebarView>('explorer');
+  const showSidebarView = useCallback((view: SidebarView) => {
+    setSidebarView(view); setSidebarOpen(true);
+  }, []);
   const snapshot = useSyncExternalStore(documents.subscribe, documents.getSnapshot);
   const tabState = useSyncExternalStore(tabs.subscribe, tabs.getSnapshot);
   const batch = useSyncExternalStore(saveAll.subscribe, saveAll.getSnapshot);
@@ -166,7 +173,10 @@ export function App() {
   }, []);
   const [findOpen, setFindOpen] = useState(false);
   const [findRequest, setFindRequest] = useState<FindRequest | null>(null);
-  const [workspaceSearchOpen, setWorkspaceSearchOpen] = useState(false);
+  const setWorkspaceSearchOpen = useCallback((open: boolean) => {
+    setSidebarView(open ? 'search' : 'explorer');
+    if (open) setSidebarOpen(true);
+  }, []);
   const [workspaceSearch] = useState(() => new WorkspaceSearchStore(searchBridge.run, searchBridge.cancel));
   const [replacementPlan, setReplacementPlan] = useState<ReplacementPlan | null>(null);
   const [replacementBusy, setReplacementBusy] = useState(false);
@@ -1100,7 +1110,7 @@ export function App() {
     }
     goToPosition({ line: match.line, column: match.column });
     setWorkspaceSearchOpen(false);
-  }, [goToPosition, openOne, setNotice]);
+  }, [goToPosition, openOne, setNotice, setWorkspaceSearchOpen]);
 
   const previewWorkspaceReplace = useCallback(async (draft: WorkspaceSearchDraft, replacement: string) => {
     setAutoFocus(false);
@@ -1138,7 +1148,7 @@ export function App() {
     } finally {
       setReplacementBusy(false);
     }
-  }, [setNotice]);
+  }, [setNotice, setWorkspaceSearchOpen]);
 
   const commitReplacement = useCallback(async (selected: readonly FileRef[]) => {
     const plan = replacementPlan;
@@ -1330,12 +1340,26 @@ export function App() {
   }
   return (
     <Shell
-      railActions={<button className="icon-button" aria-label="打开设置" {...commandProps('settings.open')}
+      railActions={<>
+        <SidebarActivities active={sidebarOpen ? sidebarView : null} onSelect={showSidebarView} />
+        <div className="activity-utilities">
+          <button type="button" className="icon-button" aria-label="显示本地恢复" title="本地恢复与隐私"
+            aria-pressed={sidebarOpen && sidebarView === 'recovery'} aria-controls="sidebar-recovery" onClick={() => showSidebarView('recovery')}>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10a8 8 0 1 1 1 7M4 4v6h6M12 8v5l3 2" /></svg>
+          </button>
+          <button className="icon-button" aria-label="打开设置" {...commandProps('settings.open')}
         title={commands.disabledReason('settings.open', commandAvailability) ?? '打开设置'}
         onClick={() => void executeCommand('settings.open')}>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6l1 4 3 2 3 1v4l-3 1-3 2-1 4H9l-1-4-3-2-3-1v-4l3-1 3-2Z" /><circle cx="12" cy="12" r="3" /></svg>
-      </button>}
+          </button>
+        </div>
+      </>}
       sidebarOpen={sidebarOpen}
+      explorerSelected={sidebarView === 'explorer'}
+      onSelectExplorer={() => {
+        if (sidebarOpen && sidebarView === 'explorer') setSidebarOpen(false);
+        else showSidebarView('explorer');
+      }}
       dark={dark}
       menus={<MenuBar groups={menuGroups} onPick={id => { void executeCommand(id); }} />}
       headerActions={<>
@@ -1393,10 +1417,14 @@ export function App() {
       onToggleTheme={() => void executeCommand('view.theme')}
       sidebarShortcut={ariaShortcut(commands.binding('view.sidebar'))}
       themeShortcut={ariaShortcut(commands.binding('view.theme'))}
-      sidebar={<div className="sidebar-stack">
+      sidebar={<div className="sidebar-stack sidebar-workbench">
         {workspacePanelsReady ? <>
-          <div className="sidebar-heading">资源管理器</div>
+          <div id="sidebar-explorer" className="sidebar-view resource-view" hidden={sidebarView !== 'explorer'}>
           <Explorer currentReference={currentReference} onOpen={(reference, intent) => void openTreeFile(reference, intent ?? 'preview')}
+            onManageWorkspace={() => showSidebarView('workspace')}
+            openEditors={<OpenEditors documents={snapshot.documents} activeId={snapshot.activeId}
+              busy={busy || savingCount > 0 || batchBusy || closingCount > 0} onSelect={selectTab}
+              onClose={id => void executeCommand('file.close', id)} />}
             onNewText={() => void executeCommand('file.new')}
             onChooseFile={() => void executeCommand('file.open')}
             onChooseFolder={() => void executeCommand('workspace.open')}
@@ -1404,27 +1432,29 @@ export function App() {
             onRenamed={renamed => {
               void applyPathMappings(renamed);
             }} />
-          <details className="sidebar-section"><summary>工作区管理</summary>
+          </div>
+          <SidebarPanel id="workspace" title="工作区管理" active={sidebarView === 'workspace'} onBack={() => showSidebarView('explorer')}>
           <RootList busy={busy || savingCount > 0 || batchBusy || closingCount > 0}
             workspaceFile={workspaceFile.document?.displayPath ?? null}
             onAdd={() => void addRoot()} onRemove={root => void removeRoot(root)}
             onOpenFile={() => void workspaceFile.open().then(error => { if (error) setError(error); })}
               onSaveFile={() => void workspaceFile.save().then(error => { if (error) setError(error); })}
               onRenamed={renamed => { void applyPathMappings(renamed); }} />
-          </details>
-          <details className="sidebar-section" open={recentEntries.length > 0 || !settingsState.settings.recentHistoryEnabled}><summary>最近打开 <span>{recentEntries.length}</span></summary>
+          </SidebarPanel>
+          <SidebarPanel id="recent" title="最近打开" active={sidebarView === 'recent'}>
           <RecentList entries={recentEntries} availableGrantIds={sessionState.availableGrantIds}
             enabled={settingsState.settings.recentHistoryEnabled}
             busy={busy || savingCount > 0 || batchBusy || closingCount > 0}
             onOpen={openRecent} onRepair={repairRecent} onRemove={removeRecent} onClear={clearRecent} />
-          </details>
-          <details className="sidebar-section"><summary>收藏 <span>{favorites.entries.length}</span></summary>
+          </SidebarPanel>
+          <SidebarPanel id="favorites" title="收藏" active={sidebarView === 'favorites'}>
           <FavoriteList entries={favorites.entries} problem={favorites.problem} availableGrantIds={sessionState.availableGrantIds}
             busy={busy || savingCount > 0 || batchBusy || closingCount > 0} canAddFile={!!currentSource} canAddRoot={!!workspaceState.root}
             onAddFile={favorites.addFile} onAddRoot={favorites.addRoot} onOpen={favorites.open} onRepair={favorites.repair}
             onChange={favorites.change} onClear={favorites.clear} />
-          </details>
-          <RecoveryPanel candidates={saveTransactions} onOpen={openTransactionCopy}
+          </SidebarPanel>
+          <SidebarPanel id="recovery" title="本地恢复与隐私" active={sidebarView === 'recovery'}>
+          <RecoveryPanel standalone candidates={saveTransactions} onOpen={openTransactionCopy}
             inventory={recoveryInventory} inventoryError={recoveryInventoryError}
             activeRecovery={snapshot.documents.filter(document => document.dirty).map(document => ({
               id: document.id, title: document.displayPath ?? document.title, version: document.version,
@@ -1433,22 +1463,31 @@ export function App() {
             missingSources={sessionState.missingSources} onForget={id => session.forgetMissing(id)}
             onReselect={kind => { if (kind === 'workspace') void openFolder(); else void openFile(); }}
             blocked={exitState.phase !== 'idle' || busy || savingCount > 0 || batchBusy || closingCount > 0} />
+          </SidebarPanel>
+          <div id="sidebar-search" className="sidebar-view search-view" hidden={sidebarView !== 'search'}>
+            <WorkspaceSearchPanel store={workspaceSearch} roots={workspaceState.roots} active={sidebarView === 'search'}
+              onChooseFolder={() => void openFolder()}
+              onSearch={startWorkspaceSearch} onOpen={(file, match) => void openWorkspaceSearchResult(file, match)}
+              onPreviewReplace={(draft, replacement) => void previewWorkspaceReplace(draft, replacement)}
+              onClose={() => setWorkspaceSearchOpen(false)} />
+          </div>
         </> : <section className="sidebar-loading" aria-busy="true">
           <h2 className="sidebar-title">资源管理器</h2>
           <p className="sidebar-empty">正在载入最近记录、收藏和目录树…</p>
         </section>}
       </div>}
-      status={<><span>{closingCount > 0 || current?.closing ? '正在关闭…' : batchBusy ? '正在全部保存…' : savingCount > 0 ? '正在保存…' : busy ? '正在打开…' : current ? current.readOnlyReason ? '只读' : current.dirty ? '未保存修改' : current.displayPath ? '未修改' : '未命名' : '就绪'}</span>{current && current.format.encoding !== 'binary' && <><span role="group" aria-label="光标与字数" aria-live="off"><EditorStatus registry={documents} id={current.id} summary={current} /></span><span aria-label="编辑字号">{settingsState.settings.fontSize}px</span></>}<span className="status-end">{current?.format.encoding === 'binary' ? '图片 · 只读' : current ? `${current.format.encoding.toUpperCase()}${current.format.bom === 'none' ? '' : ' BOM'} · ${current.format.lineEnding.toUpperCase()}` : '轻羽 FeatherPad'}</span></>}
+      status={<><span>{closingCount > 0 || current?.closing ? '正在关闭…' : batchBusy ? '正在全部保存…' : savingCount > 0 ? '正在保存…' : busy ? '正在打开…' : current ? current.readOnlyReason ? '只读' : current.dirty ? '未保存修改' : current.displayPath ? '未修改' : '未命名' : '就绪'}</span>{current && current.format.encoding !== 'binary' && <><span role="group" aria-label="光标与字数" aria-live="off"><EditorStatus registry={documents} id={current.id} summary={current} /></span><span aria-label="编辑字号">{settingsState.settings.fontSize}px</span></>}
+        {(notice || tabState.warning || commandState.warning) && <StatusNotices>
+          {notice && <NoticeBanner message={notice} tone={noticeTone} onClose={() => {
+            setNotice(null);
+            requestAnimationFrame(() => window.document.querySelector<HTMLElement>('.statusbar')?.focus());
+          }} />}
+          {tabState.warning && <p className="notice">{tabState.warning}</p>}
+          {commandState.warning && <p className="notice">{commandState.warning}</p>}
+        </StatusNotices>}
+        <span className="status-end">{current?.format.encoding === 'binary' ? '图片 · 只读' : current ? `${current.format.encoding.toUpperCase()}${current.format.bom === 'none' ? '' : ' BOM'} · ${current.format.lineEnding.toUpperCase()}` : '轻羽 FeatherPad'}</span></>}
     >
-      {error && <NoticeBanner message={error} tone="error" onClose={() => setError(null)} />}
-      {notice && <NoticeBanner message={notice} tone={noticeTone} onClose={() => setNotice(null)} />}
-      {tabState.warning && <p className="notice" role="alert">{tabState.warning}</p>}
-      {commandState.warning && <p className="notice" role="alert">{commandState.warning}</p>}
-      {workspaceSearchOpen && <WorkspaceSearchPanel store={workspaceSearch} roots={workspaceState.roots}
-        onChooseFolder={() => void openFolder()}
-        onSearch={startWorkspaceSearch} onOpen={(file, match) => void openWorkspaceSearchResult(file, match)}
-        onPreviewReplace={(draft, replacement) => void previewWorkspaceReplace(draft, replacement)}
-        onClose={() => setWorkspaceSearchOpen(false)} />}
+      {error && <ErrorDialog message={error} onClose={() => setError(null)} />}
       {replacementPlan && <ReplacePreviewDialog plan={replacementPlan} busy={replacementBusy}
         error={replacementError} outcome={replaceOutcome} rollback={rollbackOutcome}
         commitUnknown={replacementCommitUnknown}
@@ -1489,7 +1528,6 @@ export function App() {
         </div>
       </> : <div className="welcome">
         <div className="welcome-content">
-          <p className="welcome-eyebrow">轻羽 FEATHERPAD</p>
           <h1>快开文件，专心编辑。</h1>
           <p className="welcome-description">给文字一处安静的地方。</p>
           <div className="welcome-actions">

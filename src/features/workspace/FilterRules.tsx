@@ -1,5 +1,5 @@
-import { useId, useState } from 'react';
-import { defaultIgnoredDirectories, parsePatternLines, type WorkspaceFilters } from './filters';
+import { useEffect, useId, useRef, useState } from 'react';
+import { parsePatternLines, type WorkspaceFilters } from './filters';
 
 function PatternField({ label, value, onApply }: { label: string; value: readonly string[]; onApply: (patterns: string[]) => void }) {
   const id = useId();
@@ -13,26 +13,38 @@ function PatternField({ label, value, onApply }: { label: string; value: readonl
     if (error || !pending) return;
     onApply(parsePatternLines(text)); setDraft(null);
   }
-  return <label className="filter-rule-field">{label}
-    <textarea aria-label={label.startsWith('包含') ? '包含 glob' : '排除 glob'} value={text}
+  return <div className="filter-rule-field"><label htmlFor={`${id}-input`}>{label}</label>
+    <textarea id={`${id}-input`} rows={3} aria-label={label.startsWith('包含') ? '包含 glob' : '排除 glob'} value={text}
       aria-invalid={!!error} aria-describedby={id} onChange={event => setDraft(event.currentTarget.value)} onBlur={apply} />
-    <small id={id} role={error ? 'alert' : 'status'} className={error ? 'field-error' : undefined}>
-      {error ? `${error} 未应用，仍使用原规则。` : pending ? '尚未应用，离开输入框后生效。' : '已应用。最多 256 条，每条不超过 1024 字符。'}
+    <small id={id} hidden={!error} role={error ? 'alert' : undefined} className={error ? 'field-error' : undefined}>
+      {error ? `${error} 未应用，仍使用原规则。` : ''}
     </small>
     {pending && error && <button type="button" className="plain-button" onClick={() => setDraft(null)}>还原已应用规则</button>}
-  </label>;
+  </div>;
 }
 
-export function FilterRules({ filters, onChange }: { filters: WorkspaceFilters; onChange: (filters: WorkspaceFilters) => void }) {
-  return <details className="workspace-filter-rules">
-    <summary>搜索与遍历过滤</summary>
+export function FilterRules({ filters, onChange, showHidden, onShowHidden, onClose }: {
+  filters: WorkspaceFilters; onChange: (filters: WorkspaceFilters) => void;
+  showHidden: boolean; onShowHidden: (value: boolean) => void; onClose: () => void;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const heading = useId();
+  useEffect(() => {
+    const element = dialog.current;
+    element?.showModal();
+    return () => element?.close();
+  }, []);
+  return <dialog ref={dialog} className="workspace-filter-rules explorer-filter-dialog" aria-labelledby={heading}
+    onCancel={event => { event.preventDefault(); onClose(); }}>
+    <header><h2 id={heading}>文件筛选</h2><button type="button" className="plain-button" onClick={onClose}>完成</button></header>
+    <div className="filter-dialog-body">
+    <label><input type="checkbox" checked={showHidden} onChange={event => onShowHidden(event.target.checked)} />显示隐藏项</label>
     <label><input type="checkbox" checked={filters.respectGitignore}
       onChange={event => onChange({ ...filters, respectGitignore: event.target.checked })} />遵循 .gitignore 忽略规则</label>
     <label><input type="checkbox" checked={filters.followDirectoryLinks}
-      onChange={event => onChange({ ...filters, followDirectoryLinks: event.target.checked })} />跟随文件夹链接（自动避免循环）</label>
-    <PatternField label="包含文件规则（每行一条）" value={filters.include} onApply={include => onChange({ ...filters, include })} />
-    <PatternField label="排除文件规则（每行一条）" value={filters.exclude} onApply={exclude => onChange({ ...filters, exclude })} />
-    <small>例如 *.md 匹配 Markdown 文件，docs/** 匹配 docs 文件夹内的内容。</small>
-    <small>默认排除 {defaultIgnoredDirectories.join('、')}；包含规则可以指定需要搜索的目录。</small>
-  </details>;
+      onChange={event => onChange({ ...filters, followDirectoryLinks: event.target.checked })} />跟随文件夹链接</label>
+    <PatternField label="包含规则" value={filters.include} onApply={include => onChange({ ...filters, include })} />
+    <PatternField label="排除规则" value={filters.exclude} onApply={exclude => onChange({ ...filters, exclude })} />
+    </div>
+  </dialog>;
 }

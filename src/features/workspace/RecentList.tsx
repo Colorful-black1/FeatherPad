@@ -62,7 +62,7 @@ export function RecentList({
 
   return <section className="recent-panel" aria-labelledby="recent-heading">
     <div className="recent-heading">
-      <h2 id="recent-heading" className="sidebar-title">最近</h2>
+      <h2 id="recent-heading" className="visually-hidden">最近</h2>
       <span>{entries.length}/50</span>
       {entries.length > 0 && <button type="button" className="recent-clear" disabled={disabled}
         onClick={() => setConfirmClear(true)}>清空</button>}
@@ -85,7 +85,7 @@ export function RecentList({
         {visible.map(entry => {
           const missing = failed.has(entry.id) || !available.has(entry.ref.grantId);
           return <li key={entry.id} data-missing={missing || undefined}>
-            <button type="button" className="recent-open" disabled={disabled} title={entry.displayPath}
+            <button type="button" className="recent-open" disabled={disabled} title={`${entry.displayPath}\n最近打开：${timeFormat.format(new Date(entry.lastOpenedAt))}`}
               aria-label={`${missing ? '重试打开' : '打开'}${entry.title}`}
               data-recent-kind={entry.kind} data-recent-id={entry.id}
               onClick={() => void run(entry.id, () => onOpen(entry), entry)}>
@@ -94,13 +94,13 @@ export function RecentList({
                 <span className="recent-title">{entry.title}</span>
                 <small>{missing ? '项目缺失或授权失效' : entry.displayPath}</small>
               </span>
-              <time dateTime={entry.lastOpenedAt}>{timeFormat.format(new Date(entry.lastOpenedAt))}</time>
+              <time className="visually-hidden" dateTime={entry.lastOpenedAt}>{timeFormat.format(new Date(entry.lastOpenedAt))}</time>
             </button>
             <div className="recent-actions">
               {missing && <button type="button" disabled={disabled}
                 onClick={() => void run(entry.id, () => onRepair(entry), entry)}>重新选择</button>}
-              <button type="button" aria-label={`移除最近记录 ${entry.title}`} disabled={disabled}
-                onClick={() => void run(entry.id, () => onRemove(entry))}>移除</button>
+              <button type="button" className="sidebar-row-action" aria-label={`移除最近记录 ${entry.title}`} title="从最近记录中移除" disabled={disabled}
+                onClick={() => void run(entry.id, () => onRemove(entry))}>×</button>
             </div>
           </li>;
         })}

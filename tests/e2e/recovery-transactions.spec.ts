@@ -37,7 +37,7 @@ test('transaction candidates fail visibly and open independent copies with expli
   });
   await page.goto('/');
   const panel = page.locator('.recovery-panel');
-  await panel.locator('summary').click();
+  await page.getByRole('button', { name: '显示本地恢复', exact: true }).click();
   const open = panel.getByRole('button', { name: '打开恢复副本：中文 draft.txt', exact: true });
   await open.focus();
   await page.keyboard.press('Enter');

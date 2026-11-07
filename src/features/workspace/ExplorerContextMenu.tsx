@@ -10,10 +10,11 @@ export interface ExplorerMenuTarget {
   origin: HTMLElement;
 }
 
-export function ExplorerContextMenu({ target, sections, onClose }: {
+export function ExplorerContextMenu({ target, sections, onClose, label = '资源管理器操作' }: {
   target: ExplorerMenuTarget;
   sections: readonly (readonly MenuAction[])[];
   onClose: () => void;
+  label?: string;
 }) {
   const menu = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
@@ -51,7 +52,7 @@ export function ExplorerContextMenu({ target, sections, onClose }: {
     if (target.origin.isConnected) target.origin.focus();
   }
 
-  return createPortal(<div ref={menu} role="menu" aria-label="资源管理器操作"
+  return createPortal(<div ref={menu} role="menu" aria-label={label}
     className="menu-popup explorer-context-menu" style={{ left: target.x, top: target.y }}
     onContextMenu={event => { event.preventDefault(); event.stopPropagation(); }}
     onKeyDown={event => {

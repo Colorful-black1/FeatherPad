@@ -98,6 +98,7 @@ test('Web mock: a failed font preference write remains visible for the session a
   await page.evaluate(() => Reflect.set(window, 'fontFailWrites', true));
   await page.keyboard.press('Control+=');
   await expect.poll(() => fontSize(page)).toBe('15px');
+  await page.locator('.status-notices > summary').click();
   await expect(page.getByText('编辑字号仅本次生效：受控设置写入失败', { exact: true })).toBeVisible();
   expect(await persistedSize(page)).toBeNull();
   await page.evaluate(() => Reflect.set(window, 'fontFailWrites', false));

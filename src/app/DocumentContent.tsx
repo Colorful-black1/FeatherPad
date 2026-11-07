@@ -54,7 +54,6 @@ function OptionalContent({ kind, ...props }: MarkdownViewProps & { kind: Content
     }}>
     {loaded?.kind === kind ? <loaded.View {...props} /> : <><p className="notice" role={failed ? 'alert' : 'status'}>
       {failed ? '视图加载失败。' : '正在加载视图…'}
-      {kind !== 'image' && '源码可继续编辑。'}
       {failed && <button type="button" className="plain-button" onClick={() => { setFailed(false); setAttempt(value => value + 1); }}>重试</button>}
     </p>
     {kind === 'image' ? <p className="notice">图片保持只读。</p> : <EditorDocument {...props} />}</>}

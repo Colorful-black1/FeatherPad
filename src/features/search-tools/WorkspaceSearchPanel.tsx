@@ -20,7 +20,7 @@ function patterns(value: string) {
   return parsePatternLines(value.replace(/,/g, '\n'));
 }
 
-export function WorkspaceSearchPanel({ store, roots, onSearch, onPreviewReplace, onOpen, onClose, onChooseFolder }: {
+export function WorkspaceSearchPanel({ store, roots, onSearch, onPreviewReplace, onOpen, onClose, onChooseFolder, active = true }: {
   store: WorkspaceSearchStore;
   roots: readonly WorkspaceRoot[];
   onSearch: (draft: WorkspaceSearchDraft) => void;
@@ -28,8 +28,11 @@ export function WorkspaceSearchPanel({ store, roots, onSearch, onPreviewReplace,
   onOpen: (file: SearchFileResult, match: SearchMatch) => void;
   onClose: () => void;
   onChooseFolder: () => void;
+  active?: boolean;
 }) {
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => { if (active) input.current?.focus(); }, [active]);
   const [pattern, setPattern] = useState(snapshot.options?.query.pattern ?? '');
   const [replacement, setReplacement] = useState('');
   const [isRegex, setIsRegex] = useState(snapshot.options?.query.isRegex ?? false);
@@ -89,7 +92,7 @@ export function WorkspaceSearchPanel({ store, roots, onSearch, onPreviewReplace,
     </header>
     <form onSubmit={event => { event.preventDefault(); submit(); }}>
       <label className="workspace-search-pattern">搜索内容
-        <input autoFocus type="search" value={pattern} onChange={event => setPattern(event.currentTarget.value)}
+        <input ref={input} type="search" value={pattern} onChange={event => setPattern(event.currentTarget.value)}
           placeholder="输入要查找的文字" />
       </label>
       {roots.length === 0 ? <div className="search-empty-state">

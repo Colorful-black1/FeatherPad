@@ -52,6 +52,7 @@ export function MarkdownView({ registry, id, autoFocus, group, dark, allowHtml, 
   const scroll = useMarkdownScroll({ registry, id, root, frame: previewFrame, reply: displayedReply, channel,
     enabled: syncScroll, split: effectiveMode === 'split', previewAction: restorePreviewFocus });
   const previewScroll = scroll.previewScroll;
+  const syncFromSource = scroll.syncFromSource;
   const readOnly = !!record.summary.readOnlyReason || record.summary.closing || record.summary.hotExitFrozen;
   const frameKey = `${channel}:${dark}:${readOnly}`;
   const frameShell = useMemo(() => markdownFrameShell(dark, channel, readOnly),
@@ -62,7 +63,10 @@ export function MarkdownView({ registry, id, autoFocus, group, dark, allowHtml, 
   useEffect(() => {
     if (loadedFrame !== frameKey || !frameBody) return;
     previewFrame.current?.contentWindow?.postMessage({ channel, kind: 'render', html: frameBody }, '*');
-  }, [channel, frameBody, frameKey, loadedFrame]);
+    // The preview no longer reports its transient post-render position, so
+    // split view pushes the current source block after each snapshot update.
+    syncFromSource();
+  }, [channel, frameBody, frameKey, loadedFrame, syncFromSource]);
   useEffect(() => {
     if (!displayedReply) return;
     const receive = (event: MessageEvent<unknown>) => {
@@ -129,11 +133,11 @@ export function MarkdownView({ registry, id, autoFocus, group, dark, allowHtml, 
           className="plain-button" aria-pressed={mode === value} onClick={() => changeMode(value)}>
           {['源码', '阅读', '分屏'][index]}</button>)}
       </div>
-      <span>{effectiveMode === 'source' ? 'Markdown · 同一正文缓冲' : `阅读快照 · v${version}`}</span>
+      <span aria-hidden="true" className="toolbar-spacer" />
+      {effectiveMode === 'split' && <label className="toolbar-check"><input type="checkbox" aria-label="Markdown同步滚动"
+        checked={syncScroll} disabled={Boolean(reply?.mappingWarning)} onChange={event => setSyncScroll(event.currentTarget.checked)} />同步滚动</label>}
       <button type="button" className="plain-button" disabled={record.summary.closing || record.summary.hotExitFrozen}
         onClick={() => setExportOpen(true)}>导出…</button>
-      {effectiveMode === 'split' && <label className="toolbar-check"><input type="checkbox" aria-label="Markdown同步滚动"
-        checked={syncScroll} disabled={Boolean(reply?.mappingWarning)} onChange={event => setSyncScroll(event.currentTarget.checked)} />按块同步滚动</label>}
     </header>
     {notice && <p className="notice" role="status">{notice}</p>}
     {exportOpen && <ExportDialog registry={registry} id={id} directory={directory} allowHtml={allowHtml}

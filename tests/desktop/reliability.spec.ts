@@ -480,7 +480,7 @@ test('real Release privacy cleanup protects active drafts, preserves failures, a
     expect(await readFile(path.join(damaged, 'manifest.json'), 'utf8')).toBe('{damaged recovery manifest');
 
     const recoveryPanel = app.page.locator('.recovery-panel');
-    await recoveryPanel.locator('summary').click();
+    await app.page.getByRole('button', { name: '显示本地恢复', exact: true }).click();
     await recoveryPanel.getByRole('button', { name: '重新扫描本地记录', exact: true }).click();
     await expect(recoveryPanel).toContainText('2 个恢复副本');
     await expect(recoveryPanel).toContainText('active.txt');

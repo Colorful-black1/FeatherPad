@@ -9,6 +9,7 @@ interface ActiveRecovery {
 }
 
 interface RecoveryPanelProps {
+  standalone?: boolean;
   candidates: readonly SaveTransactionCandidate[];
   blocked: boolean;
   inventory: RecoveryInventory | null;
@@ -28,7 +29,7 @@ const bytes = (value: number) => value < 1024 ? `${value} 字节`
 
 export function RecoveryPanel({
   candidates, blocked, inventory, inventoryError, activeRecovery, onOpen, onRefresh, onCleanupInactive,
-  missingSources, onReselect, onForget,
+  missingSources, onReselect, onForget, standalone = false,
 }: RecoveryPanelProps) {
   const [opening, setOpening] = useState<string | null>(null);
   const [working, setWorking] = useState(false);
@@ -67,8 +68,9 @@ export function RecoveryPanel({
     ? `本地恢复与隐私 · ${inventory.entries.length} 个恢复副本 · ${bytes(inventory.storageBytes)}`
     : '本地恢复与隐私 · 正在读取范围';
 
-  return <details className="save-all-results recovery-panel">
-    <summary>{summary}</summary>
+  const Container = standalone ? 'section' : 'details';
+  return <Container className="save-all-results recovery-panel" aria-label="本地恢复记录">
+    {standalone ? <p className="recovery-overview">{summary}</p> : <summary>{summary}</summary>}
     <p className="save-all-scope">最近记录、收藏和恢复正文分别保存、分别清理。这里只管理恢复副本与保存事务；没有遥测、账号同步或上传。</p>
     <div className="root-actions">
       <button type="button" className="plain-button" disabled={disabled}
@@ -129,5 +131,5 @@ export function RecoveryPanel({
       </li>)}</ol>
     </section>}
     {message && <p role="status">{message}</p>}
-  </details>;
+  </Container>;
 }

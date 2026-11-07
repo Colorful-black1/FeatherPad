@@ -70,11 +70,9 @@ test('document options remain functional and the explorer gives the tree priorit
   await expect(page.locator('.document-options')).not.toHaveAttribute('open', '');
   await page.getByRole('menu').getByRole('menuitem', { name: '向右拆分编辑器', exact: true }).click();
   await expect(page.locator('.editor-group')).toHaveCount(2);
-  const sections = page.locator('.sidebar-section');
-  await expect(sections).toHaveCount(3);
-  await expect(sections.locator(':scope > summary')).toHaveText(['工作区管理', '最近打开 0', '收藏 0']);
-  await expect(sections.locator('[open]')).toHaveCount(0);
-  await sections.filter({ hasText: '最近打开' }).locator('summary').click();
+  await expect(page.locator('.sidebar-view:visible')).toHaveCount(1);
+  await expect(page.locator('#sidebar-explorer')).toBeVisible();
+  await page.getByRole('button', { name: '显示最近打开', exact: true }).click();
   await expect(page.getByRole('group', { name: '最近记录类型', exact: true })).toBeVisible();
 });
 

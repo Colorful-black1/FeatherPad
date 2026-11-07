@@ -17,14 +17,21 @@ export function useMarkdownScroll({ registry, id, root, frame, reply, channel, e
 }) {
   const ignoreSourceUntil = useRef(0);
   const lastPreview = useRef(0);
-  const lastVersion = useRef(-1);
   const current = useCallback(() => reply && registry.getDocument(id)?.summary.version === reply.bufferVersion,
     [registry, id, reply]);
   const sendSourceBlock = useCallback(() => {
     const editor = editorView(root);
     if (!editor || !reply || !current()) return;
-    const top = Math.max(0, editor.scrollDOM.getBoundingClientRect().top - editor.documentTop);
-    const block = blockAtSource(reply.sourceMap, editor.lineBlockAtHeight(top).from);
+    // Map the first visible text position, not the scroll container box. The
+    // previous calculation compared two viewport coordinates and always
+    // resolved to the first block, so scrolling the source never moved the
+    // preview.
+    const bounds = editor.scrollDOM.getBoundingClientRect();
+    const position = editor.posAtCoords({
+      x: bounds.left + Math.min(24, Math.max(1, bounds.width / 2)),
+      y: bounds.top + Math.min(8, Math.max(1, bounds.height / 2)),
+    }, false);
+    const block = blockAtSource(reply.sourceMap, position ?? 0);
     if (block) frame.current?.contentWindow?.postMessage({ channel, kind: 'sourceScroll', from: block.from }, '*');
   }, [root, reply, current, frame, channel]);
   useEffect(() => {
@@ -60,11 +67,13 @@ export function useMarkdownScroll({ registry, id, root, frame, reply, channel, e
     ignoreSourceUntil.current = performance.now() + 180;
     editorView(root)?.dispatch({ effects: EditorView.scrollIntoView(from, { y: 'start' }) });
   }, [reply, current, enabled, split, root]);
+  const syncFromSource = useCallback(() => {
+    if (!enabled || !split || !reply || reply.mappingWarning) return;
+    sendSourceBlock();
+  }, [enabled, split, reply, sendSourceBlock]);
   const frameReady = useCallback(() => {
     if (!reply || !current()) return;
-    const changed = lastVersion.current !== reply.bufferVersion;
-    lastVersion.current = reply.bufferVersion;
-    if (changed && split && enabled && !previewAction.current && !reply.mappingWarning) sendSourceBlock();
+    if (split && enabled && !previewAction.current && !reply.mappingWarning) sendSourceBlock();
     else {
       const block = blockAtSource(reply.sourceMap, lastPreview.current);
       if (block) frame.current?.contentWindow?.postMessage({ channel, kind: 'sourceScroll', from: block.from }, '*');
@@ -77,5 +86,5 @@ export function useMarkdownScroll({ registry, id, root, frame, reply, channel, e
     lastPreview.current = heading.from;
     frame.current?.contentWindow?.postMessage({ channel, kind: 'anchor', fragment: heading.anchor }, '*');
   }, [registry, id, reply, current, frame, channel]);
-  return { previewScroll, frameReady, go };
+  return { previewScroll, frameReady, syncFromSource, go };
 }

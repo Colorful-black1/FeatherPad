@@ -53,7 +53,7 @@ export class WorkspaceSync {
     if (event.watchId !== this.watchId || !this.unsubscribeStore) return;
     this.overflow ||= event.overflow || (this.lastSequence > 0 && event.sequence > this.lastSequence + 1);
     this.lastSequence = Math.max(this.lastSequence, event.sequence);
-    this.store.setSyncStatus({ kind: 'syncing', message: '检测到磁盘变化，正在同步目录…' });
+    this.store.setSyncStatus({ kind: 'syncing', message: null });
     if (this.timer) clearTimeout(this.timer);
     this.timer = setTimeout(() => {
       this.timer = null;

@@ -12,12 +12,14 @@ interface ShellProps {
   sidebarOpen: boolean;
   dark: boolean;
   onToggleSidebar: () => void;
+  onSelectExplorer?: () => void;
+  explorerSelected?: boolean;
   onToggleTheme: () => void;
   sidebarShortcut?: string | undefined;
   themeShortcut?: string | undefined;
 }
 
-export function Shell({ children, sidebar, status, headerActions, menus, railActions, sidebarOpen, dark, onToggleSidebar, onToggleTheme, sidebarShortcut, themeShortcut }: ShellProps) {
+export function Shell({ children, sidebar, status, headerActions, menus, railActions, sidebarOpen, dark, onToggleSidebar, onSelectExplorer, explorerSelected = true, onToggleTheme, sidebarShortcut, themeShortcut }: ShellProps) {
   const root = useRef<HTMLDivElement>(null);
   const sidebarToggle = useRef<HTMLButtonElement>(null);
   const memory = useRef<FocusMemory>(new WeakMap());
@@ -97,7 +99,7 @@ export function Shell({ children, sidebar, status, headerActions, menus, railAct
       </header>
       <div className="app-body">
         <nav className="activity-rail" aria-label="视图" aria-describedby="shell-keyboard-help">
-          <button ref={sidebarToggle} className="icon-button" onClick={onToggleSidebar} aria-label="切换资源管理器" aria-controls="explorer" aria-expanded={sidebarOpen} aria-keyshortcuts={sidebarShortcut} title={`资源管理器${sidebarShortcut ? `（${sidebarShortcut}）` : ''}`}>
+          <button ref={sidebarToggle} className="icon-button" onClick={onSelectExplorer ?? onToggleSidebar} aria-label="切换资源管理器" aria-controls="explorer" aria-expanded={sidebarOpen && explorerSelected} aria-keyshortcuts={sidebarShortcut} title={`资源管理器${sidebarShortcut ? `（${sidebarShortcut}）` : ''}`}>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7V5h7l2 2h9v13H3ZM3 9h18" /></svg>
           </button>
           {railActions}

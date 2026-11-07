@@ -43,6 +43,20 @@ export async function resumeEditing(page: Page) {
 export async function sidebarSection(page: Page, title: string) {
   const sidebar = page.getByRole('complementary', { name: '资源管理器', exact: true });
   if (await sidebar.count() === 0) await page.getByRole('button', { name: '切换资源管理器', exact: true }).click();
-  const section = sidebar.locator('.sidebar-section').filter({ has: page.locator('summary', { hasText: title }) });
-  if (await section.getAttribute('open') === null) await section.locator(':scope > summary').click();
+  if (title === '工作区管理') {
+    const resource = page.getByRole('button', { name: '切换资源管理器', exact: true });
+    if (await resource.getAttribute('aria-expanded') !== 'true') await resource.click();
+    await page.getByRole('button', { name: '资源管理器更多操作', exact: true }).click();
+    await page.getByRole('menuitem', { name: '工作区管理…', exact: true }).click();
+  } else {
+    const labels: Record<string, string> = { 最近打开: '显示最近打开', 收藏: '显示收藏', 本地恢复与隐私: '显示本地恢复' };
+    await page.getByRole('button', { name: labels[title] ?? `显示${title}`, exact: true }).click();
+  }
+}
+
+export async function explorerAction(page: Page, title: string) {
+  const resource = page.getByRole('button', { name: '切换资源管理器', exact: true });
+  if (await resource.getAttribute('aria-expanded') !== 'true') await resource.click();
+  await page.getByRole('button', { name: '资源管理器更多操作', exact: true }).click();
+  await page.getByRole('menuitem', { name: title, exact: true }).click();
 }

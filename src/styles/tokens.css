@@ -3,9 +3,11 @@
   color-scheme: light;
   --bg-app: #f5f4f0;
   --bg-title: #eae9e3;
-  --bg-sidebar: #efeee8;
-  --bg-editor: #faf9f6;
+  --bg-sidebar: #f1f0eb;
+  --bg-editor: #fbfaf6;
   --bg-surface: #ffffff;
+  --bg-elevated: #ffffff;
+  --bg-soft: #f6f5f0;
   --bg-hover: #e5e6dd;
   --bg-selected: #dfe7d9;
   --bg-code: #eeefe8;
@@ -16,6 +18,7 @@
   --accent-hover: #354f2d;
   --accent-soft: #e5ecdf;
   --border: #d7d9cf;
+  --border-subtle: #e5e6dd;
   --border-strong: #a3aa99;
   --warning: #795315;
   --warning-bg: #faf0d7;
@@ -23,7 +26,8 @@
   --focus: #45643b;
   --syntax-blue: #346477;
   --syntax-brown: #8a592e;
-  --shadow: 0 12px 40px #202b2326;
+  --shadow: 0 16px 48px #202b2320;
+  --shadow-dialog: 0 24px 80px #1b241c2e;
   --font-ui: "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif;
   --font-mono: "Cascadia Code", "Cascadia Mono", Consolas, "SFMono-Regular", "Microsoft YaHei UI", monospace;
   --font-size: 13px;
@@ -36,10 +40,11 @@
   --space-6: 24px;
   --space-8: 32px;
   --radius-sm: 4px;
-  --radius-md: 8px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
   --row-height: 32px;
   --tab-height: 40px;
-  --sidebar-width: 232px;
+  --sidebar-width: 280px;
   --rail-width: 48px;
   --motion: 100ms;
 }
@@ -47,9 +52,11 @@
   color-scheme: dark;
   --bg-app: #222620;
   --bg-title: #252a23;
-  --bg-sidebar: #282d25;
+  --bg-sidebar: #242925;
   --bg-editor: #20251f;
   --bg-surface: #2c3229;
+  --bg-elevated: #2f362c;
+  --bg-soft: #262b25;
   --bg-hover: #353d30;
   --bg-selected: #3b4c33;
   --bg-code: #2c3328;
@@ -60,6 +67,7 @@
   --accent-hover: #c7dfb1;
   --accent-soft: #35442d;
   --border: #3d4537;
+  --border-subtle: #343c30;
   --border-strong: #78886d;
   --warning: #ecd095;
   --warning-bg: #403720;
@@ -67,7 +75,8 @@
   --focus: #b0ca98;
   --syntax-blue: #a4c8d6;
   --syntax-brown: #d9b78b;
-  --shadow: 0 12px 40px #00000050;
+  --shadow: 0 16px 48px #00000045;
+  --shadow-dialog: 0 24px 80px #00000066;
 }
 [data-density="compact"] { --row-height: 28px; --tab-height: 32px; }
 @media (prefers-reduced-motion: reduce) { :root { --motion: 0ms; } }

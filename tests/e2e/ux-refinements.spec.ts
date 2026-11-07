@@ -60,7 +60,8 @@ test('invalid directory rules explicitly keep the applied rules and can be resto
   await search.getByLabel('搜索内容', { exact: true }).fill('example');
   await expect(search.getByRole('button', { name: '开始搜索', exact: true })).toBeEnabled();
   const rules = page.locator('.workspace-filter-rules');
-  await rules.locator('summary').click();
+  await page.getByRole('button', { name: '切换资源管理器', exact: true }).click();
+  await page.getByRole('button', { name: '文件筛选', exact: true }).click();
   const include = rules.getByRole('textbox', { name: '包含 glob' });
   await include.fill('x'.repeat(1025));
   await include.press('Tab');
@@ -71,6 +72,6 @@ test('invalid directory rules explicitly keep the applied rules and can be resto
   await expect(include).toHaveAttribute('aria-invalid', 'false');
   await include.fill('*.md');
   await include.press('Tab');
-  await expect(rules).toContainText('已应用');
+  await expect(include).toHaveAttribute('aria-invalid', 'false');
   await expect(include).toHaveValue('*.md');
 });

@@ -29,7 +29,7 @@ export function RootList({ busy, workspaceFile, onAdd, onRemove, onOpenFile, onS
     fileTransfer.request(source, root.grant, root.displayPath ?? root.displayName, mode);
   }
   return <section className="workspace-roots" aria-label="工作区根">
-    <div className="explorer-heading"><h2 className="sidebar-title">工作区根</h2>
+    <div className="explorer-heading"><h2 className="visually-hidden">工作区文件夹</h2>
       <div className="explorer-actions">
         <button className="plain-button" disabled={busy} onClick={onOpenFile}>打开工作区文件</button>
         <button className="plain-button" disabled={busy || snapshot.roots.length === 0} onClick={onSaveFile}>保存工作区文件</button>
@@ -49,7 +49,7 @@ export function RootList({ busy, workspaceFile, onAdd, onRemove, onOpenFile, onS
         <button className="plain-button" aria-label={`移除根 ${root.displayName}`} disabled={busy} onClick={() => onRemove(root)}>移除</button>
       </div>
     </li>)}</ul>
-    {snapshot.roots.length > 0 && <small>文件树显示当前选中的文件夹。移除文件夹会保留已打开文档。</small>}
+    {snapshot.roots.length > 0 && <p className="sidebar-management-note">移除文件夹会保留已打开文档。</p>}
     {fileTransfer.view}
   </section>;
 }
