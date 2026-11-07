@@ -13,6 +13,7 @@ interface ExplorerProps {
   onOpen: (reference: FileRef, intent?: 'preview' | 'pinned') => void;
   onRenamed?: ((documents: readonly RenamedDocument[]) => void) | undefined;
   onTrash?: ((entry: DirectoryEntry) => void) | undefined;
+  onReveal?: ((entry: DirectoryEntry) => void) | undefined;
   mutationBlocked?: boolean;
   onNewText?: () => void;
   onChooseFile?: () => void;
@@ -94,7 +95,7 @@ function EntryRow({
   function activate() {
     store.select(entry);
     if (expandable) store.toggleDirectory(entry);
-    else onOpen(entry.ref, 'preview');
+    else onOpen(entry.ref, 'pinned');
   }
 
   function navigate(event: KeyboardEvent<HTMLButtonElement>) {
@@ -263,7 +264,7 @@ function DirectoryContents({
   </div>;
 }
 
-export function Explorer({ currentReference, onOpen, onRenamed, onTrash, onNewText, onChooseFile, onChooseFolder, onManageWorkspace, openEditors,
+export function Explorer({ currentReference, onOpen, onRenamed, onTrash, onReveal, onNewText, onChooseFile, onChooseFolder, onManageWorkspace, openEditors,
   mutationBlocked = false, store = workspace }: ExplorerProps) {
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);
   const [editing, setEditing] = useState<EditingEntry | null>(null);
@@ -430,10 +431,10 @@ export function Explorer({ currentReference, onOpen, onRenamed, onTrash, onNewTe
         }}
         onDragLeave={event => clearDropTarget(event.currentTarget)}
         onDrop={event => void transferToRoot(event)} title={root.displayPath ?? root.displayName}><span aria-hidden="true">{rootCollapsed ? '▸' : '▾'}</span><span className="tree-root-name">{root.displayName}</span></button>
-      {(snapshot.rootError || snapshot.syncStatus.kind === 'unavailable') ? <details className="explorer-problem">
-        <summary>⚠ 文件夹暂不可用</summary><p>{snapshot.rootError ?? snapshot.syncStatus.message}</p>
+      {snapshot.rootError ? <details className="explorer-problem">
+        <summary>⚠ 文件夹暂不可用</summary><p>{snapshot.rootError}</p>
         <button type="button" className="plain-button" onClick={() => store.refresh()}>重新读取</button>
-      </details> : snapshot.syncStatus.message && <p className="explorer-sync" title={snapshot.syncStatus.message} role="status">{snapshot.syncStatus.message}</p>}
+      </details> : null}
       <div className="tree" role="tree" aria-label={`${root.displayName} 文件树`} data-workspace-tree hidden={rootCollapsed}>
         <DirectoryContents
           reference={root.grant}
@@ -459,9 +460,19 @@ export function Explorer({ currentReference, onOpen, onRenamed, onTrash, onNewTe
     {transfer.view}
     {menuTarget && menuTarget.grantId === (root?.grant.grantId ?? null) && <ExplorerContextMenu
       target={menuTarget} onClose={() => setMenuTarget(null)} sections={[
-        ...(menuEntry?.kind === 'file' ? [[{ id: 'open', title: '打开文件', run: () => onOpen(menuEntry.ref, 'pinned') }]]
-          : menuEntry?.kind === 'directory' ? [[{ id: 'expand', title: snapshot.expanded[menuEntry.ref.relativePath] ? '折叠文件夹' : '展开文件夹',
-            run: () => store.toggleDirectory(menuEntry) }]] : []),
+        ...(menuEntry?.kind === 'file' ? [[
+          { id: 'open', title: '打开文件', run: () => onOpen(menuEntry.ref, 'pinned') },
+          ...(onReveal ? [{ id: 'reveal', title: '在文件资源管理器中显示',
+            disabledReason: ['junction', 'symlink'].includes(menuEntry.kind) ? '链接项不支持在资源管理器中定位。' : null,
+            run: () => onReveal(menuEntry) }] : []),
+        ]]
+          : menuEntry?.kind === 'directory' ? [[
+            { id: 'expand', title: snapshot.expanded[menuEntry.ref.relativePath] ? '折叠文件夹' : '展开文件夹',
+              run: () => store.toggleDirectory(menuEntry) },
+            ...(onReveal ? [{ id: 'reveal', title: '在文件资源管理器中打开',
+              disabledReason: ['junction', 'symlink'].includes(menuEntry.kind) ? '链接项不支持在资源管理器中定位。' : null,
+              run: () => onReveal(menuEntry) }] : []),
+          ]] : []),
         [
           ...(onManageWorkspace ? [{ id: 'manage-workspace', title: '工作区管理…', run: onManageWorkspace }] : []),
           { id: 'filter-files', title: '文件筛选…', disabledReason: !root ? '请先打开文件夹。' : null, run: () => setFilterOpen(true) },
@@ -479,7 +490,7 @@ export function Explorer({ currentReference, onOpen, onRenamed, onTrash, onNewTe
         ]] : []),
         [
           ...(onChooseFile ? [{ id: 'choose-file', title: '打开其他文件…', disabledReason: editReason, run: onChooseFile }] : []),
-          ...(onChooseFolder ? [{ id: 'choose-folder', title: '打开文件夹…', disabledReason: editReason, run: onChooseFolder }] : []),
+          ...(onChooseFolder && !menuEntry ? [{ id: 'choose-folder', title: '打开文件夹…', disabledReason: editReason, run: onChooseFolder }] : []),
           { id: 'refresh', title: '刷新目录', disabledReason: editReason ?? (!root ? '请先打开文件夹。' : null),
             run: () => store.refresh(menuParent) },
         ],

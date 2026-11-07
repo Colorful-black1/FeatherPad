@@ -198,10 +198,17 @@ export class ExternalChanges {
         return;
       }
       if (started.ok) { this.watchError = null; this.watchId = started.value.watchId; await this.checkAll(); }
-      else {
+      else if (started.error.code === 'OUT_OF_SCOPE') {
+        // A stale reference cannot be watched, but the document buffer and
+        // stat-based checks remain valid. Do not paint every open file as failed.
+        this.watchError = null;
+        this.watchKey = '';
+        await this.checkAll();
+      } else {
         this.watchError = `监听未建立：${started.error.message}`;
         for (const summary of this.registry.getSnapshot().documents) this.set(summary.id,
           { kind: 'unavailable', message: this.watchError });
+        this.watchKey = '';
       }
     });
     for (const id of this.statuses.keys()) if (!this.registry.getDocument(id)) this.clear(id);

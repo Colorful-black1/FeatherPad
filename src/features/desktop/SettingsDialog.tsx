@@ -4,6 +4,7 @@ import { defaultSettings, mergeSettings, parseSettingsImport, settingDefinitions
   type SettingDefinition, type SettingGroup, type SettingKey, type Settings, type SettingSource } from './settings-schema';
 import type { SettingsCoordinator } from './settings';
 import { IntegrationSettings } from './IntegrationSettings';
+import { SettingsFontPicker, SettingsSelect } from './SettingsControls';
 
 const sourceNames: Record<SettingSource, string> = { default: '内置默认', user: '用户设置', workspace: '工作区设置', session: '本次预览 / 会话' };
 const display = (value: JsonValue | undefined) => value === undefined ? '恢复上层值' : JSON.stringify(value).slice(0, 160);
@@ -15,31 +16,31 @@ function readableValue(value: Settings[keyof Settings]) {
   return typeof value === 'string' ? names[value] ?? value : String(value);
 }
 
-function SettingField({ definition, value, error, onChange }: {
+function SettingField({ definition, value, error, fontFamilies, onChange }: {
   definition: SettingDefinition; value: Settings[keyof Settings]; onChange: (value: Settings[keyof Settings]) => void;
-  error: string | undefined;
+  error: string | undefined; fontFamilies: readonly string[];
 }) {
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => { if (input.current && input.current.value !== String(value)) input.current.value = String(value); }, [value]);
   const id = `setting-label-${definition.key}`;
-  const accessibility = { 'aria-invalid': !!error, 'aria-describedby': error ? `setting-error-${definition.key}` : undefined };
-  if (definition.kind === 'boolean') return <input {...accessibility} id={id} type="checkbox" aria-label={definition.label}
+  const accessibility = { invalid: !!error, describedBy: error ? `setting-error-${definition.key}` : undefined };
+  if (definition.kind === 'boolean') return <input aria-invalid={!!error} aria-describedby={accessibility.describedBy}
+    id={id} type="checkbox" aria-label={definition.label}
     checked={value === true} onChange={event => onChange(event.currentTarget.checked)} />;
-  if (definition.kind === 'theme') return <select {...accessibility} id={id} aria-label={definition.label} value={String(value)}
-    onChange={event => onChange(event.currentTarget.value as Settings['theme'])}>
-    <option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option>
-  </select>;
-  if (definition.kind === 'tab') return <select {...accessibility} id={id} aria-label={definition.label} value={String(value)}
-    onChange={event => onChange(Number(event.currentTarget.value))}>
-    <option value="2">2 列</option><option value="4">4 列</option><option value="8">8 列</option>
-  </select>;
-  if (definition.kind === 'whitespace') return <select {...accessibility} id={id} aria-label={definition.label} value={String(value)}
-    onChange={event => onChange(event.currentTarget.value as Settings['whitespaceMode'])}>
-    <option value="none">关闭</option><option value="current">仅当前行</option><option value="all">全部可见</option>
-  </select>;
+  if (definition.kind === 'theme') return <SettingsSelect id={id} label={definition.label} value={String(value)}
+    options={[{ value: 'system', label: '跟随系统' }, { value: 'light', label: '浅色' }, { value: 'dark', label: '深色' }]}
+    onChange={next => onChange(next as Settings['theme'])} {...accessibility} />;
+  if (definition.kind === 'tab') return <SettingsSelect id={id} label={definition.label} value={String(value)}
+    options={[{ value: '2', label: '2 列' }, { value: '4', label: '4 列' }, { value: '8', label: '8 列' }]}
+    onChange={next => onChange(Number(next))} {...accessibility} />;
+  if (definition.kind === 'whitespace') return <SettingsSelect id={id} label={definition.label} value={String(value)}
+    options={[{ value: 'none', label: '关闭' }, { value: 'current', label: '仅当前行' }, { value: 'all', label: '全部可见' }]}
+    onChange={next => onChange(next as Settings['whitespaceMode'])} {...accessibility} />;
+  if (definition.kind === 'font') return <SettingsFontPicker id={id} label={definition.label} value={String(value)}
+    options={fontFamilies} onChange={next => onChange(next)} {...accessibility} />;
   const numeric = definition.kind === 'number';
-  return <input {...accessibility} ref={input} id={id} aria-label={definition.label} defaultValue={String(value)} type={numeric ? 'number' : 'text'}
-    list={definition.kind === 'font' ? 'local-editor-fonts' : undefined}
+  return <input aria-invalid={!!error} aria-describedby={accessibility.describedBy} ref={input} id={id}
+    aria-label={definition.label} defaultValue={String(value)} type={numeric ? 'number' : 'text'}
     min={numeric ? definition.key === 'fontSize' ? 8 : 1.2 : undefined}
     max={numeric ? definition.key === 'fontSize' ? 40 : 2.5 : undefined}
     step={numeric ? definition.key === 'fontSize' ? 1 : 0.05 : undefined} required maxLength={128}
@@ -62,8 +63,6 @@ export function SettingsDialog({ coordinator, onClose, onShortcuts, suspended = 
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<SettingKey, string>>>({});
   const [working, setWorking] = useState(false);
-  const [restoreId, setRestoreId] = useState('');
-  const [confirmRestore, setConfirmRestore] = useState(false);
   const [inputEpoch, setInputEpoch] = useState(0);
   const busy = snapshot.saving || working;
   const userValues = mergeSettings(snapshot.draft ?? snapshot.user).settings;
@@ -72,7 +71,12 @@ export function SettingsDialog({ coordinator, onClose, onShortcuts, suspended = 
   const definitions = settingDefinitions.filter(definition => (searching || group === 'all' || definition.group === group)
     && query.trim().toLocaleLowerCase().split(/\s+/).every(token =>
       `${definition.label} ${definition.key} ${definition.keywords}`.toLocaleLowerCase().includes(token)));
-  const fontOptions = useMemo(() => snapshot.fonts?.families.map(name => <option key={name} value={name} />), [snapshot.fonts]);
+  const fontFamilies = useMemo(() => {
+    const families = snapshot.fonts?.families ?? [];
+    const current = userValues.fontFamily;
+    return current && !families.some(name => name.toLocaleLowerCase() === current.toLocaleLowerCase())
+      ? [current, ...families] : families;
+  }, [snapshot.fonts, userValues.fontFamily]);
 
   useEffect(() => {
     coordinator.beginPreview();
@@ -91,7 +95,7 @@ export function SettingsDialog({ coordinator, onClose, onShortcuts, suspended = 
   }, []);
 
   function navigateCategory(event: KeyboardEvent<HTMLButtonElement>, index: number) {
-    if (busy || confirmRestore || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229
+    if (busy || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229
       || event.ctrlKey || event.altKey || event.metaKey) return;
     const categoryCount = settingGroups.length + 1;
     const next = event.key === 'Home' ? 0 : event.key === 'End' ? categoryCount - 1
@@ -128,11 +132,11 @@ export function SettingsDialog({ coordinator, onClose, onShortcuts, suspended = 
         <div ref={categories} role="tablist" aria-label="设置分类" aria-orientation={horizontal ? 'horizontal' : 'vertical'} className="settings-tabs">
           {settingGroups.map(([id, label], index) => <button key={id} id={`${categoryId}-${id}`} role="tab"
             className="plain-button" aria-selected={group === id} aria-controls={`${categoryId}-panel`}
-            tabIndex={group === id ? 0 : -1} disabled={busy || confirmRestore}
+            tabIndex={group === id ? 0 : -1} disabled={busy}
             onKeyDown={event => navigateCategory(event, index)} onClick={() => setGroup(id)}>{label}</button>)}
           <button id={`${categoryId}-system`} role="tab" className="plain-button"
             aria-selected={group === 'system'} aria-controls={`${categoryId}-panel`}
-            tabIndex={group === 'system' ? 0 : -1} disabled={busy || confirmRestore}
+            tabIndex={group === 'system' ? 0 : -1} disabled={busy}
             onKeyDown={event => navigateCategory(event, settingGroups.length)}
             onClick={() => setGroup('system')}>系统</button>
         </div>
@@ -140,13 +144,12 @@ export function SettingsDialog({ coordinator, onClose, onShortcuts, suspended = 
       <div id={`${categoryId}-panel`} className="settings-fields" role="tabpanel" aria-labelledby={`${categoryId}-${group}`} tabIndex={0}>
         <p className="settings-intro">修改会即时预览。保存写入本机配置；取消会还原本次预览。工作区设置和文档临时选择可能覆盖用户值。</p>
         {searching && <p className="settings-search-scope" role="status">在全部分类中搜索 · {definitions.length} 项结果</p>}
-        <datalist id="local-editor-fonts">{fontOptions}</datalist>
-        <fieldset disabled={busy || confirmRestore}>
+        <fieldset disabled={busy}>
           {definitions.map(definition => <div className="settings-row" key={definition.key}>
             <div><label htmlFor={`setting-label-${definition.key}`}>{definition.label}</label>
               {searching && <small>{groupNames[definition.group]}</small>}
               {definition.description && <small>{definition.description}</small>}</div>
-            <SettingField key={`${definition.key}-${inputEpoch}`} definition={definition} value={userValues[definition.key]} error={fieldErrors[definition.key]} onChange={value => {
+            <SettingField key={`${definition.key}-${inputEpoch}`} definition={definition} value={userValues[definition.key]} error={fieldErrors[definition.key]} fontFamilies={fontFamilies} onChange={value => {
               const result = coordinator.setPreview(definition.key, value);
               setFieldErrors(previous => {
                 const next = { ...previous };
@@ -187,25 +190,11 @@ export function SettingsDialog({ coordinator, onClose, onShortcuts, suspended = 
           <button className="plain-button" disabled={busy} onClick={() => { coordinator.importPreview(imported); setImported(null); }}>应用导入预览</button>
           <button className="plain-button" disabled={busy} onClick={() => setImported(null)}>取消导入</button></section>}
         {changes.length > 0 && <p className="settings-changes">本次预览修改了 {changes.length} 项，尚未保存。</p>}
-        <section className="settings-recovery" aria-label="设置恢复"><h3>配置恢复</h3>
-          <p>损坏原件与旧备份会保留。此处列出最多16份已验证旧配置，恢复仍会核对当前版本。</p>
-          {snapshot.recoveryCopies.length > 0 ? <>
-            <select aria-label="设置旧副本" disabled={busy || confirmRestore} value={restoreId}
-              onChange={event => setRestoreId(event.currentTarget.value)}><option value="">选择旧配置</option>
-              {snapshot.recoveryCopies.map(copy => <option key={copy.id} value={copy.id}>配置版本 {copy.version} · {copy.id.slice(0, 8)}</option>)}</select>
-            <button className="plain-button" disabled={!restoreId || busy} onClick={() => setConfirmRestore(true)}>恢复所选副本…</button>
-          </> : <p>当前没有已验证旧副本。</p>}
-          {confirmRestore && <div role="group" aria-label="确认恢复设置"><p>将用所选旧配置替换当前设置，当前配置会留有备份。未保存预览会被还原。</p>
-            <button autoFocus className="plain-button" disabled={busy} onClick={() => setConfirmRestore(false)}>取消恢复</button>
-            <button className="plain-button" disabled={busy} onClick={() => void run(async () => {
-              const result = await coordinator.restore(restoreId); if (result.ok) setConfirmRestore(false);
-            })}>确认恢复配置</button></div>}
-        </section>
       </div>
     </div>
     <footer>
       <div className="settings-tools">
-        <button className="plain-button" disabled={busy || confirmRestore} onClick={onShortcuts}>自定义快捷键…</button>
+        <button className="plain-button" disabled={busy} onClick={onShortcuts}>自定义快捷键…</button>
         <input ref={importing} type="file" accept=".json,application/json" aria-label="导入设置文件" hidden
           onChange={event => { void readImport(event.currentTarget.files?.[0]); event.currentTarget.value = ''; }} />
         <button className="plain-button" disabled={busy} onClick={() => importing.current?.click()}>导入…</button>
@@ -228,8 +217,7 @@ export function SettingsDialog({ coordinator, onClose, onShortcuts, suspended = 
       {snapshot.message && <p className="settings-message" role="status">{snapshot.message}</p>}
       <div className="settings-decisions">
         <button className="plain-button" disabled={busy} onClick={cancel}>取消并还原预览</button>
-        <button className="plain-button" disabled={busy || confirmRestore || Object.keys(fieldErrors).length > 0} onClick={() => { coordinator.usePreviewForSession(); onClose(); }}>仅本次应用</button>
-        <button className="primary-button" disabled={busy || snapshot.version === null || confirmRestore || error !== null || Object.keys(fieldErrors).length > 0}
+        <button className="primary-button" disabled={busy || snapshot.version === null || error !== null || Object.keys(fieldErrors).length > 0}
           onClick={() => void run(() => coordinator.save())}>保存设置</button>
       </div>
     </footer>

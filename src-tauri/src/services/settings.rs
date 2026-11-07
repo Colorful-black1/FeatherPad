@@ -23,20 +23,12 @@ struct SettingsFile {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SettingsCopy {
-    pub id: String,
-    pub version: u64,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct LoadedSettings {
     pub schema_version: u32,
     pub version: u64,
     pub revision: Option<String>,
     pub settings: Map<String, Value>,
     pub warning: Option<String>,
-    pub recovery_copies: Vec<SettingsCopy>,
 }
 
 #[derive(Debug, Serialize)]
@@ -83,20 +75,20 @@ impl SettingsStore {
                     &isolated,
                     "隔离目标已存在，原设置仍保留。",
                 )?;
-                warning = Some(
-                    "设置文件损坏，已隔离并保留原件；当前使用默认值，可从已验证旧副本恢复。".into(),
-                );
+                warning = Some("设置文件损坏，已隔离并保留原件；当前使用默认值。".into());
                 None
             }
             Err(error) => return Err(error),
         };
+        if current.is_some() {
+            cleanup_backups(&root);
+        }
         Ok(LoadedSettings {
             schema_version: 1,
             version: current.as_ref().map_or(0, |current| current.value.version),
             revision: current.as_ref().map(|current| current.revision.clone()),
             settings: current.map_or_else(Map::new, |current| current.value.settings),
             warning,
-            recovery_copies: copies(&root)?,
         })
     }
 
@@ -151,35 +143,12 @@ impl SettingsStore {
                 "设置写后校验失败；旧副本保留，当前选择仅本次生效。",
             ));
         }
+        // The settings restore feature is gone; keep only the live file so repeated
+        // saves do not accumulate backup copies.
+        cleanup_backups(&root);
         Ok(SavedSettings {
             version: value.version,
             revision: saved.revision,
-        })
-    }
-
-    pub fn restore(
-        &self,
-        expected_version: u64,
-        expected_revision: Option<String>,
-        recovery_id: &str,
-    ) -> Result<SavedSettings, AppError> {
-        if !canonical_uuid(recovery_id) {
-            return Err(invalid());
-        }
-        let settings = {
-            let root = self.root()?;
-            let target = root.join(format!("settings-{recovery_id}.bak"));
-            let _parents = windows_file::lock_parent_chain(&target)?;
-            let _lock = settings_guard(&root)?;
-            read_settings(&target)?
-                .ok_or_else(|| AppError::new(ErrorCode::NotFound, "所选设置副本已不存在。"))?
-                .value
-                .settings
-        };
-        self.save(SaveSettingsRequest {
-            expected_version,
-            expected_revision,
-            settings,
         })
     }
 
@@ -264,41 +233,18 @@ pub fn validate_settings(settings: &Map<String, Value>) -> Result<(), AppError> 
     Ok(())
 }
 
-fn copies(root: &Path) -> Result<Vec<SettingsCopy>, AppError> {
-    let mut candidates = Vec::new();
-    for entry in fs::read_dir(root).map_err(io_error)?.take(4096) {
-        let entry = entry.map_err(io_error)?;
-        let name = entry.file_name().to_string_lossy().into_owned();
-        let Some(id) = name
-            .strip_prefix("settings-")
-            .and_then(|name| name.strip_suffix(".bak"))
-        else {
-            continue;
-        };
-        if !canonical_uuid(id) {
+fn cleanup_backups(root: &Path) {
+    let Ok(entries) = fs::read_dir(root) else {
+        return;
+    };
+    for entry in entries.take(4096).flatten() {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if !name.starts_with("settings-") || !(name.ends_with(".bak") || name.ends_with(".tmp")) {
             continue;
         }
-        let metadata = entry.metadata().map_err(io_error)?;
-        candidates.push((
-            metadata.modified().map_err(io_error)?,
-            id.to_owned(),
-            entry.path(),
-        ));
+        let _ = fs::remove_file(entry.path());
     }
-    candidates.sort_by_key(|entry| std::cmp::Reverse(entry.0));
-    Ok(candidates
-        .into_iter()
-        .take(16)
-        .filter_map(|(_, id, path)| {
-            read_settings(&path)
-                .ok()
-                .flatten()
-                .map(|current| SettingsCopy {
-                    id,
-                    version: current.value.version,
-                })
-        })
-        .collect())
 }
 
 fn settings_guard(root: &Path) -> Result<File, AppError> {
@@ -323,13 +269,6 @@ fn settings_guard(root: &Path) -> Result<File, AppError> {
     file.try_lock()
         .map_err(|_| AppError::new(ErrorCode::Busy, "设置正在写入，请稍后重试。"))?;
     Ok(file)
-}
-fn canonical_uuid(value: &str) -> bool {
-    uuid::Uuid::parse_str(value)
-        .ok()
-        .map(|id| id.to_string())
-        .as_deref()
-        == Some(value)
 }
 fn invalid() -> AppError {
     AppError::new(ErrorCode::InvalidInput, "设置格式无效，原配置仍保留。")

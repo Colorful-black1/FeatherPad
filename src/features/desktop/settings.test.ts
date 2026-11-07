@@ -11,13 +11,12 @@ const revision = (letter: string) => letter.repeat(64);
 const ok = <T>(value: T): ResultEnvelope<T> => ({ ok: true, value });
 function loaded(settings: RawSettings = {}, version = 0): LoadedSettings {
   return { schemaVersion: 1, version, revision: version === 0 ? null : revision('a'), settings,
-    warning: null, recoveryCopies: [] };
+    warning: null };
 }
 function setup(raw: RawSettings = {}, version = 0) {
   const bridge = {
     load: vi.fn<typeof settingsBridge.load>(async () => ok(loaded(raw, version))),
     save: vi.fn<typeof settingsBridge.save>(async request => ok({ version: request.expectedVersion + 1, revision: revision('b') })),
-    restore: vi.fn<typeof settingsBridge.restore>(async request => ok({ version: request.expectedVersion + 1, revision: revision('c') })),
     workspace: vi.fn<typeof settingsBridge.workspace>(async () => ok({ settings: {}, revision: null, warning: null })),
     fonts: vi.fn<typeof settingsBridge.fonts>(async () => ok({ families: ['Consolas', 'Arial'], truncated: false })),
   };
@@ -53,6 +52,16 @@ it('coalesces in-flight font changes and serializes history without reverting th
     .toEqual([[1, 15], [2, 17], [3, 17]]);
   expect(coordinator.getSnapshot()).toMatchObject({ version: 4, settings: { fontSize: 17 },
     user: { fontSize: 17, future: 'retained', recentHistoryItems: { schemaVersion: 1, entries: [] } }, session: {} });
+});
+
+it('persists a theme toggle through the revision-checked user settings save and clears the temporary session value', async () => {
+  const { coordinator, bridge } = setup({ theme: 'light' }, 1);
+  await coordinator.load();
+  const saving = coordinator.setPersisted('theme', 'dark');
+  expect(coordinator.getSnapshot()).toMatchObject({ settings: { theme: 'dark' }, user: { theme: 'light' } });
+  expect(await saving).toMatchObject({ ok: true });
+  expect(bridge.save).toHaveBeenCalledWith(expect.objectContaining({ expectedVersion: 1, settings: { theme: 'dark' } }));
+  expect(coordinator.getSnapshot()).toMatchObject({ user: { theme: 'dark' }, session: {}, settings: { theme: 'dark' } });
 });
 
 it('rebases a settings preview opened during a font save without overwriting its newer edits', async () => {

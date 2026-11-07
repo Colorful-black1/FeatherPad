@@ -60,6 +60,19 @@ test('shortcut management preserves the settings draft and searching privacy fin
   await expect(page.locator('.document-view .cm-scroller')).toHaveCSS('font-size', '14px');
 });
 
+test('the editor font picker keeps every installed font available after a selection', async ({ page }) => {
+  await page.getByRole('button', { name: '打开设置', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '设置', exact: true });
+  const font = dialog.getByRole('combobox', { name: '编辑器字体', exact: true });
+  await font.fill('Consolas');
+  await dialog.getByRole('button', { name: '展开编辑器字体列表', exact: true }).click();
+  await expect(dialog.getByRole('option')).toHaveCount(2);
+  await expect(dialog.getByRole('option', { name: 'Arial', exact: true })).toBeVisible();
+  await expect(dialog.getByRole('option', { name: 'Consolas', exact: true })).toBeVisible();
+  await dialog.getByRole('option', { name: 'Arial', exact: true }).click();
+  await expect(font).toHaveValue('Arial');
+});
+
 test('invalid settings stay next to their fields and provide a route back from other categories', async ({ page }) => {
   await page.getByRole('button', { name: '打开设置', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '设置', exact: true });
@@ -94,7 +107,8 @@ test('system theme follows media and cancelling a theme/font preview restores th
   await origin.click();
   const dialog = page.getByRole('dialog', { name: '设置', exact: true });
   await expect(dialog.getByRole('searchbox', { name: '搜索设置', exact: true })).toBeFocused();
-  await dialog.getByRole('combobox', { name: '主题', exact: true }).selectOption('light');
+  await dialog.getByRole('combobox', { name: '主题', exact: true }).click();
+  await dialog.getByRole('option', { name: '浅色', exact: true }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   await dialog.getByRole('combobox', { name: '编辑器字体', exact: true }).fill('Missing-local-font-fixture');
   await expect(dialog.getByRole('note')).toContainText('未找到本机字体');

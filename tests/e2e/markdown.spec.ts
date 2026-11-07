@@ -215,6 +215,21 @@ test('Web mock: external preview links show the exact target and require confirm
 test('restricted HTML requires user opt-in, strips scripts and forged controls, and never mutates Markdown', async ({ page }) => {
   const externalRequests: string[] = [];
   page.on('request', request => { if (request.url().startsWith('https://example.com/')) externalRequests.push(request.url()); });
+  await page.addInitScript(() => {
+    if (window.top !== window) return;
+    let version = 0;
+    const ok = (value: unknown) => ({ ok: true, value });
+    const revision = () => version ? version.toString(16).padStart(64, '0') : null;
+    Reflect.set(window, '__TAURI_INTERNALS__', { invoke: async (command: string) => {
+      switch (command) {
+        case 'load_settings': return ok({ schemaVersion: 1, version, revision: revision(), settings: {}, warning: null });
+        case 'save_settings': version += 1; return ok({ version, revision: revision() });
+        case 'list_font_families': return ok({ families: ['Cascadia Mono'], truncated: false });
+        case 'load_workspace_settings': return ok({ settings: {}, revision: null, warning: null });
+        default: throw new Error(`Unexpected restricted HTML settings command ${command}`);
+      }
+    } });
+  });
   await page.goto('/');
   await page.getByRole('button', { name: '新建文本', exact: true }).click();
   await (await documentOptions(page)).getByRole('combobox', { name: '语言模式', exact: true }).selectOption('markdown'); await resumeEditing(page);
@@ -230,7 +245,9 @@ test('restricted HTML requires user opt-in, strips scripts and forged controls, 
   await page.getByRole('button', { name: '打开设置', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '设置', exact: true });
   await dialog.getByRole('checkbox', { name: '允许受限 Markdown HTML', exact: true }).check();
-  await dialog.getByRole('button', { name: '仅本次应用', exact: true }).click();
+  await dialog.getByRole('button', { name: '保存设置', exact: true }).click();
+  await expect(dialog.getByRole('status')).toContainText('设置已保存');
+  await page.keyboard.press('Escape');
   await expect(frame.locator('summary')).toHaveText('安全结构');
   await expect(frame.getByText('受限正文', { exact: true })).toBeVisible();
   await expect(frame.locator('script:not([data-featherpad-runtime]), iframe, [onclick], [onerror], img[src^="http"]')).toHaveCount(0);

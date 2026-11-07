@@ -2,7 +2,7 @@ import { settingsBridge } from '../../bridge/settings';
 import { favoritesSetting } from '../workspace/favorites';
 import { files } from '../../bridge/files';
 import type { FileRef, ResultEnvelope, SaveAsRequest } from '../../shared/contracts/files';
-import type { JsonValue, LoadedSettings, LocalFonts, RawSettings, SavedSettings, SettingsCopy } from '../../shared/contracts/settings';
+import type { JsonValue, LoadedSettings, LocalFonts, RawSettings, SavedSettings } from '../../shared/contracts/settings';
 import type { WorkspaceStore } from '../workspace/store';
 import { defaultSettings, exportSettings, isSettingKey, isSettingValue, mergeSettings, resetSettings,
   settingsChanges, languagePreferencesSetting, type SettingKey, type Settings } from './settings-schema';
@@ -18,7 +18,6 @@ export interface SettingsSnapshot extends ReturnType<typeof mergeSettings> {
   error: string | null;
   warning: string | null;
   workspaceWarning: string | null;
-  recoveryCopies: readonly SettingsCopy[];
   fonts: LocalFonts | null;
   fontWarning: string | null;
 }
@@ -34,7 +33,7 @@ export class SettingsCoordinator {
   private readonly listeners = new Set<() => void>();
   private snapshot: SettingsSnapshot = { ...mergeSettings(), user: {}, draft: null, session: {}, version: null,
     revision: null, saving: false, message: null, error: null, warning: null, workspaceWarning: null,
-    recoveryCopies: [], fonts: null, fontWarning: null };
+    fonts: null, fontWarning: null };
   private loadGeneration = 0;
   private workspaceGeneration = 0;
   private exportRequest: SaveAsRequest | null = null;
@@ -96,7 +95,7 @@ export class SettingsCoordinator {
       }
     }
     this.publish({ version: result.value.version, revision: result.value.revision, warning: result.value.warning,
-      recoveryCopies: result.value.recoveryCopies, error: null,
+      error: null,
       message: changes.length ? '已读取当前配置并保留本次修改，请核对后保存。' : null });
     return result;
   }
@@ -138,6 +137,25 @@ export class SettingsCoordinator {
     this.publish({ message: '此选择仅本次会话生效。' });
   }
   clearSession() { this.session = {}; this.publish({ message: null }); }
+
+  setPersisted<K extends SettingKey>(key: K, value: Settings[K]): Promise<ResultEnvelope<unknown>> {
+    if (!isSettingValue(key, value)) return Promise.resolve(fail('设置值无效，未保存。'));
+    // Apply immediately, then persist through the same revision-checked path as
+    // the settings dialog so a restart keeps the new value.
+    this.session = { ...this.session, [key]: value };
+    this.publish({ error: null, message: null });
+    return this.enqueuePersistence(async () => {
+      let result: ResultEnvelope<SavedSettings>;
+      try { result = await this.persistUserValue(key, value); }
+      catch { result = fail('设置保存结果未确认，请重新读取设置后再试。'); }
+      if (!result.ok) {
+        this.publish({ error: `${result.error.message} 此选择仅本次生效。` });
+        return result;
+      }
+      this.publish({ message: '设置已保存。', error: null });
+      return result;
+    });
+  }
 
   usePreviewForSession() {
     if (!this.draft) return;
@@ -238,9 +256,13 @@ export class SettingsCoordinator {
   }
 
   private async persistFontSize(size: number): Promise<ResultEnvelope<SavedSettings>> {
+    return this.persistUserValue('fontSize', size);
+  }
+
+  private async persistUserValue<K extends SettingKey>(key: K, value: Settings[K]): Promise<ResultEnvelope<SavedSettings>> {
     if (this.snapshot.version === null) return fail('尚未读取到设置版本。');
     const request = { expectedVersion: this.snapshot.version, expectedRevision: this.snapshot.revision,
-      settings: { ...structuredClone(this.user), fontSize: size } };
+      settings: { ...structuredClone(this.user), [key]: value } };
     let result = await this.bridge.save(request);
     if (!result.ok && result.error.code === 'IPC_UNAVAILABLE') {
       const observed = await this.bridge.load();
@@ -251,7 +273,7 @@ export class SettingsCoordinator {
     }
     if (!result.ok) return result;
     if (this.snapshot.version !== request.expectedVersion || this.snapshot.revision !== request.expectedRevision) {
-      return fail('字号保存回执晚于另一次配置读取，请重新核对设置。');
+      return fail('设置保存回执晚于另一次配置读取，请重新核对设置。');
     }
     const previewChanges = this.draft ? settingsChanges(this.user, this.draft) : [];
     this.user = request.settings;
@@ -262,7 +284,7 @@ export class SettingsCoordinator {
         else this.draft[change.key] = structuredClone(change.after);
       }
     }
-    if (this.session.fontSize === size) delete this.session.fontSize;
+    if (this.session[key] === value) delete this.session[key];
     this.publish({ version: result.value.version, revision: result.value.revision, error: null });
     return result;
   }
@@ -306,18 +328,6 @@ export class SettingsCoordinator {
       this.publish({ version: result.value.version, revision: result.value.revision, error: null });
       return result;
     });
-  }
-
-  async restore(recoveryId: string): Promise<ResultEnvelope<unknown>> {
-    if (this.snapshot.saving || this.snapshot.version === null) return fail('请先等待保存完成并读取当前设置版本。');
-    this.publish({ saving: true, error: null });
-    try {
-      const result = await this.bridge.restore({ recoveryId, expectedVersion: this.snapshot.version, expectedRevision: this.snapshot.revision });
-      if (!result.ok) { this.publish({ error: result.error.message }); return result; }
-      const loaded = await this.load(false);
-      if (loaded.ok) this.publish({ message: '已恢复所选旧配置，原配置副本仍保留。' });
-      return loaded;
-    } finally { this.publish({ saving: false }); }
   }
 
   async export(): Promise<ResultEnvelope<unknown>> {

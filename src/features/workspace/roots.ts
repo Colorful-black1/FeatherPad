@@ -9,8 +9,8 @@ export class WorkspaceRoots {
     private readonly transport: Pick<typeof workspaceFiles, 'inspectRoot' | 'releaseRoot'> = workspaceFiles,
     private readonly choose = files.chooseFolder) {}
 
-  async chooseRoot(add = false): Promise<ResultEnvelope<WorkspaceRoot | null>> {
-    const selected = await this.choose();
+  async chooseRoot(add = false, startIn?: string): Promise<ResultEnvelope<WorkspaceRoot | null>> {
+    const selected = await this.choose(startIn);
     if (!selected.ok) return selected;
     if (!selected.value.grant || !selected.value.displayName) return { ok: true, value: null };
     return this.openRoot({ grant: selected.value.grant, displayName: selected.value.displayName }, add);

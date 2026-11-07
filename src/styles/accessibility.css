@@ -22,6 +22,18 @@
     --focus: Highlight;
     --syntax-blue: CanvasText;
     --syntax-brown: CanvasText;
+    --syntax-keyword: CanvasText;
+    --syntax-atom: CanvasText;
+    --syntax-string: CanvasText;
+    --syntax-escape: CanvasText;
+    --syntax-variable: CanvasText;
+    --syntax-type: CanvasText;
+    --syntax-property: CanvasText;
+    --syntax-tag: CanvasText;
+    --syntax-attribute: CanvasText;
+    --syntax-punctuation: CanvasText;
+    --syntax-comment: CanvasText;
+    --cm-selection: Highlight;
     --shadow: none;
   }
 

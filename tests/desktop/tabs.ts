@@ -62,13 +62,13 @@ export async function verifyNativeTabs(page: Page, dataDir: string, evidence: st
   await openTree('a.txt');
   const oldA = await documentId(page, 'a.txt');
   await openTree('b.txt');
-  await expect(page.getByRole('tab')).toHaveCount(1);
-  expect(await nativeStat(page, oldA)).toMatchObject({ ok: false, error: { code: 'NOT_FOUND' } });
+  await expect(page.getByRole('tab')).toHaveCount(2);
+  expect(await nativeStat(page, oldA)).toMatchObject({ ok: true });
   await page.getByRole('treeitem', { name: 'b.txt', exact: true }).dblclick();
   await expect(page.getByRole('tab', { name: 'b.txt', exact: true })).toHaveAttribute('aria-description', '固定标签；没有未保存修改');
   await openTree('a.txt');
   const freshA = await documentId(page, 'a.txt');
-  expect(freshA).not.toBe(oldA);
+  expect(freshA).toBe(oldA);
   const intended = '甲原文😀 保留修改';
   await append(page, ' 保留修改');
   await openTree('c.txt');
@@ -185,6 +185,8 @@ export async function verifyNativeTabs(page: Page, dataDir: string, evidence: st
   await expect(page.getByRole('tab', { name: /未知回执保留副本/ })).toHaveCount(0);
 
   await page.getByRole('tab', { name: 'b.txt', exact: true }).click();
+  await (await menuItem(page, '关闭其他')).click();
+  await expect(page.getByRole('tab')).toHaveCount(1);
   await page.screenshot({ path: path.join(evidence, 'native-pinned-tabs.png') });
   // Renderer reload is abrupt; wait for the existing asynchronous session write
   // so this pin-metadata check does not restore an older, already closed tab.
@@ -201,7 +203,7 @@ export async function verifyNativeTabs(page: Page, dataDir: string, evidence: st
   await page.getByRole('button', { name: '关闭 b.txt', exact: true }).click();
   await expect(page.getByRole('heading', { name: '快开文件，专心编辑。' })).toBeVisible();
   await expect(page.getByRole('button', { name: '新建文本', exact: true })).toBeFocused();
-  return { nativeCleanPreviewLeaseReleased: true, nativeDirtyTabCancelAndUndoPreserved: true,
+  return { nativePinnedTabsRetainLeases: true, nativeDirtyTabCancelAndUndoPreserved: true,
     nativeClosingSaveConflictPreservesExternal: true, nativeUntitledClosingSaveAndCancel: true,
     nativeDiscardClearsVerifiedRecoveryDraft: true, discardedReceipt: draft.receipt,
     nativeUnknownReleaseRetainsCopyAndCanSaveAs: true, nativePinMetadataSurvivesRendererReload: true,

@@ -1,6 +1,7 @@
 import { Compartment, EditorState, Facet, StateEffect, StateField, type Extension } from '@codemirror/state';
 import { defaultKeymap, history, historyKeymap, indentWithTab, redo } from '@codemirror/commands';
-import { bracketMatching, defaultHighlightStyle, indentUnit, syntaxHighlighting } from '@codemirror/language';
+import { bracketMatching, HighlightStyle, indentUnit, syntaxHighlighting } from '@codemirror/language';
+import { tags } from '@lezer/highlight';
 import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete';
 import {
   Decoration, type DecorationSet, EditorView, highlightActiveLine, highlightActiveLineGutter,
@@ -16,6 +17,37 @@ import {
   type EditingCommandBindings,
 } from './editing';
 import type { LanguageId } from './editor-language';
+
+// Colors come from semantic tokens so the editor follows the light or dark
+// workbench theme instead of CodeMirror's fixed light palette.
+const themedHighlightStyle = HighlightStyle.define([
+  { tag: tags.meta, color: 'var(--text-muted)' },
+  { tag: tags.link, textDecoration: 'underline' },
+  { tag: tags.heading, textDecoration: 'underline', fontWeight: 'bold' },
+  { tag: tags.emphasis, fontStyle: 'italic' },
+  { tag: tags.strong, fontWeight: 'bold' },
+  { tag: tags.strikethrough, textDecoration: 'line-through' },
+  { tag: tags.keyword, color: 'var(--syntax-keyword)' },
+  { tag: [tags.atom, tags.bool, tags.url, tags.contentSeparator, tags.labelName], color: 'var(--syntax-atom)' },
+  { tag: [tags.literal, tags.inserted], color: 'var(--syntax-string)' },
+  { tag: [tags.string, tags.deleted], color: 'var(--syntax-string)' },
+  { tag: [tags.regexp, tags.escape, tags.special(tags.string)], color: 'var(--syntax-escape)' },
+  { tag: tags.definition(tags.variableName), color: 'var(--syntax-variable)' },
+  { tag: tags.local(tags.variableName), color: 'var(--syntax-variable)' },
+  { tag: [tags.typeName, tags.namespace, tags.className], color: 'var(--syntax-type)' },
+  { tag: [tags.special(tags.variableName), tags.macroName], color: 'var(--syntax-property)' },
+  { tag: tags.definition(tags.propertyName), color: 'var(--syntax-property)' },
+  { tag: tags.propertyName, color: 'var(--syntax-property)' },
+  { tag: tags.tagName, color: 'var(--syntax-tag)' },
+  { tag: tags.attributeName, color: 'var(--syntax-attribute)' },
+  { tag: tags.attributeValue, color: 'var(--syntax-string)' },
+  { tag: tags.angleBracket, color: 'var(--syntax-punctuation)' },
+  { tag: [tags.definitionOperator, tags.derefOperator, tags.separator], color: 'var(--syntax-punctuation)' },
+  { tag: [tags.comment, tags.lineComment, tags.blockComment], color: 'var(--syntax-comment)', fontStyle: 'italic' },
+  { tag: [tags.character, tags.special(tags.character)], color: 'var(--syntax-escape)' },
+  { tag: [tags.processingInstruction, tags.documentMeta], color: 'var(--text-muted)' },
+  { tag: tags.invalid, color: 'var(--danger)' },
+]);
 
 const editability = new Compartment();
 const indentation = new Compartment();
@@ -210,7 +242,7 @@ export function createEditorState(text: string, readOnly: boolean, options: Edit
       whitespace.of(whitespaceExtensions(preferences.whitespaceMode)),
       matching.of(options.bracketMatching === false ? [] : bracketMatching()),
       searchHighlightField,
-      syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+      syntaxHighlighting(themedHighlightStyle, { fallback: true }),
       editability.of(accessExtensions(readOnly)),
       EditorView.theme({
         '&': { height: '100%', backgroundColor: 'var(--bg-editor)', color: 'var(--text-primary)' },

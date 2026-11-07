@@ -1,13 +1,11 @@
 export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 export type RawSettings = Record<string, JsonValue>;
-export interface SettingsCopy { id: string; version: number }
 export interface LoadedSettings {
   schemaVersion: 1;
   version: number;
   revision: string | null;
   settings: RawSettings;
   warning: string | null;
-  recoveryCopies: SettingsCopy[];
 }
 export interface SaveSettingsRequest {
   expectedVersion: number;

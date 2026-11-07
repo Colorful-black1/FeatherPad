@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { ensureSyntaxTree } from '@codemirror/language';
+import { ensureSyntaxTree, highlightingFor } from '@codemirror/language';
+import { tags } from '@lezer/highlight';
 import { detectLanguage, languageIds, languageLabel, type LanguageId } from './editor-language';
 import { loadLanguageExtension } from './language-loader';
 import { createEditorState } from './editor-state';
@@ -39,6 +40,15 @@ describe('language detection and local highlighting modes', () => {
     const state = createEditorState(source, false, { language });
     expect(ensureSyntaxTree(state, source.length, 1_000)?.length).toBeGreaterThan(0);
     expect(languageLabel(languageId)).not.toBe('');
+  });
+
+  it('assigns visible highlighting classes to HTML tags, attributes and brackets', async () => {
+    const language = await loadLanguageExtension('html');
+    const state = createEditorState('<main class="app">Title</main>', false, { language, languageId: 'html' });
+    for (const [label, tag] of [['tagName', tags.tagName], ['attributeName', tags.attributeName],
+      ['attributeValue', tags.attributeValue], ['angleBracket', tags.angleBracket]] as const) {
+      expect(highlightingFor(state, [tag]), label).toBeTruthy();
+    }
   });
 
   it('keeps all advertised language identifiers unique and lazy-loads a valid mode for each', async () => {

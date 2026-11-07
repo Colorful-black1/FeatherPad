@@ -90,13 +90,14 @@ async function dirtyFile(page: Page) {
 
 test.beforeEach(async ({ page }) => { await installFiles(page); await page.goto('/'); });
 
-test('Web mock: clean preview replacement, double-click/edit pinning and tab keyboard navigation', async ({ page }) => {
+test('Web mock: file tree opens permanent tabs and tab keyboard navigation', async ({ page }) => {
   await folder(page);
   await page.getByRole('treeitem', { name: 'a.txt', exact: true }).click();
   await expect(page.getByRole('tab')).toHaveCount(1);
+  await expect(page.getByRole('tab', { name: 'a.txt', exact: true })).toHaveAttribute('aria-description', '固定标签；没有未保存修改');
   await page.getByRole('treeitem', { name: 'b.txt', exact: true }).click();
-  await expect(page.getByRole('tab')).toHaveCount(1);
-  await expect(page.getByRole('tab', { name: 'b.txt', exact: true })).toHaveAttribute('aria-description', '预览标签，双击固定；没有未保存修改');
+  await expect(page.getByRole('tab')).toHaveCount(2);
+  await expect(page.getByRole('tab', { name: 'b.txt', exact: true })).toHaveAttribute('aria-description', '固定标签；没有未保存修改');
   await page.getByRole('treeitem', { name: 'b.txt', exact: true }).dblclick();
   await expect(page.getByRole('tab', { name: 'b.txt', exact: true })).toHaveAttribute('aria-description', '固定标签；没有未保存修改');
   await page.getByRole('treeitem', { name: 'a.txt', exact: true }).click();
@@ -109,16 +110,16 @@ test('Web mock: clean preview replacement, double-click/edit pinning and tab key
   await expect(page.getByRole('tab', { name: 'a.txt', exact: true })).toHaveAttribute('aria-description', '固定标签；没有未保存修改');
   await page.getByRole('treeitem', { name: 'c.txt', exact: true }).click();
   await page.getByRole('treeitem', { name: 'd.txt', exact: true }).click();
-  await expect(page.getByRole('tab')).toHaveCount(3);
+  await expect(page.getByRole('tab')).toHaveCount(4);
   const last = page.getByRole('tab', { name: 'd.txt', exact: true });
   await last.focus();
   await page.keyboard.press('Home');
-  await expect(page.getByRole('tab', { name: 'b.txt', exact: true })).toBeFocused();
+  await expect(page.getByRole('tab', { name: 'a.txt', exact: true })).toBeFocused();
   await page.keyboard.press('End');
   await expect(last).toBeFocused();
   await page.keyboard.press('Delete');
   await expect(last).toHaveCount(0);
-  await expect(editor(page)).toHaveText('a original');
+  await expect(editor(page)).toHaveText('c original');
 });
 
 test('Web mock: dirty close defaults to cancel, restores focus and keeps a failed closing save', async ({ page }) => {
@@ -197,7 +198,7 @@ test('Web mock: pin metadata survives reload, explicit close clears it, and dupl
   await page.reload();
   await folder(page);
   await page.getByRole('treeitem', { name: 'b.txt', exact: true }).click();
-  await expect(page.getByRole('tab', { name: 'b.txt', exact: true })).toHaveAttribute('aria-description', '预览标签，双击固定；没有未保存修改');
+  await expect(page.getByRole('tab', { name: 'b.txt', exact: true })).toHaveAttribute('aria-description', '固定标签；没有未保存修改');
   await page.getByRole('treeitem', { name: 'one', exact: true }).click();
   await page.getByRole('treeitem', { name: 'note.txt', exact: true }).dblclick();
   await page.getByRole('treeitem', { name: 'one', exact: true }).click();

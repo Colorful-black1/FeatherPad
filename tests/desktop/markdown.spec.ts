@@ -114,7 +114,9 @@ test('real Release reads a shared Markdown buffer offline in an isolated preview
     await page.getByRole('button', { name: '打开设置', exact: true }).click();
     const settings = page.getByRole('dialog', { name: '设置', exact: true });
     await settings.getByRole('checkbox', { name: '允许受限 Markdown HTML', exact: true }).check();
-    await settings.getByRole('button', { name: '仅本次应用', exact: true }).click();
+    await settings.getByRole('button', { name: '保存设置', exact: true }).click();
+    await expect(settings.getByRole('status')).toContainText('设置已保存');
+    await page.keyboard.press('Escape');
     await expect(frame.locator('summary')).toHaveText('原生受限HTML');
     await expect(frame.getByRole('checkbox')).toHaveCount(1);
     await expect(frame.locator('script:not([data-featherpad-runtime]),[onclick],[onload],iframe')).toHaveCount(0);

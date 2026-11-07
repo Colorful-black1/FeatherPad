@@ -19,14 +19,14 @@ const encoded = (key: string, languageId = 'java') => ({ schemaVersion: 1, entri
 
 function setup(raw: RawSettings = {}, hash: typeof languagePreferenceKey = languagePreferenceKey) {
   let stored: LoadedSettings = { schemaVersion: 1, version: 1, revision: 'a'.repeat(64), settings: raw,
-    warning: null, recoveryCopies: [] };
+    warning: null };
   const bridge: typeof settingsBridge = {
     load: vi.fn(async () => ok(structuredClone(stored))),
     save: vi.fn(async request => {
       stored = { ...stored, version: stored.version + 1, revision: 'b'.repeat(64), settings: structuredClone(request.settings) };
       return ok({ version: stored.version, revision: stored.revision! });
     }),
-    restore: vi.fn(), workspace: vi.fn(), fonts: vi.fn(),
+    workspace: vi.fn(), fonts: vi.fn(),
   };
   const preferences = new SettingsCoordinator(bridge);
   const registry = new DocumentRegistry();

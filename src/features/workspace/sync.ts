@@ -95,7 +95,11 @@ export class WorkspaceSync {
         return;
       }
       if (!started.ok) {
-        this.store.setSyncStatus({ kind: 'unavailable', message: `目录监听未建立：${started.error.message}` });
+        // The tree itself may still be fully usable. Clear the key after the
+        // status publish (which synchronously re-enters sync) so the next store
+        // change or window focus retries without an immediate loop.
+        this.store.setSyncStatus({ kind: 'unavailable', message: `目录自动刷新不可用：${started.error.message}` });
+        this.key = '';
         return;
       }
       this.watchId = started.value.watchId;

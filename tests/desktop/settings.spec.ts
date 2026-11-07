@@ -98,7 +98,8 @@ test('real Release persists, restores and recovers protected settings', async ()
     await expect(app.page.locator('.document-view .cm-lineNumbers')).toHaveCount(1);
 
     let opened = await openSettings(app.page);
-    await opened.dialog.getByRole('combobox', { name: '主题', exact: true }).selectOption('light');
+    await opened.dialog.getByRole('combobox', { name: '主题', exact: true }).click();
+    await opened.dialog.getByRole('option', { name: '浅色', exact: true }).click();
     await opened.dialog.getByRole('spinbutton', { name: '编辑字号', exact: true }).fill('20');
     await opened.dialog.getByRole('checkbox', { name: '自动换行', exact: true }).uncheck();
     await opened.dialog.getByRole('checkbox', { name: '显示行号', exact: true }).uncheck();
@@ -148,7 +149,7 @@ test('real Release persists, restores and recovers protected settings', async ()
     expect(second.settings.futureNative).toEqual({ retained: true });
     const backups = (await readdir(path.join(stateDir, 'settings')))
       .filter(name => /^settings-[0-9a-f-]{36}\.bak$/.test(name));
-    expect(backups).toHaveLength(1);
+    expect(backups).toHaveLength(0);
     await app.page.screenshot({ path: path.join(evidenceDirectory, 'settings-saved.png') });
     await stop(app);
 
@@ -174,30 +175,21 @@ test('real Release persists, restores and recovers protected settings', async ()
     app = await launch();
     opened = await openSettings(app.page);
     await expect(opened.dialog.getByText(/设置文件损坏，已隔离并保留原件/)).toBeVisible();
-    const oldCopy = opened.dialog.getByRole('combobox', { name: '设置旧副本', exact: true });
-    const restoreIds = await oldCopy.locator('option').evaluateAll(options =>
-      options.map(option => (option as HTMLOptionElement).value).filter(Boolean));
-    expect(restoreIds).toHaveLength(1);
-    await oldCopy.selectOption(restoreIds[0]!);
-    await opened.dialog.getByRole('button', { name: '恢复所选副本…', exact: true }).click();
-    const confirmation = opened.dialog.getByRole('group', { name: '确认恢复设置', exact: true });
-    await confirmation.getByRole('button', { name: '确认恢复配置', exact: true }).click();
-    await expect(opened.dialog.getByRole('status')).toContainText('已恢复所选旧配置');
-    const restoredBytes = await readFile(settingsFile);
-    const restored = JSON.parse(restoredBytes.toString('utf8')) as {
-      version: number; settings: Record<string, unknown>;
-    };
-    expect(restored.version).toBe(1);
-    expect(restored.settings).toMatchObject({
-      theme: 'light', fontFamily: 'Consolas', fontSize: 18, futureNative: { retained: true },
-    });
+    await expect(opened.dialog.getByRole('combobox', { name: '设置旧副本', exact: true })).toHaveCount(0);
     const settingEntries = await readdir(path.join(stateDir, 'settings'));
     const corruptName = settingEntries.find(name => name.startsWith('settings.corrupt-'));
     expect(corruptName).toBeTruthy();
     expect(await readFile(path.join(stateDir, 'settings', corruptName!))).toEqual(corruptBytes);
+    await opened.dialog.getByRole('spinbutton', { name: '编辑字号', exact: true }).fill('21');
+    await opened.save.click();
+    await expect(opened.dialog.getByRole('status')).toContainText('设置已保存');
+    const fresh = JSON.parse(await readFile(settingsFile, 'utf8')) as { version: number; settings: Record<string, unknown> };
+    expect(fresh).toMatchObject({ version: 1, settings: { fontSize: 21 } });
+    const freshEntries = await readdir(path.join(stateDir, 'settings'));
+    expect(freshEntries.some(name => name.endsWith('.bak') || name.endsWith('.tmp'))).toBe(false);
     await app.page.evaluate(() => { document.documentElement.style.zoom = '2'; });
     await expect(opened.dialog.getByRole('button', { name: '保存设置', exact: true })).toBeInViewport();
-    await app.page.screenshot({ path: path.join(evidenceDirectory, 'settings-recovered-200.png') });
+    await app.page.screenshot({ path: path.join(evidenceDirectory, 'settings-corrupt-isolated-200.png') });
     await writeFile(path.join(evidenceDirectory, 'native-release.json'), JSON.stringify({
       checkedAt: new Date().toISOString(),
       executable,
@@ -206,13 +198,12 @@ test('real Release persists, restores and recovers protected settings', async ()
       scope: 'Real Tauri/WebView2 settings storage and UI; no mock bridge',
       previewCancelRestoresEffectiveThemeFontAndCodeMirrorView: true,
       persistedUnknownSettingsAndNativeFontInventory: true,
-      secondSaveCreatesVerifiedRecoveryCopy: true,
+      settingsBackupsRemovedAfterSave: true,
       firstSettingsSha256: sha256(firstBytes),
       secondSettingsSha256: sha256(secondBytes),
       restartRestoresThemeFontWrapLineNumbers: true,
       corruptOriginalIsolatedWithoutOverwrite: true,
-      explicitRecoveryRestoresValidatedCopyAndPreservesUnknownFields: true,
-      recoveredSettingsSha256: sha256(restoredBytes),
+      freshSettingsWrittenAfterCorruptIsolation: true,
       domZoom200SaveActionInViewport: true,
     }, null, 2));
     await stop(app);

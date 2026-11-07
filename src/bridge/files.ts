@@ -350,7 +350,12 @@ export function isSessionLoadResult(value: unknown): value is SessionLoadResult 
 
 export const files = {
   chooseFiles: (multiple = false) => callCommand('choose_files', { multiple }, isChosenFiles),
-  chooseFolder: () => callCommand('choose_folder', {}, isChosenFolder),
+  chooseFolder: (startIn?: string) => callCommand('choose_folder',
+    { ...(startIn ? { startIn } : {}) }, isChosenFolder),
+  revealDocument: (documentId: DocumentId) => callCommand('reveal_document', { documentId },
+    (value): value is boolean => value === true),
+  revealEntry: (reference: FileRef) => callCommand('reveal_entry', { reference },
+    (value): value is boolean => value === true),
   listDirectory: (request: ListDirectoryRequest) => callCommand('list_directory', { ...request }, isDirectoryPage),
   createEntry: (request: CreateEntryRequest) => callCommand('create_entry', { ...request }, isDirectoryEntry),
   renameEntry: (request: RenameEntryRequest) => callCommand('rename_entry', { ...request }, isRenameEntryResult),

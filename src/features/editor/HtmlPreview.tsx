@@ -62,7 +62,7 @@ export function HtmlPreview(props: { registry: DocumentRegistry; id: DocumentId;
         setMode('source'); cancel.current?.(); requestAnimationFrame(() => registry.focus(id));
       }}>源码</button>
       <button type="button" className="plain-button" aria-pressed={mode === 'preview'} onClick={() => setMode('preview')}>静态预览</button>
-      <span>预览不执行脚本、样式、表单或链接；远程资源保持占位。</span>
+      <span aria-hidden="true" className="toolbar-spacer" />
     </div>
     {message && <p className="notice" role="alert">{message}</p>}
     <div hidden={mode !== 'source'} className="html-source"><EditorDocument {...props} /></div>

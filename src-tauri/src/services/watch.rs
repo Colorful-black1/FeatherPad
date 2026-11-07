@@ -53,15 +53,46 @@ impl WatchRegistry {
             ));
         }
         let mut parents = HashMap::<std::path::PathBuf, Vec<FileRef>>::new();
+        let mut first_skipped: Option<AppError> = None;
         for reference in refs {
-            let (_, path) = grants.open_file(&reference)?;
-            let parent = path
-                .parent()
-                .ok_or_else(|| AppError::new(ErrorCode::InvalidInput, "文件父目录无效。"))?;
-            let entries = parents.entry(parent.to_owned()).or_default();
-            if !entries.contains(&reference) {
-                entries.push(reference);
+            // Directory references watch the directory itself; file references
+            // keep watching their parent directory. Opening a directory through
+            // open_file() fails on Windows with ACCESS_DENIED and would make the
+            // whole workspace look unavailable.
+            let resolved = (|| -> Result<std::path::PathBuf, AppError> {
+                if grants.is_directory_reference(&reference)? {
+                    return grants.resolve_directory(&reference);
+                }
+                let (_, file) = grants.open_file(&reference)?;
+                Ok(file
+                    .parent()
+                    .ok_or_else(|| AppError::new(ErrorCode::InvalidInput, "文件父目录无效。"))?
+                    .to_owned())
+            })();
+            match resolved {
+                Ok(path) => {
+                    let entries = parents.entry(path).or_default();
+                    if !entries.contains(&reference) {
+                        entries.push(reference);
+                    }
+                }
+                // One stale, missing, or relinked entry must not disable every
+                // valid watcher. Consumers still stat on focus and manual check.
+                Err(error)
+                    if matches!(
+                        error.code,
+                        ErrorCode::OutOfScope | ErrorCode::NotFound | ErrorCode::PermissionDenied
+                    ) =>
+                {
+                    first_skipped.get_or_insert(error);
+                }
+                Err(error) => return Err(error),
             }
+        }
+        if parents.is_empty() {
+            return Err(first_skipped.unwrap_or_else(|| {
+                AppError::new(ErrorCode::InvalidInput, "没有可监听的已授权目录。")
+            }));
         }
         if parents.len() > 64 {
             return Err(AppError::new(

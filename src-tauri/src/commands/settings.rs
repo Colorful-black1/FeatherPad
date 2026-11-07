@@ -17,13 +17,6 @@ use tauri::{
 #[serde(deny_unknown_fields)]
 struct EmptyRequest {}
 #[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct RestoreRequest {
-    expected_version: u64,
-    expected_revision: Option<String>,
-    recovery_id: String,
-}
-#[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct WorkspaceRequest {
     root: FileRef,
@@ -66,27 +59,6 @@ pub async fn save_settings(
     };
     Ok(tauri::async_runtime::spawn_blocking(move || {
         SettingsStore::new(journal_root(&app)?.with_file_name("settings")).save(request)
-    })
-    .await
-    .unwrap_or_else(|_| Err(internal_error()))
-    .into())
-}
-
-#[tauri::command]
-pub async fn restore_settings(
-    app: AppHandle,
-    request: Request<'_>,
-) -> Result<ResultEnvelope<SavedSettings>, ()> {
-    let request = match parse::<RestoreRequest>(&request) {
-        Ok(request) => request,
-        Err(error) => return Ok(Err(error).into()),
-    };
-    Ok(tauri::async_runtime::spawn_blocking(move || {
-        SettingsStore::new(journal_root(&app)?.with_file_name("settings")).restore(
-            request.expected_version,
-            request.expected_revision,
-            &request.recovery_id,
-        )
     })
     .await
     .unwrap_or_else(|_| Err(internal_error()))

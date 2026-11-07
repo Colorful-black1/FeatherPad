@@ -1,7 +1,7 @@
 use crate::{
     models::{
         AppError, ChosenFiles, ChosenFolder, ClearSessionRequest, DirectoryPage,
-        DiscardRecoveryRequest, DiscardRecoveryResult, ErrorCode, ListDirectoryRequest,
+        DiscardRecoveryRequest, DiscardRecoveryResult, ErrorCode, FileRef, ListDirectoryRequest,
         ListRecoveryEntriesRequest, LoadRecoveryEntryRequest, LoadSessionRequest,
         LoadedRecoveryEntry, OpenDocument, ReadChunkRequest, RecoveryEntry, RecoveryFailure,
         RecoveryInventory, RecoverySnapshotAck, ReleaseDocumentRequest, ReleaseDocumentResult,
@@ -116,16 +116,33 @@ pub async fn choose_files(
     .into()
 }
 
+fn existing_start_directory(value: Option<String>) -> Option<std::path::PathBuf> {
+    let value = value?;
+    if value.len() > 4096 {
+        return None;
+    }
+    let path = std::path::PathBuf::from(value);
+    (path.is_absolute() && path.is_dir()).then_some(path)
+}
+
 #[tauri::command]
-pub async fn choose_folder(app: AppHandle, webview: WebviewWindow) -> ResultEnvelope<ChosenFolder> {
+pub async fn choose_folder(
+    app: AppHandle,
+    webview: WebviewWindow,
+    start_in: Option<String>,
+) -> ResultEnvelope<ChosenFolder> {
+    let start_in = existing_start_directory(start_in);
     let service = app.state::<SharedFiles>().inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let selection = app
+        let mut dialog = app
             .dialog()
             .file()
             .set_parent(&webview)
-            .set_title("打开文件夹")
-            .blocking_pick_folder();
+            .set_title("打开文件夹");
+        if let Some(start_in) = start_in {
+            dialog = dialog.set_directory(start_in);
+        }
+        let selection = dialog.blocking_pick_folder();
         let (grant, display_name) = if let Some(selection) = selection {
             let path = selection
                 .into_path()
@@ -143,6 +160,100 @@ pub async fn choose_folder(app: AppHandle, webview: WebviewWindow) -> ResultEnve
             grant,
             display_name,
         })
+    })
+    .await
+    .unwrap_or_else(|_| Err(internal_error()))
+    .into()
+}
+
+#[cfg(target_os = "windows")]
+fn reveal_in_file_manager(path: &std::path::Path, select: bool) -> Result<(), AppError> {
+    use std::os::windows::process::CommandExt;
+
+    let argument = if select {
+        let mut argument = std::ffi::OsString::from("/select,");
+        argument.push(path.as_os_str());
+        argument
+    } else {
+        path.as_os_str().to_owned()
+    };
+    std::process::Command::new("explorer.exe")
+        .arg(argument)
+        // Keep the helper process out of the console window.
+        .creation_flags(0x0800_0000)
+        .spawn()
+        .map_err(|_| AppError::new(ErrorCode::Internal, "无法打开文件资源管理器。"))?;
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn reveal_in_file_manager(path: &std::path::Path, select: bool) -> Result<(), AppError> {
+    let mut command = std::process::Command::new("open");
+    if select {
+        command.arg("-R");
+    }
+    command
+        .arg(path)
+        .spawn()
+        .map_err(|_| AppError::new(ErrorCode::Internal, "无法打开访达。"))?;
+    Ok(())
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn reveal_in_file_manager(path: &std::path::Path, select: bool) -> Result<(), AppError> {
+    let target = if select {
+        path.parent()
+            .ok_or_else(|| AppError::new(ErrorCode::NotFound, "文件所在目录无效。"))?
+    } else {
+        path
+    };
+    std::process::Command::new("xdg-open")
+        .arg(target)
+        .spawn()
+        .map_err(|_| AppError::new(ErrorCode::Internal, "无法打开文件管理器。"))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn reveal_document(app: AppHandle, document_id: String) -> ResultEnvelope<bool> {
+    let service = app.state::<SharedFiles>().inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        if uuid::Uuid::parse_str(&document_id)
+            .ok()
+            .map(|id| id.to_string())
+            .as_deref()
+            != Some(document_id.as_str())
+        {
+            return Err(AppError::new(ErrorCode::InvalidInput, "文档标识无效。"));
+        }
+        let service = service.lock().map_err(|_| internal_error())?;
+        let lease = service
+            .document_lease(&document_id)
+            .ok_or_else(|| AppError::new(ErrorCode::NotFound, "此文档未打开。"))?;
+        if !lease.path.exists() {
+            return Err(AppError::new(ErrorCode::NotFound, "文件已不在原位置。"));
+        }
+        reveal_in_file_manager(&lease.path, true)?;
+        Ok(true)
+    })
+    .await
+    .unwrap_or_else(|_| Err(internal_error()))
+    .into()
+}
+
+#[tauri::command]
+pub async fn reveal_entry(app: AppHandle, reference: FileRef) -> ResultEnvelope<bool> {
+    let service = app.state::<SharedFiles>().inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let service = service.lock().map_err(|_| internal_error())?;
+        let (path, directory) = if reference.relative_path.is_empty() {
+            (service.grants.resolve_directory(&reference)?, true)
+        } else {
+            let entry = service.grants.resolve_entry(&reference)?;
+            (entry.path, entry.metadata.is_dir())
+        };
+        reveal_in_file_manager(&path, !directory)?;
+        Ok(true)
     })
     .await
     .unwrap_or_else(|_| Err(internal_error()))

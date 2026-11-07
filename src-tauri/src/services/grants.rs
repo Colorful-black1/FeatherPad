@@ -240,6 +240,15 @@ impl GrantRegistry {
         Ok((file, final_path))
     }
 
+    pub(crate) fn is_directory_reference(&self, reference: &FileRef) -> Result<bool, AppError> {
+        validate_reference(reference)?;
+        let grant = self
+            .grants
+            .get(&reference.grant_id)
+            .ok_or_else(out_of_scope)?;
+        Ok(matches!(grant.kind, GrantKind::Directory))
+    }
+
     pub fn resolve_directory(&self, reference: &FileRef) -> Result<PathBuf, AppError> {
         validate_reference(reference)?;
         let grant = self

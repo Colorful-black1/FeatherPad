@@ -213,7 +213,7 @@ G1恢复锁竞争补正：仅私有恢复/保存总预算锁的`WouldBlock`返�
 
 G1二进制只读试开决策（2026-11-02已通过相关Release）：`open_document`新增显式`mode:"text-preview"`，沿用既有FileRef授权，不自动试开、不接受任意路径。<20MiB完整读取，≥20MiB仅显示前1MiB并明确截断；均核对全文件revision，读取窗口外的变化也可检测。返回`mode:"text-preview"`及`content.kind:"head"`、`previewBytes/totalBytes/truncated:boolean`，truncated必须等于previewBytes小于totalBytes。BOM优先解释UTF16/UTF8，无BOM按UTF8试读；无效序列以替代字符显示并明确提示，控制字符以可见符号显示，原始字节不改变。该展示不是可保存正文，前后端均禁止保存/覆盖/另存/副本，lease保留只读标志，重载及会话恢复必须保留模式。已有可编辑缓冲只聚焦，不被试开替换。CodeMirror只读显示，超过100,000字符的长行关闭软换行并提示水平滚动，不减少试读范围；证据见PROGRESS，G1整体报告仍待完成。
 
-T111边界：比较仅返回完整<20MiB文本，大文件返回READ_ONLY提示并继续使用受限重载/分页，不返回已释放的临时分块句柄。监听最多4个订阅，每订阅256引用/64父目录；原生64KiB通知缓冲非递归，100ms前端合并后核对所有已打开引用，overflow会核对并重建订阅。停止取消在途原生读取后才释放其缓冲；失败可见，一次成功stat不代表监听已恢复。外部文件名不穿过IPC，实际kind为changed，缺失/权限/离线由stat结果判断。
+T111边界：比较仅返回完整<20MiB文本，大文件返回READ_ONLY提示并继续使用受限重载/分页，不返回已释放的临时分块句柄。监听最多4个订阅，每订阅256引用/64个监视目录；目录引用监视目录自身，文件引用监视其父目录；单个失效/越界引用会被跳过，其余有效引用继续监听；原生64KiB通知缓冲非递归，100ms前端合并后核对所有已打开引用，overflow会核对并重建订阅。停止取消在途原生读取后才释放其缓冲；失败可见，一次成功stat不代表监听已恢复。外部文件名不穿过IPC，实际kind为changed，缺失/权限/离线由stat结果判断。
 
 ## 4. 搜索与批量替换 search-tools
 
@@ -317,7 +317,7 @@ export interface TextJobResult {
 
 settings 的 schemaVersion 是格式版本，version 是每次成功更新递增的内容修订号；首次load必须返回二者。保存、导入、重置均携带expectedVersion，冲突返回CONFLICT和当前版本供重读，不静默覆盖。
 
-T112实施决策（2026-11-02，已通过相关真实Release）：`load_settings {}`扩展返回`{schemaVersion:1,version,revision:string|null,settings:Record<string,JsonValue>,warning:string|null,recoveryCopies:{id,version}[]}`；`save_settings {expectedVersion,expectedRevision:string|null,settings}`返回`{version,revision}`。revision由file-core磁盘快照产生，防止第三方保持version却改写正文时被覆盖；首次缺失为version0/revision null。私有设置位于状态目录`settings/settings.json`，使用OS锁、受校验临时文件flush、原生不覆盖创建/带唯一备份的替换和写后读回；旧配置保留为可恢复备份。`restore_settings {expectedVersion,expectedRevision,recoveryId}`仅选择私有目录中规范UUID备份，仍递增当前版本并复核revision。损坏JSON隔离留原件并提示，可选择有效旧备份恢复；较新schema/超限/权限错误不默默清空。设置最大64KiB，未知设置键保留，非法已知值由设置合并层诊断并回退，不把配置内容执行为代码。真实Release证据覆盖创建/更新/重启、同版本外部改写拒绝、未知键、本机字体、坏JSON隔离和显式旧副本恢复；Web E2E仍只证明mock UI。
+T112实施决策（2026-11-02，已更新）：`load_settings {}`返回`{schemaVersion:1,version,revision:string|null,settings:Record<string,JsonValue>,warning:string|null}`；`save_settings {expectedVersion,expectedRevision:string|null,settings}`返回`{version,revision}`。revision由file-core磁盘快照产生，防止第三方保持version却改写正文时被覆盖；首次缺失为version0/revision null。私有设置位于状态目录`settings/settings.json`，使用OS锁、受校验临时文件flush、原生不覆盖创建/带唯一备份的替换和写后读回；保存成功后删除本次及历史`.bak`/`.tmp`，不再保留旧配置副本。已移除`restore_settings`及设置恢复界面。损坏JSON隔离留原件并提示；较新schema/超限/权限错误不默默清空。设置最大64KiB，未知设置键保留，非法已知值由设置合并层诊断并回退，不把配置内容执行为代码。真实Release证据覆盖创建/更新/重启、同版本外部改写拒绝、未知键、本机字体和坏JSON隔离；Web E2E仍只证明mock UI。
 
 T112应用层按默认 < 用户 < 工作区允许项 < 会话临时选择合并；工作区只读取授权根内`.featherpad/settings.json`（schemaVersion1/settings对象），只接受tabSize/insertSpaces/wordWrap/lineNumbers/highlightActiveLine，其他键保留但不应用并诊断。用户设置页先即时预览，保存才持久化，取消恢复进入预览前效果；导入先校验并展示变更，导出复用既有原生Save As与安全保存副本，不新增任意路径写IPC。缺失本地字体使用固定本地后备并提示，不下载字体。T109快捷键入口保持，完整全局唤起仍T214，历史隐私仍T113/T215，不开放未实现的高风险设置开关。
 

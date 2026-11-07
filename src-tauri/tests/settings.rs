@@ -20,7 +20,7 @@ fn values(value: Value) -> Map<String, Value> {
 
 #[test]
 fn versioned_roundtrip_keeps_unknown_and_invalid_domain_values_and_rejects_stale_writers() {
-    let (_, store) = fixture();
+    let (root, store) = fixture();
     let empty = store.load().unwrap();
     assert_eq!(empty.version, 0);
     assert!(empty.revision.is_none());
@@ -56,14 +56,17 @@ fn versioned_roundtrip_keeps_unknown_and_invalid_domain_values_and_rejects_stale
         })
         .unwrap();
     assert_eq!(second.version, 2);
-    let copies = store.load().unwrap().recovery_copies;
-    assert_eq!(copies.len(), 1);
-    assert_eq!(copies[0].version, 1);
-    let restored = store
-        .restore(2, Some(second.revision), &copies[0].id)
-        .unwrap();
-    assert_eq!(restored.version, 3);
-    assert_eq!(store.load().unwrap().settings, settings);
+    let entries = fs::read_dir(&root)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .collect::<Vec<_>>();
+    assert!(!entries
+        .iter()
+        .any(|name| name.ends_with(".bak") || name.ends_with(".tmp")));
+    assert_eq!(
+        store.load().unwrap().settings,
+        values(json!({"theme":"light"}))
+    );
 }
 
 #[test]
@@ -94,7 +97,7 @@ fn same_version_external_edits_are_not_silently_overwritten() {
 }
 
 #[test]
-fn corrupt_configuration_is_isolated_with_old_copies_available_for_explicit_restore() {
+fn corrupt_configuration_is_isolated_and_backups_are_removed_after_save() {
     let (root, store) = fixture();
     let first = store
         .save(SaveSettingsRequest {
@@ -114,7 +117,7 @@ fn corrupt_configuration_is_isolated_with_old_copies_available_for_explicit_rest
     let loaded = store.load().unwrap();
     assert!(loaded.warning.is_some());
     assert_eq!(loaded.version, 0);
-    assert_eq!(loaded.recovery_copies.len(), 1);
+    assert!(loaded.settings.is_empty());
     let corrupt = fs::read_dir(&root)
         .unwrap()
         .map(|entry| entry.unwrap().path())
@@ -126,10 +129,21 @@ fn corrupt_configuration_is_isolated_with_old_copies_available_for_explicit_rest
         })
         .unwrap();
     assert_eq!(fs::read(corrupt).unwrap(), b"{broken json");
-    store
-        .restore(0, None, &loaded.recovery_copies[0].id)
+    let saved = store
+        .save(SaveSettingsRequest {
+            expected_version: 0,
+            expected_revision: None,
+            settings: values(json!({"theme":"light"})),
+        })
         .unwrap();
-    assert_eq!(store.load().unwrap().settings["theme"], "dark");
+    assert_eq!(saved.version, 1);
+    let entries = fs::read_dir(&root)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .collect::<Vec<_>>();
+    assert!(!entries
+        .iter()
+        .any(|name| name.ends_with(".bak") || name.ends_with(".tmp")));
 }
 
 #[test]
@@ -161,10 +175,6 @@ fn future_schemas_excessive_input_and_prototype_keys_are_preserved_or_rejected_w
             .unwrap_err()
             .code,
         ErrorCode::TooLarge
-    );
-    assert_eq!(
-        store.restore(0, None, "../settings.json").unwrap_err().code,
-        ErrorCode::InvalidInput
     );
     assert_eq!(fs::read(root.join("settings.json")).unwrap(), future);
 }

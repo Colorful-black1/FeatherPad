@@ -34,7 +34,7 @@ import {
 } from '../features/editor/navigation';
 import { documents } from '../features/editor/documents';
 import { tabs } from '../features/editor/tabs';
-import { TabStrip } from '../features/editor/TabStrip';
+import { TabStrip, type TabMenuAction } from '../features/editor/TabStrip';
 import { CloseDialog, type CloseTarget } from '../features/editor/CloseDialog';
 import { saves } from '../features/editor/save';
 import { recoveries } from '../features/editor/recovery';
@@ -388,6 +388,13 @@ export function App() {
                 }
               }
               if (currentId === 'main') {
+                try {
+                  await appWindow.maximize();
+                } catch {
+                  warnings.push('窗口未能最大化，已使用当前大小。');
+                }
+              }
+              if (currentId === 'main') {
                 const primaryWindow = loaded.value.session!.windows.find(window => window.windowId === 'main')
                   ?? loaded.value.session!.windows[0];
                 for (const savedWindow of loaded.value.session!.windows) {
@@ -622,6 +629,12 @@ export function App() {
     } finally { setBusy(false); }
   }, [openOne, setBusy, setError]);
 
+  const revealWorkspaceEntry = useCallback((entry: DirectoryEntry) => {
+    void files.revealEntry(entry.ref).then(result => {
+      if (!result.ok) setError(result.error.message);
+    });
+  }, [setError]);
+
   const openReadOnlyPreview = useCallback(async (candidate: ReadOnlyOpenCandidate, encoding?: EncodingId) => {
     if (opening.current) return;
     opening.current = true;
@@ -844,6 +857,33 @@ export function App() {
   const requestClose = useCallback(async (id: DocumentId) => requestCloseBatch([id]),
     [requestCloseBatch]);
 
+  const handleTabAction = useCallback((action: TabMenuAction, id: DocumentId) => {
+    switch (action) {
+      case 'close': void requestClose(id); break;
+      case 'closeOthers': void requestCloseBatch(tabs.closeCandidates('others', id)); break;
+      case 'closeRight': void requestCloseBatch(tabs.closeCandidates('right', id)); break;
+      case 'closeAll':
+        void requestCloseBatch(documents.getSnapshot().documents.map(document => document.id));
+        break;
+      case 'copyPath': {
+        const path = documents.getDocument(id)?.summary.displayPath;
+        if (!path) { setNotice('未保存的文档没有磁盘路径。'); return; }
+        if (!navigator.clipboard) { setError('当前环境无法访问剪贴板。'); return; }
+        void navigator.clipboard.writeText(path).then(
+          () => setNotice('路径已复制。', 'success'),
+          () => setError('无法复制路径，请检查剪贴板权限。'),
+        );
+        break;
+      }
+      case 'reveal':
+        if (!documents.getDocument(id)?.source) { setNotice('当前文档没有可定位的磁盘文件。'); return; }
+        void files.revealDocument(id).then(result => {
+          if (!result.ok) setError(result.error.message);
+        });
+        break;
+    }
+  }, [requestClose, requestCloseBatch, setError, setNotice]);
+
   const saveCurrent = useCallback(async () => {
     if (saveAll.getSnapshot().phase === 'running' || saveAll.getSnapshot().phase === 'cancelling') return;
     const id = documents.getSnapshot().activeId;
@@ -906,30 +946,39 @@ export function App() {
     setFindOpen(true);
   }, []);
 
+  const folderStart = useCallback((preferRoot = false) => {
+    const rootPath = workspace.getSnapshot().root?.displayPath;
+    if (preferRoot && rootPath) return rootPath;
+    const id = documents.getSnapshot().activeId;
+    const displayPath = id ? documents.getDocument(id)?.summary.displayPath : null;
+    if (displayPath) return displayPath.replace(/[\\/][^\\/]+$/, '');
+    return rootPath ?? undefined;
+  }, []);
+
   const openFolder = useCallback(async () => {
     if (opening.current) return;
     opening.current = true;
     setBusy(true);
     setError(null);
     try {
-      const result = await roots.chooseRoot();
+      const result = await roots.chooseRoot(false, folderStart());
       if (!result.ok) { setError(result.error.message); return; }
       if (result.value) {
         setSidebarOpen(true);
         await rememberRecentWorkspace(result.value.grant, result.value.displayName);
       }
     } finally { opening.current = false; setBusy(false); }
-  }, [rememberRecentWorkspace, setBusy, roots]);
+  }, [rememberRecentWorkspace, setBusy, roots, folderStart]);
 
   const addRoot = useCallback(async () => {
     if (opening.current) return;
     opening.current = true; setBusy(true); setError(null);
     try {
-      const result = await roots.chooseRoot(true);
+      const result = await roots.chooseRoot(true, folderStart(true));
       if (!result.ok) setError(result.error.message);
       else if (result.value) await rememberRecentWorkspace(result.value.grant, result.value.displayName);
     } finally { opening.current = false; setBusy(false); }
-  }, [rememberRecentWorkspace, setBusy, roots]);
+  }, [rememberRecentWorkspace, setBusy, roots, folderStart]);
 
   const removeRoot = useCallback(async (root: WorkspaceRoot) => {
     if (opening.current) return;
@@ -963,7 +1012,7 @@ export function App() {
     try {
       let stored: RecentEntry | null = null;
       if (entry.kind === 'workspace') {
-        const selected = await files.chooseFolder();
+        const selected = await files.chooseFolder(entry.displayPath || undefined);
         if (!selected.ok) return selected.error.message;
         if (!selected.value.grant || !selected.value.displayName) return '未重新选择工作区。';
         const opened = await roots.openRoot({ grant: selected.value.grant, displayName: selected.value.displayName });
@@ -1253,11 +1302,16 @@ export function App() {
     'editor.fontIncrease': () => zoomEditor('in'), 'editor.fontDecrease': () => zoomEditor('out'),
     'editor.fontReset': () => zoomEditor('reset'),
     'view.sidebar': () => setSidebarOpen(open => !open),
-    'view.theme': () => settings.setSession('theme', dark ? 'light' : 'dark'), 'settings.open': openSettings,
+    'view.theme': () => {
+      void settings.setPersisted('theme', dark ? 'light' : 'dark').then(result => {
+        if (!result.ok) setNotice(`主题未能保存：${result.error.message}`);
+      });
+    },
+    'settings.open': openSettings,
     'commands.open': () => openPalette('commands'), 'files.quickOpen': () => openPalette('files'),
   }), [newFile, openFile, openFolder, saveCurrent, saveDestination, requestClose, requestCloseBatch,
     openFind, runEditingCommand, navigateBack, navigateForward, openPalette, openSettings, dark, zoomEditor,
-    setGoToOpen, setOutlineOpen, setSidebarOpen, setWorkspaceSearchOpen, setFormatDocumentId, setTransformDocumentId, setComparisonOpen]);
+    setGoToOpen, setOutlineOpen, setSidebarOpen, setWorkspaceSearchOpen, setFormatDocumentId, setTransformDocumentId, setComparisonOpen, setNotice]);
 
   const executeCommand = useCallback(async (id: string, targetId?: DocumentId) => {
     const actions = targetId ? { ...commandActions, 'file.close': () => requestClose(targetId), 'tabs.pin': () => tabs.pin(targetId) } : commandActions;
@@ -1420,8 +1474,9 @@ export function App() {
       sidebar={<div className="sidebar-stack sidebar-workbench">
         {workspacePanelsReady ? <>
           <div id="sidebar-explorer" className="sidebar-view resource-view" hidden={sidebarView !== 'explorer'}>
-          <Explorer currentReference={currentReference} onOpen={(reference, intent) => void openTreeFile(reference, intent ?? 'preview')}
+          <Explorer currentReference={currentReference} onOpen={(reference, intent) => void openTreeFile(reference, intent ?? 'pinned')}
             onManageWorkspace={() => showSidebarView('workspace')}
+            onReveal={revealWorkspaceEntry}
             openEditors={<OpenEditors documents={snapshot.documents} activeId={snapshot.activeId}
               busy={busy || savingCount > 0 || batchBusy || closingCount > 0} onSelect={selectTab}
               onClose={id => void executeCommand('file.close', id)} />}
@@ -1502,7 +1557,8 @@ export function App() {
         <TabStrip documents={snapshot.documents} activeId={snapshot.activeId} previewId={tabState.previewId}
           busy={busy || savingCount > 0 || batchBusy || closingCount > 0} onSelect={selectTab}
           onPin={id => { if (tabs.getSnapshot().previewId === id) void executeCommand('tabs.pin', id); }}
-          onClose={id => void executeCommand('file.close', id)} onReorder={ids => documents.reorder(ids)} />
+          onClose={id => void executeCommand('file.close', id)} onReorder={ids => documents.reorder(ids)}
+          onTabAction={handleTabAction} />
         <Breadcrumbs displayPath={current.displayPath} language={languageLabel(current.languageId)} />
         <FindBar registry={documents} id={current.id} version={current.version} readOnlyReason={current.readOnlyReason}
           request={findRequest?.id === current.id ? findRequest : null} open={findOpen} onClose={() => setFindOpen(false)} />

@@ -270,6 +270,20 @@ it('a successful focus stat does not hide a failed native listener subscription'
   stop();
 });
 
+it('a stale out-of-scope watch reference does not mark the open buffer unavailable', async () => {
+  vi.stubGlobal('window', new EventTarget());
+  const { id, changes, transport, source } = setup();
+  transport.stat.mockResolvedValue(ok(source.metadata));
+  transport.start.mockResolvedValue({ ok: false, error: {
+    code: 'OUT_OF_SCOPE', message: '文件不在已授权范围内，请重新选择。', retryable: false,
+  } });
+  const stop = changes.start();
+  await vi.waitFor(() => expect(transport.start).toHaveBeenCalled());
+  await changes.checkAll();
+  expect(changes.getSnapshot().get(id)).toBeUndefined();
+  stop();
+});
+
 it('a successful focus stat does not imply a failed filesystem watcher is healthy', async () => {
   vi.stubGlobal('window', new EventTarget());
   const { id, changes, transport, source } = setup();
