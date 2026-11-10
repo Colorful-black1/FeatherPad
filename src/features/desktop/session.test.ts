@@ -67,6 +67,7 @@ function workspaceSnapshot(): WorkspaceSnapshot {
     showHidden: false,
     rootError: null,
     filters: { include: [], exclude: [], respectGitignore: true, followDirectoryLinks: false },
+    sort: { key: 'name', direction: 'asc' },
     syncStatus: { kind: 'ready', message: null },
   };
 }

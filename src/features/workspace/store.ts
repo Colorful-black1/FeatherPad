@@ -31,8 +31,18 @@ export interface WorkspaceSnapshot {
   showHidden: boolean;
   rootError: string | null;
   filters: WorkspaceFilters;
+  sort: WorkspaceSort;
   syncStatus: { kind: 'ready' | 'syncing' | 'unavailable'; message: string | null };
 }
+
+export type WorkspaceSortKey = 'name' | 'modified' | 'created';
+export type WorkspaceSortDirection = 'asc' | 'desc';
+export interface WorkspaceSort {
+  key: WorkspaceSortKey;
+  direction: WorkspaceSortDirection;
+}
+
+export const defaultWorkspaceSort: WorkspaceSort = { key: 'name', direction: 'asc' };
 
 type ListDirectory = (request: ListDirectoryRequest) => Promise<ResultEnvelope<DirectoryPage>>;
 type CreateEntry = (request: CreateEntryRequest) => Promise<ResultEnvelope<DirectoryEntry>>;
@@ -42,9 +52,35 @@ type TransferEntry = (request: TransferEntryRequest) => Promise<ResultEnvelope<T
 
 const nameCollator = new Intl.Collator('zh-CN', { numeric: true, sensitivity: 'base' });
 
-function compareEntries(left: DirectoryEntry, right: DirectoryEntry) {
+function entryTime(entry: DirectoryEntry, key: 'modified' | 'created') {
+  const value = key === 'modified' ? entry.modifiedAt : entry.createdAt;
+  if (!value) return null;
+  const time = Date.parse(value);
+  return Number.isNaN(time) ? null : time;
+}
+
+function compareEntries(left: DirectoryEntry, right: DirectoryEntry, sort: WorkspaceSort = defaultWorkspaceSort) {
   const kind = Number(right.kind === 'directory') - Number(left.kind === 'directory');
-  return kind || nameCollator.compare(left.name, right.name) || left.name.localeCompare(right.name);
+  if (kind) return kind;
+  if (sort.key !== 'name') {
+    const leftTime = entryTime(left, sort.key);
+    const rightTime = entryTime(right, sort.key);
+    if (leftTime === null && rightTime !== null) return 1;
+    if (leftTime !== null && rightTime === null) return -1;
+    if (leftTime !== null && rightTime !== null) {
+      const time = sort.direction === 'desc' ? rightTime - leftTime : leftTime - rightTime;
+      if (time) return time;
+    }
+  }
+  const name = nameCollator.compare(left.name, right.name) || left.name.localeCompare(right.name);
+  return sort.key === 'name' && sort.direction === 'desc' ? -name : name;
+}
+
+function normalizedSort(sort: WorkspaceSort): WorkspaceSort {
+  return {
+    key: sort.key === 'modified' || sort.key === 'created' ? sort.key : 'name',
+    direction: sort.direction === 'desc' ? 'desc' : 'asc',
+  };
 }
 
 const emptyRecord = (): DirectoryRecord => ({
@@ -57,6 +93,7 @@ const isAtOrBelow = (candidate: string, parent: string) =>
 const initialSnapshot = (): WorkspaceSnapshot => ({
   root: null, roots: [], records: { '': emptyRecord() }, expanded: {}, selectedPath: null,
   showHidden: false, rootError: null, filters: { ...defaultWorkspaceFilters },
+  sort: { ...defaultWorkspaceSort },
   syncStatus: { kind: 'ready', message: null },
 });
 
@@ -79,6 +116,7 @@ export class WorkspaceStore {
   private locateVersion = 0;
   private rootError: string | null = null;
   private filters: WorkspaceFilters = { ...defaultWorkspaceFilters };
+  private sort: WorkspaceSort = { ...defaultWorkspaceSort };
   private syncStatus: WorkspaceSnapshot['syncStatus'] = { kind: 'ready', message: null };
   private generation = 0;
 
@@ -97,6 +135,9 @@ export class WorkspaceStore {
     this.records.set('', emptyRecord());
     this.snapshot = initialSnapshot();
   }
+
+  private readonly compare = (left: DirectoryEntry, right: DirectoryEntry) =>
+    compareEntries(left, right, this.sort);
 
   readonly subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -150,7 +191,9 @@ export class WorkspaceStore {
     this.resetRoot(root, false);
     if (previous) {
       this.records.clear();
-      for (const [path, record] of Object.entries(previous.records)) this.records.set(path, { ...record, loading: false });
+      for (const [path, record] of Object.entries(previous.records)) this.records.set(path, {
+        ...record, items: [...record.items].sort(this.compare), loading: false,
+      });
       for (const path of Object.keys(previous.expanded)) this.expanded.add(path);
       this.selectedPath = previous.selectedPath; this.rootError = previous.rootError;
       this.publish();
@@ -196,6 +239,16 @@ export class WorkspaceStore {
     this.publish();
   }
 
+  setSort(sort: WorkspaceSort) {
+    const next = normalizedSort(sort);
+    if (next.key === this.sort.key && next.direction === this.sort.direction) return;
+    this.sort = next;
+    for (const [key, record] of this.records) {
+      if (record.items.length > 1) this.records.set(key, { ...record, items: [...record.items].sort(this.compare) });
+    }
+    this.publish();
+  }
+
   setSyncStatus(status: WorkspaceSnapshot['syncStatus']) {
     if (this.syncStatus.kind === status.kind && this.syncStatus.message === status.message) return;
     this.syncStatus = status;
@@ -237,8 +290,14 @@ export class WorkspaceStore {
     const target = reference ?? this.root.grant;
     const key = target.relativePath;
     const preservedExpanded = [...this.expanded].filter(expandedKey => isAtOrBelow(expandedKey, key));
-    for (const recordKey of [...this.records.keys()]) {
-      if (isAtOrBelow(recordKey, key)) this.records.delete(recordKey);
+    const retained = new Set([key, ...preservedExpanded]);
+    // Keep currently visible entries mounted while revalidating. Replacing the
+    // records with empty ones collapsed the tree for a frame, which reset the
+    // scroll position whenever the window regained focus.
+    for (const [recordKey, record] of [...this.records]) {
+      if (!isAtOrBelow(recordKey, key)) continue;
+      if (retained.has(recordKey)) this.records.set(recordKey, { ...record, loading: false });
+      else this.records.delete(recordKey);
     }
     for (const requestKey of [...this.requestVersions.keys()]) {
       if (isAtOrBelow(requestKey, key)) {
@@ -246,7 +305,6 @@ export class WorkspaceStore {
       }
     }
     if (key) this.expanded.add(key);
-    this.records.set(key, emptyRecord());
     this.rootError = null;
     this.publish();
     const requestGeneration = this.generation;
@@ -278,7 +336,7 @@ export class WorkspaceStore {
     const record = this.records.get(parent.relativePath) ?? emptyRecord();
     const existing = record.items.filter(item => item.ref.relativePath !== result.value.ref.relativePath);
     this.records.set(parent.relativePath, {
-      items: [...existing, result.value].sort(compareEntries),
+      items: [...existing, result.value].sort(this.compare),
       nextCursor: record.nextCursor,
       loaded: true,
       loading: false,
@@ -315,7 +373,7 @@ export class WorkspaceStore {
         ...parent,
         items: parent.items
           .map(item => item.ref.relativePath === entry.ref.relativePath ? result.value.entry : item)
-          .sort(compareEntries),
+          .sort(this.compare),
       });
     }
 
@@ -449,7 +507,7 @@ export class WorkspaceStore {
         this.records.set(destinationParent.relativePath, {
           ...record,
           items: [...record.items.filter(item => item.ref.relativePath !== result.value.entry.ref.relativePath),
-            result.value.entry].sort(compareEntries),
+            result.value.entry].sort(this.compare),
           loaded: true,
           loading: false,
           error: null,
@@ -604,7 +662,7 @@ export class WorkspaceStore {
       if (seen.has(item.ref.relativePath)) return false;
       seen.add(item.ref.relativePath);
       return true;
-    })];
+    })].sort(this.compare);
     this.records.set(key, {
       items, nextCursor: result.value.nextCursor, loaded: true, loading: false, error: null,
     });
@@ -622,6 +680,7 @@ export class WorkspaceStore {
       showHidden: this.showHidden,
       rootError: this.rootError,
       filters: this.filters,
+      sort: this.sort,
       syncStatus: this.syncStatus,
     };
     this.listeners.forEach(listener => listener());

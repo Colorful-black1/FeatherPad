@@ -97,7 +97,13 @@ test('Markdown tasks edit exact duplicate positions in one undo and code copy st
   const frame = page.frameLocator('iframe[title*="Markdown阅读"]');
   await expect(frame.getByRole('checkbox')).toHaveCount(3);
   await expect(frame.locator('code .tok-propertyName')).toBeVisible();
-  await frame.getByRole('button', { name: '复制代码', exact: true }).click();
+  const copy = frame.locator('.code-copy');
+  await expect(copy).toHaveCSS('opacity', '0');
+  await frame.locator('.code-block').hover();
+  await expect(copy).toHaveCSS('opacity', '1');
+  await copy.click();
+  await expect(copy).toHaveAttribute('data-copied', 'true');
+  await expect(copy).toHaveAttribute('aria-label', '已复制');
   await expect(page.getByText('代码已复制。', { exact: true })).toBeVisible();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('{"中文": true}');
   await frame.getByRole('checkbox').nth(1).check();
@@ -260,6 +266,28 @@ test('restricted HTML requires user opt-in, strips scripts and forged controls, 
   await expect(page.locator('.cm-line')).toHaveText(original);
   expect(externalRequests).toEqual([]);
   expect(await page.evaluate(() => Reflect.get(window, 'pwned'))).toBeUndefined();
+});
+
+test('document outline dialog filters headings, highlights the current section and jumps', async ({ page }) => {
+  const source = '# 起点\n\n## 第一章\n\n正文一\n\n## 第二章\n\n正文二';
+  await page.goto('/');
+  await page.getByRole('button', { name: '新建文本', exact: true }).click();
+  await (await documentOptions(page)).getByRole('combobox', { name: '语言模式', exact: true }).selectOption('markdown'); await resumeEditing(page);
+  const editor = page.locator('.cm-content');
+  await editor.focus();
+  await page.keyboard.insertText(source);
+  await page.keyboard.press('Control+End');
+  await (await menuItem(page, '大纲')).click();
+  const dialog = page.getByRole('dialog', { name: '文档大纲', exact: true });
+  await expect(dialog).toBeVisible();
+  const search = dialog.getByRole('searchbox', { name: '筛选大纲', exact: true });
+  await expect(search).toBeFocused();
+  await expect(dialog.getByRole('listitem')).toHaveCount(3);
+  await expect(dialog.locator('li[data-current="true"]')).toContainText('第二章');
+  await search.fill('第一章');
+  await expect(dialog.getByRole('listitem')).toHaveCount(1);
+  await dialog.getByRole('button', { name: '第一章', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
 });
 
 test('Markdown outline navigates source and preview; block sync follows both sides without moving the cursor and can be disabled', async ({ page }) => {

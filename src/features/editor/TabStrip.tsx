@@ -1,9 +1,17 @@
-import { useState, type KeyboardEvent, type MouseEvent } from 'react';
+import { useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import type { DocumentId } from '../../shared/contracts/files';
 import { ExplorerContextMenu } from '../workspace/ExplorerContextMenu';
 import type { DocumentSummary } from './documents';
 
 export type TabMenuAction = 'close' | 'closeOthers' | 'closeRight' | 'closeAll' | 'copyPath' | 'reveal';
+
+interface PointerDrag {
+  id: DocumentId;
+  pointerId: number;
+  startX: number;
+  startY: number;
+  active: boolean;
+}
 
 interface TabStripProps {
   documents: readonly DocumentSummary[];
@@ -21,6 +29,98 @@ export function TabStrip({ documents, activeId, previewId, busy, onSelect, onPin
   const names = new Map<string, number>();
   for (const document of documents) names.set(document.title, (names.get(document.title) ?? 0) + 1);
   const [menu, setMenu] = useState<{ id: DocumentId; x: number; y: number; origin: HTMLElement } | null>(null);
+  const [draggingId, setDraggingId] = useState<DocumentId | null>(null);
+  const [dropHint, setDropHint] = useState<{ id: DocumentId; edge: 'before' | 'after' } | null>(null);
+  const strip = useRef<HTMLDivElement>(null);
+  const drag = useRef<PointerDrag | null>(null);
+  const suppressClick = useRef(false);
+
+  function edgeAt(clientX: number, rect: DOMRect): 'before' | 'after' {
+    return clientX < rect.left + rect.width / 2 ? 'before' : 'after';
+  }
+
+  function moveTab(source: DocumentId, target: DocumentId, edge: 'before' | 'after') {
+    if (!onReorder || source === target) return;
+    const ids = documents.map(document => document.id);
+    const from = ids.indexOf(source);
+    if (from < 0) return;
+    ids.splice(from, 1);
+    const to = ids.indexOf(target);
+    if (to < 0) return;
+    ids.splice(to + (edge === 'after' ? 1 : 0), 0, source);
+    onReorder(ids);
+  }
+
+  function dropTargetAt(clientX: number, clientY: number): { id: DocumentId; edge: 'before' | 'after' } | null {
+    const element = document.elementFromPoint(clientX, clientY);
+    const tab = element?.closest<HTMLElement>('.document-tab');
+    const tabId = tab?.dataset.tabId as DocumentId | undefined;
+    if (tab && tabId) return { id: tabId, edge: edgeAt(clientX, tab.getBoundingClientRect()) };
+    const elementStrip = strip.current;
+    if (!elementStrip) return null;
+    const bounds = elementStrip.getBoundingClientRect();
+    if (clientY < bounds.top || clientY > bounds.bottom) return null;
+    const first = documents[0];
+    const last = documents.at(-1);
+    if (!first || !last) return null;
+    const firstTab = document.getElementById(`tab-${first.id}`)?.closest<HTMLElement>('.document-tab');
+    if (firstTab && clientX < firstTab.getBoundingClientRect().left) return { id: first.id, edge: 'before' };
+    return { id: last.id, edge: 'after' };
+  }
+
+  function clearDrag() {
+    drag.current = null;
+    setDraggingId(null);
+    setDropHint(null);
+  }
+
+  function pointerDown(event: ReactPointerEvent<HTMLDivElement>, document: DocumentSummary) {
+    if (!onReorder || busy || event.button !== 0 || event.pointerType === 'touch') return;
+    if (event.target instanceof Element && event.target.closest('.tab-close, .tab-pin')) return;
+    drag.current = { id: document.id, pointerId: event.pointerId,
+      startX: event.clientX, startY: event.clientY, active: false };
+  }
+
+  function pointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    const state = drag.current;
+    if (!state || state.pointerId !== event.pointerId) return;
+    if (!state.active) {
+      if (Math.abs(event.clientX - state.startX) < 4 && Math.abs(event.clientY - state.startY) < 4) return;
+      state.active = true;
+      setDraggingId(state.id);
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+    event.preventDefault();
+    const tabStrip = strip.current;
+    if (tabStrip) {
+      const bounds = tabStrip.getBoundingClientRect();
+      if (event.clientX < bounds.left + 32) tabStrip.scrollLeft -= 14;
+      else if (event.clientX > bounds.right - 32) tabStrip.scrollLeft += 14;
+    }
+    const target = dropTargetAt(event.clientX, event.clientY);
+    if (!target || target.id === state.id) {
+      setDropHint(null);
+      return;
+    }
+    setDropHint(current => current?.id === target.id && current.edge === target.edge ? current : target);
+  }
+
+  function finishPointer(event: ReactPointerEvent<HTMLDivElement>, cancelled = false) {
+    const state = drag.current;
+    if (!state || state.pointerId !== event.pointerId) return;
+    if (state.active) {
+      suppressClick.current = true;
+      if (!cancelled) {
+        const target = dropTargetAt(event.clientX, event.clientY);
+        if (target) moveTab(state.id, target.id, target.edge);
+      }
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+      setTimeout(() => { suppressClick.current = false; }, 0);
+    }
+    clearDrag();
+  }
 
   function openMenu(document: DocumentSummary, origin: HTMLElement, x: number, y: number) {
     if (!onTabAction) return;
@@ -30,6 +130,20 @@ export function TabStrip({ documents, activeId, previewId, busy, onSelect, onPin
   function navigate(event: KeyboardEvent<HTMLButtonElement>, index: number) {
     const document = documents[index];
     if (!document) return;
+    if (onReorder && !busy && event.altKey && event.shiftKey
+      && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+      const target = index + (event.key === 'ArrowLeft' ? -1 : 1);
+      if (target < 0 || target >= documents.length) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const ids = documents.map(item => item.id);
+      const [moved] = ids.splice(index, 1);
+      if (!moved) return;
+      ids.splice(target, 0, moved);
+      onReorder(ids);
+      requestAnimationFrame(() => window.document.getElementById(`tab-${document.id}`)?.focus());
+      return;
+    }
     if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
       event.preventDefault();
       const bounds = event.currentTarget.getBoundingClientRect();
@@ -53,13 +167,35 @@ export function TabStrip({ documents, activeId, previewId, busy, onSelect, onPin
   const blocked = !!menuDocument && (busy || menuDocument.closing);
 
   return <>
-    <div className="document-tabs" role="tablist" aria-label="打开的文档">
+    <div ref={strip} className="document-tabs" role="tablist" aria-label="打开的文档"
+      data-dragging={draggingId !== null}>
       {documents.map((document, index) => {
         const selected = document.id === activeId;
         const preview = document.id === previewId;
         const parent = (names.get(document.title) ?? 0) > 1 && document.displayPath
           ? document.displayPath.replace(/[\\/][^\\/]+$/, '') : null;
         return <div key={document.id} className="document-tab" role="presentation" data-active={selected}
+          data-dragging={draggingId === document.id}
+          data-drop={dropHint?.id === document.id ? dropHint.edge : undefined}
+          data-tab-id={document.id}
+          onPointerDown={event => pointerDown(event, document)}
+          onPointerMove={pointerMove}
+          onPointerUp={event => finishPointer(event)}
+          onPointerCancel={event => finishPointer(event, true)}
+          onLostPointerCapture={() => {
+            const state = drag.current;
+            if (state?.active) clearDrag();
+          }}
+          onPointerLeave={event => {
+            const state = drag.current;
+            if (state && !state.active && state.pointerId === event.pointerId) drag.current = null;
+          }}
+          onClickCapture={event => {
+            if (!suppressClick.current) return;
+            suppressClick.current = false;
+            event.preventDefault();
+            event.stopPropagation();
+          }}
           onContextMenu={(event: MouseEvent<HTMLDivElement>) => {
             if (!onTabAction) return;
             event.preventDefault();
@@ -67,26 +203,6 @@ export function TabStrip({ documents, activeId, previewId, busy, onSelect, onPin
             onSelect(document.id);
             const origin = event.currentTarget.querySelector<HTMLElement>('button[role="tab"]') ?? event.currentTarget;
             openMenu(document, origin, event.clientX, event.clientY);
-          }}
-          draggable={!busy} onDragStart={event => {
-            event.dataTransfer.effectAllowed = 'move';
-            event.dataTransfer.setData('application/x-featherpad-tab', document.id);
-          }} onDragOver={event => {
-            if (!onReorder || !event.dataTransfer.types.includes('application/x-featherpad-tab')) return;
-            event.preventDefault();
-            event.dataTransfer.dropEffect = 'move';
-          }} onDrop={event => {
-            if (!onReorder) return;
-            const source = event.dataTransfer.getData('application/x-featherpad-tab') as DocumentId;
-            const from = documents.findIndex(item => item.id === source);
-            const to = documents.findIndex(item => item.id === document.id);
-            if (from < 0 || to < 0 || from === to) return;
-            event.preventDefault();
-            const ids = documents.map(item => item.id);
-            const [moved] = ids.splice(from, 1);
-            if (!moved) return;
-            ids.splice(to, 0, moved);
-            onReorder(ids);
           }}>
           <button id={`tab-${document.id}`} role="tab" aria-selected={selected}
             aria-controls={selected ? `panel-${document.id}` : undefined}

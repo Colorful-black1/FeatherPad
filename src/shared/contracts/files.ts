@@ -270,6 +270,8 @@ export interface DirectoryEntry {
   isHidden: boolean;
   isReadOnly: boolean;
   revision: string;
+  modifiedAt?: string | null;
+  createdAt?: string | null;
 }
 export interface DirectoryPage {
   items: DirectoryEntry[];

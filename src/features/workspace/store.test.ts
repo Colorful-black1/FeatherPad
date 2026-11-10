@@ -187,6 +187,31 @@ it('refreshes an expanded child and discards its older in-flight page', async ()
   expect(store.getSnapshot().expanded.folder).toBe(true);
 });
 
+it('keeps visible entries mounted while a window-focus refresh revalidates them', async () => {
+  const one = entry('one.txt', 'one.txt');
+  const two = entry('two.txt', 'two.txt');
+  const fresh = entry('fresh.txt', 'fresh.txt');
+  let resolveRefresh!: (value: ResultEnvelope<DirectoryPage>) => void;
+  let calls = 0;
+  const store = new WorkspaceStore(() => {
+    calls += 1;
+    if (calls === 1) {
+      return Promise.resolve({ ok: true, value: { items: [one, two], nextCursor: null } });
+    }
+    return new Promise(resolve => { resolveRefresh = resolve; });
+  });
+  store.setRoot({ grant, displayName: 'fixture-root' });
+  await flush();
+  expect(store.getSnapshot().records['']?.items).toEqual([one, two]);
+  store.refresh();
+  expect(store.getSnapshot().records['']?.items).toEqual([one, two]);
+  expect(store.getSnapshot().records['']?.loading).toBe(true);
+  resolveRefresh({ ok: true, value: { items: [fresh], nextCursor: null } });
+  await flush();
+  expect(store.getSnapshot().records['']?.items).toEqual([fresh]);
+  expect(store.getSnapshot().records['']?.loaded).toBe(true);
+});
+
 it('inserts a created entry and remaps expanded records after a directory rename', async () => {
   const folder = entry('folder', 'folder', 'directory');
   const child = entry('child.txt', 'folder/child.txt');

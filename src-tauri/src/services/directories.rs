@@ -9,6 +9,7 @@ use std::{
     collections::{HashMap, VecDeque},
     fs::Metadata,
     path::Path,
+    time::{SystemTime, UNIX_EPOCH},
 };
 #[cfg(windows)]
 use std::{
@@ -235,20 +236,27 @@ fn read_entries(root: &FileRef, directory: &Path) -> Result<Vec<DirectoryEntry>,
             // after child changes. Destructive operations validate fresh metadata,
             // so issue directory tickets from the same source. Flat file listings
             // keep the bounded FindFirstFileEx fast path.
-            let revision = if kind == "directory" {
-                revision_from_metadata(
-                    &name,
-                    kind,
-                    &std::fs::symlink_metadata(directory.join(&name)).map_err(io_error)?,
-                )?
+            let (revision, modified_at, created_at) = if kind == "directory" {
+                let metadata =
+                    std::fs::symlink_metadata(directory.join(&name)).map_err(io_error)?;
+                let timestamps = metadata_timestamps(&metadata);
+                (
+                    revision_from_metadata(&name, kind, &metadata)?,
+                    timestamps.0,
+                    timestamps.1,
+                )
             } else {
-                revision_from_windows_fields(
-                    &data,
-                    kind,
-                    revision_size(
+                (
+                    revision_from_windows_fields(
+                        &data,
                         kind,
-                        ((data.nFileSizeHigh as u64) << 32) | data.nFileSizeLow as u64,
+                        revision_size(
+                            kind,
+                            ((data.nFileSizeHigh as u64) << 32) | data.nFileSizeLow as u64,
+                        ),
                     ),
+                    filetime_timestamp(&data.ftLastWriteTime),
+                    filetime_timestamp(&data.ftCreationTime),
                 )
             };
             output.push(directory_entry(
@@ -258,6 +266,8 @@ fn read_entries(root: &FileRef, directory: &Path) -> Result<Vec<DirectoryEntry>,
                 attributes & FILE_ATTRIBUTE_HIDDEN != 0,
                 attributes & FILE_ATTRIBUTE_READONLY != 0,
                 revision,
+                modified_at,
+                created_at,
             ));
         }
         if unsafe { FindNextFileW(handle.0, &raw mut data) } == 0 {
@@ -299,6 +309,7 @@ fn read_entries(root: &FileRef, directory: &Path) -> Result<Vec<DirectoryEntry>,
             &metadata,
             revision_size(kind, metadata.len()),
         )?;
+        let timestamps = metadata_timestamps(&metadata);
         output.push(directory_entry(
             root,
             name,
@@ -306,6 +317,8 @@ fn read_entries(root: &FileRef, directory: &Path) -> Result<Vec<DirectoryEntry>,
             hidden,
             is_read_only(&metadata),
             revision,
+            timestamps.0,
+            timestamps.1,
         ));
     }
     Ok(output)
@@ -318,6 +331,8 @@ fn directory_entry(
     is_hidden: bool,
     is_read_only: bool,
     revision: String,
+    modified_at: Option<String>,
+    created_at: Option<String>,
 ) -> DirectoryEntry {
     let relative_path = relative_path(root, &name);
     DirectoryEntry {
@@ -331,7 +346,30 @@ fn directory_entry(
         is_hidden,
         is_read_only,
         revision,
+        modified_at,
+        created_at,
     }
+}
+
+fn timestamp_from_seconds(seconds: u64, nanos: u32) -> Option<String> {
+    chrono::DateTime::<chrono::Utc>::from_timestamp(i64::try_from(seconds).ok()?, nanos)
+        .map(|value| value.to_rfc3339_opts(chrono::SecondsFormat::Nanos, true))
+}
+
+pub(super) fn metadata_timestamps(metadata: &Metadata) -> (Option<String>, Option<String>) {
+    let convert = |value: Result<SystemTime, std::io::Error>| -> Option<String> {
+        let elapsed = value.ok()?.duration_since(UNIX_EPOCH).ok()?;
+        timestamp_from_seconds(elapsed.as_secs(), elapsed.subsec_nanos())
+    };
+    (convert(metadata.modified()), convert(metadata.created()))
+}
+
+#[cfg(windows)]
+fn filetime_timestamp(value: &windows_sys::Win32::Foundation::FILETIME) -> Option<String> {
+    const FILETIME_UNIX_EPOCH: u64 = 116_444_736_000_000_000;
+    let ticks = ((value.dwHighDateTime as u64) << 32) | value.dwLowDateTime as u64;
+    let elapsed = ticks.checked_sub(FILETIME_UNIX_EPOCH)?;
+    timestamp_from_seconds(elapsed / 10_000_000, ((elapsed % 10_000_000) as u32) * 100)
 }
 
 #[cfg(windows)]

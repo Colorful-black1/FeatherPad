@@ -93,6 +93,10 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
     if (!page) throw new Error('Native WebView2 page missing');
     await expect(page).toHaveTitle('轻羽 FeatherPad');
     await expect(page.getByRole('heading', { name: '快开文件，专心编辑。' })).toBeVisible();
+    await expect(page.locator('.app-brand')).toContainText('轻羽');
+    await expect(page.getByRole('button', { name: '最小化窗口', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^(最大化|还原)窗口$/, exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '关闭窗口', exact: true })).toBeVisible();
     expect(await page.evaluate(() => Reflect.has(window, '__TAURI_INTERNALS__'))).toBe(true);
     const rejected = await page.evaluate(async () => {
       const native = Reflect.get(window, '__TAURI_INTERNALS__') as { invoke: (command: string, args: Record<string, unknown>) => Promise<unknown> };
@@ -409,7 +413,7 @@ test('real Tauri WebView2 shell, without a mock bridge', async () => {
       forcedExit,
       chooserAutomation: verifyChooser ? chooserAutomation : 'disabled-explicitly',
       browserOffline: profile === 'release',
-      checks: ['native-title', 'native-brand', 'tauri-ipc-present', 'light-theme', 'dark-theme', 'forged-grant-rejected', 'malformed-ref-rejected', 'forged-save-rejected', 'malformed-save-rejected', 'unknown-stat-rejected', 'ipc-destination-path-rejected', 'ungranted-plugin-rejected'],
+      checks: ['custom-titlebar-brand', 'custom-window-controls', 'tauri-ipc-present', 'light-theme', 'dark-theme', 'forged-grant-rejected', 'malformed-ref-rejected', 'forged-save-rejected', 'malformed-save-rejected', 'unknown-stat-rejected', 'ipc-destination-path-rejected', 'ungranted-plugin-rejected'],
     }, null, 2));
     console.log(`Native evidence: ${path.relative(root, evidenceRoot)}`);
   } finally {

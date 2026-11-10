@@ -27,6 +27,27 @@ test('Web CodeMirror: syntax selection grows, shrinks and bracket navigation pre
   await expect(editor).toHaveText(text);
 });
 
+test('Web CodeMirror: dark theme keeps the blinking caret visible', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.goto('/');
+  await page.getByRole('button', { name: '新建文本', exact: true }).click();
+  const content = page.locator('.cm-content');
+  await content.focus();
+  await page.keyboard.insertText('caret');
+  const colors = await content.evaluate(element => {
+    const style = getComputedStyle(element);
+    const editor = element.closest('.cm-editor');
+    return {
+      caret: style.caretColor,
+      text: style.color,
+      background: editor ? getComputedStyle(editor).backgroundColor : '',
+    };
+  });
+  expect(colors.caret).toBe(colors.text);
+  expect(colors.caret).not.toBe('rgb(0, 0, 0)');
+  expect(colors.caret).not.toBe(colors.background);
+});
+
 test('Web CodeMirror: status, selection, deletion and per-document undo stay local', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: '新建文本', exact: true }).click();

@@ -7,6 +7,7 @@ import { FilterRules } from './FilterRules';
 import { dragPayload, parseDragPayload, transferMode, workspaceDragType, startWorkspaceDrag, endWorkspaceDrag, highlightDropTarget, clearDropTarget } from './drag-drop';
 import { useFileTransfer } from './use-file-transfer';
 import { ExplorerContextMenu, type ExplorerMenuTarget } from './ExplorerContextMenu';
+import { EntryIcon } from './FileIcon';
 
 interface ExplorerProps {
   currentReference: FileRef | undefined;
@@ -41,16 +42,6 @@ interface DirectoryContentsProps {
   beginEditing: (editing: EditingEntry) => void;
   finishEditing: (focusPath?: string) => void;
   store: WorkspaceStore;
-}
-
-function EntryIcon({ entry }: { entry: DirectoryEntry }) {
-  if (entry.kind === 'directory') {
-    return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7V5h7l2 2h9v13H3ZM3 9h18" /></svg>;
-  }
-  if (entry.kind === 'junction' || entry.kind === 'symlink') {
-    return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7H6a4 4 0 0 0 0 8h3M15 17h3a4 4 0 0 0 0-8h-3M8 12h8" /></svg>;
-  }
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h8l4 4v14H6ZM14 3v5h5" /></svg>;
 }
 
 function EntryRow({
@@ -187,7 +178,7 @@ function EntryRow({
       onKeyDown={navigate}
     >
       <span className={`tree-chevron ${expandable ? '' : 'tree-chevron-empty'}`} aria-hidden="true">{expanded ? '▾' : '▸'}</span>
-      <span className="tree-icon"><EntryIcon entry={entry} /></span>
+      <span className="tree-icon"><EntryIcon entry={entry} expanded={expanded} /></span>
       <span className="tree-name">{entry.name}</span>
       {entry.isReadOnly && <span className="tree-badge">只读</span>}
       {(entry.kind === 'junction' || entry.kind === 'symlink') && <span className="tree-badge">链接</span>}
@@ -271,13 +262,20 @@ export function Explorer({ currentReference, onOpen, onRenamed, onTrash, onRevea
   const [focusPath, setFocusPath] = useState<string | null>(null);
   const [menuTarget, setMenuTarget] = useState<ExplorerMenuTarget | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
+  const [sortMenu, setSortMenu] = useState<ExplorerMenuTarget | null>(null);
   const [rootCollapsed, setRootCollapsed] = useState(false);
   const transfer = useFileTransfer(store, onRenamed);
   const root = snapshot.root;
+  const sortLabel = snapshot.sort.key === 'name'
+    ? snapshot.sort.direction === 'asc' ? '名称 A → Z' : '名称 Z → A'
+    : snapshot.sort.key === 'modified'
+      ? `修改时间 ${snapshot.sort.direction === 'desc' ? '新 → 旧' : '旧 → 新'}`
+      : `创建时间 ${snapshot.sort.direction === 'desc' ? '新 → 旧' : '旧 → 新'}`;
   const [menuRoot, setMenuRoot] = useState(root?.grant.grantId);
   if (menuRoot !== root?.grant.grantId) {
     setMenuRoot(root?.grant.grantId);
     setMenuTarget(null);
+    setSortMenu(null);
     setRootCollapsed(false);
   }
   const currentInRoot = snapshot.roots.some(item => currentReference?.grantId === item.grant.grantId);
@@ -402,6 +400,15 @@ export function Explorer({ currentReference, onOpen, onRenamed, onTrash, onRevea
           data-active={snapshot.showHidden || snapshot.filters.include.length > 0 || snapshot.filters.exclude.length > 0 || !snapshot.filters.respectGitignore || snapshot.filters.followDirectoryLinks}>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8v6l-4 2v-8Z" /></svg>
         </button>}
+        {root && <button type="button" className="icon-button compact" aria-label="文件排序" title={`排序方式：${sortLabel}`}
+          aria-haspopup="menu" data-active={snapshot.sort.key !== 'name' || snapshot.sort.direction !== 'asc'}
+          onClick={event => {
+            const bounds = event.currentTarget.getBoundingClientRect();
+            setSortMenu({ path: null, grantId: root?.grant.grantId ?? null, origin: event.currentTarget,
+              x: bounds.left, y: bounds.bottom });
+          }}>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M4 12h6M4 18h3M17 5v14M14 16l3 3 3-3" /></svg>
+        </button>}
         <button type="button" className="icon-button compact" aria-label="资源管理器更多操作" title="更多操作" aria-haspopup="menu" onClick={event => {
           const bounds = event.currentTarget.getBoundingClientRect();
           setMenuTarget({ path: null, grantId: root?.grant.grantId ?? null, origin: event.currentTarget, x: bounds.left, y: bounds.bottom });
@@ -457,6 +464,27 @@ export function Explorer({ currentReference, onOpen, onRenamed, onTrash, onRevea
         setFilterOpen(false);
         requestAnimationFrame(() => document.querySelector<HTMLButtonElement>('[aria-label="文件筛选"]')?.focus());
       }} />}
+    {root && sortMenu && sortMenu.grantId === root.grant.grantId && <ExplorerContextMenu
+      target={sortMenu} label="文件排序" onClose={() => setSortMenu(null)} sections={[
+        [
+          { id: 'sort-name-asc', title: '名称 A → Z', checked: snapshot.sort.key === 'name' && snapshot.sort.direction === 'asc',
+            run: () => store.setSort({ key: 'name', direction: 'asc' }) },
+          { id: 'sort-name-desc', title: '名称 Z → A', checked: snapshot.sort.key === 'name' && snapshot.sort.direction === 'desc',
+            run: () => store.setSort({ key: 'name', direction: 'desc' }) },
+        ],
+        [
+          { id: 'sort-modified-desc', title: '修改时间 新 → 旧', checked: snapshot.sort.key === 'modified' && snapshot.sort.direction === 'desc',
+            run: () => store.setSort({ key: 'modified', direction: 'desc' }) },
+          { id: 'sort-modified-asc', title: '修改时间 旧 → 新', checked: snapshot.sort.key === 'modified' && snapshot.sort.direction === 'asc',
+            run: () => store.setSort({ key: 'modified', direction: 'asc' }) },
+        ],
+        [
+          { id: 'sort-created-desc', title: '创建时间 新 → 旧', checked: snapshot.sort.key === 'created' && snapshot.sort.direction === 'desc',
+            run: () => store.setSort({ key: 'created', direction: 'desc' }) },
+          { id: 'sort-created-asc', title: '创建时间 旧 → 新', checked: snapshot.sort.key === 'created' && snapshot.sort.direction === 'asc',
+            run: () => store.setSort({ key: 'created', direction: 'asc' }) },
+        ],
+      ]} />}
     {transfer.view}
     {menuTarget && menuTarget.grantId === (root?.grant.grantId ?? null) && <ExplorerContextMenu
       target={menuTarget} onClose={() => setMenuTarget(null)} sections={[

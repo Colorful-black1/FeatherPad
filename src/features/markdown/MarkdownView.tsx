@@ -88,8 +88,13 @@ export function MarkdownView({ registry, id, autoFocus, group, dark, allowHtml, 
         const block = displayedReply.codeBlocks[index];
         if (!block) return;
         onActivate?.();
-        void navigator.clipboard.writeText(block.text).then(() => setNotice('代码已复制。'),
-          () => setNotice('无法写入剪贴板，请在源码中复制。'));
+        void navigator.clipboard.writeText(block.text).then(() => {
+          setNotice('代码已复制。');
+          previewFrame.current?.contentWindow?.postMessage({ channel, kind: 'copied', index }, '*');
+        }, () => {
+          setNotice('无法写入剪贴板，请在源码中复制。');
+          previewFrame.current?.contentWindow?.postMessage({ channel, kind: 'copyFailed', index }, '*');
+        });
       } else if (kind === 'history' && !readOnly && index <= 1) {
         onActivate?.();
         restorePreviewFocus.current = true;

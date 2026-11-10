@@ -546,6 +546,8 @@ pub struct DirectoryEntry {
     pub is_hidden: bool,
     pub is_read_only: bool,
     pub revision: String,
+    pub modified_at: Option<String>,
+    pub created_at: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

@@ -23,7 +23,7 @@ export function ExplorerContextMenu({ target, sections, onClose, label = '资源
     const bounds = element.getBoundingClientRect();
     element.style.left = `${Math.max(8, Math.min(target.x, window.innerWidth - bounds.width - 8))}px`;
     element.style.top = `${Math.max(8, Math.min(target.y, window.innerHeight - bounds.height - 8))}px`;
-    element.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
+    element.querySelector<HTMLButtonElement>('[role="menuitem"], [role="menuitemradio"]')?.focus();
   }, [target]);
 
   useEffect(() => {
@@ -60,7 +60,7 @@ export function ExplorerContextMenu({ target, sections, onClose, label = '资源
         event.preventDefault(); event.stopPropagation(); onClose(); restoreFocus();
       } else if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
         event.preventDefault(); event.stopPropagation();
-        const items = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')];
+        const items = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitem"], [role="menuitemradio"]')];
         const index = items.findIndex(item => item === document.activeElement);
         const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1
           : (index + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
@@ -69,12 +69,18 @@ export function ExplorerContextMenu({ target, sections, onClose, label = '资源
     }}>
     {sections.map((section, index) => <div role="group" key={index}>
       {index > 0 && <div role="separator" className="menu-separator" />}
-      {section.map(action => <button key={action.id} type="button" role="menuitem" tabIndex={-1} aria-label={action.title}
-        className="menu-action" aria-disabled={!!action.disabledReason} title={action.disabledReason ?? undefined}
-        onClick={() => {
-          if (action.disabledReason) return;
-          onClose(); restoreFocus(); action.run?.();
-        }}><span>{action.title}</span>{action.binding && <kbd>{action.binding}</kbd>}</button>)}
+      {section.map(action => {
+        const checkable = action.checked !== undefined;
+        return <button key={action.id} type="button" role={checkable ? 'menuitemradio' : 'menuitem'}
+          tabIndex={-1} aria-label={action.title} aria-checked={action.checked}
+          className="menu-action" aria-disabled={!!action.disabledReason} title={action.disabledReason ?? undefined}
+          onClick={() => {
+            if (action.disabledReason) return;
+            onClose(); restoreFocus(); action.run?.();
+          }}><span className="menu-action-label">{checkable && <span className="menu-check" aria-hidden="true">
+            {action.checked ? '✓' : ''}</span>}<span>{action.title}</span></span>
+          {action.binding && <kbd>{action.binding}</kbd>}</button>;
+      })}
     </div>)}
   </div>, document.body);
 }

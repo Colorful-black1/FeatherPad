@@ -80,6 +80,7 @@ pub(crate) fn create_window(
     }
     let window = WebviewWindowBuilder::new(app, &window_id, WebviewUrl::App("index.html".into()))
         .title("轻羽 FeatherPad")
+        .decorations(false)
         .inner_size(1200.0, 800.0)
         .min_inner_size(800.0, 560.0)
         .additional_browser_args(

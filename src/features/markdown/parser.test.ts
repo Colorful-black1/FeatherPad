@@ -26,6 +26,22 @@ describe('Markdown worker rendering', () => {
     expect(result.mappingWarning).toBeUndefined();
   });
 
+  it('renders the copy control inside the code block and keeps language labels optional', () => {
+    const typed = render('```ts\nconst value = 1;\n```');
+    expect(typed.ok).toBe(true);
+    if (!typed.ok) return;
+    expect(typed.html).toContain('class="code-block-header"');
+    expect(typed.html).toContain('class="code-language">ts</span>');
+    expect(typed.html).toContain('class="code-copy"');
+    expect(typed.html).toContain('aria-label="复制代码"');
+    expect(typed.html).not.toContain('code-caption');
+    const plain = render('```\nplain text\n```');
+    expect(plain.ok).toBe(true);
+    if (!plain.ok) return;
+    expect(plain.html).toContain('class="code-copy"');
+    expect(plain.html).not.toContain('class="code-language"');
+  });
+
   it('escapes document HTML and never emits live image or navigation URLs', () => {
     const result = render('<script>window.pwned=1</script>\n\n![x](https://example.com/leak)\n\n[恶意](javascript:alert%281%29)\n');
     expect(result.ok).toBe(true);

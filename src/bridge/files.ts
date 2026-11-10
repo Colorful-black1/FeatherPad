@@ -81,12 +81,16 @@ export function isChosenFolder(value: unknown): value is ChosenFolder {
     && ((value.grant === null) === (value.displayName === null));
 }
 
+const optionalTimestamp = (value: unknown) => value === undefined || value === null
+  || (nonemptyString(value) && value.length <= 64);
+
 export function isDirectoryEntry(value: unknown): value is DirectoryEntry {
   return isRecord(value) && nonemptyString(value.id) && value.id.length <= 128
     && isFileRef(value.ref) && nonemptyString(value.name) && value.name.length <= 32_767
     && ['file', 'directory', 'symlink', 'junction'].includes(value.kind as string)
     && typeof value.isHidden === 'boolean' && typeof value.isReadOnly === 'boolean'
-    && typeof value.revision === 'string' && /^[0-9a-f]{64}$/i.test(value.revision);
+    && typeof value.revision === 'string' && /^[0-9a-f]{64}$/i.test(value.revision)
+    && optionalTimestamp(value.modifiedAt) && optionalTimestamp(value.createdAt);
 }
 
 export function isDirectoryPage(value: unknown): value is DirectoryPage {

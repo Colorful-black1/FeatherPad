@@ -125,7 +125,7 @@ export function renderMarkdown(request: RenderRequest): RenderReply {
         const index = codeBlocks.length;
         const language = lang?.split(/\s/)[0] ?? '';
         codeBlocks.push({ text, language });
-        return `<div class="code-block"${attributes(token)}><div class="code-caption"><span>${escapeHtml(language || '纯文本')}</span><button type="button" data-copy-id="${index}">复制代码</button></div><pre><code data-code-id="${index}">${escapeHtml(text)}</code></pre></div>\n`;
+        return `<div class="code-block"${attributes(token)}><div class="code-block-header">${language ? `<span class="code-language">${escapeHtml(language)}</span>` : ''}<button type="button" class="code-copy" data-copy-id="${index}" aria-label="复制代码" title="复制代码"><span class="code-copy-icon" aria-hidden="true"></span><span class="code-copy-check" aria-hidden="true"></span></button></div><pre><code data-code-id="${index}">${escapeHtml(text)}</code></pre></div>\n`;
       },
     },
   });

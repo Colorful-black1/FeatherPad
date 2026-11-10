@@ -1024,6 +1024,7 @@ fn entry_from_path(
     };
     #[cfg(not(windows))]
     let (is_hidden, is_read_only) = (name.starts_with('.'), metadata.permissions().readonly());
+    let timestamps = super::directories::metadata_timestamps(&metadata);
     Ok(DirectoryEntry {
         id: entry_id(&reference.grant_id, &reference.relative_path),
         reference: reference.clone(),
@@ -1038,6 +1039,8 @@ fn entry_from_path(
             kind,
             &metadata,
         )?,
+        modified_at: timestamps.0,
+        created_at: timestamps.1,
     })
 }
 

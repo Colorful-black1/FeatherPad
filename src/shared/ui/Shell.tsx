@@ -7,6 +7,7 @@ interface ShellProps {
   sidebar: ReactNode;
   status: ReactNode;
   headerActions?: ReactNode;
+  windowControls?: ReactNode;
   menus?: ReactNode;
   railActions?: ReactNode;
   sidebarOpen: boolean;
@@ -19,7 +20,7 @@ interface ShellProps {
   themeShortcut?: string | undefined;
 }
 
-export function Shell({ children, sidebar, status, headerActions, menus, railActions, sidebarOpen, dark, onToggleSidebar, onSelectExplorer, explorerSelected = true, onToggleTheme, sidebarShortcut, themeShortcut }: ShellProps) {
+export function Shell({ children, sidebar, status, headerActions, windowControls, menus, railActions, sidebarOpen, dark, onToggleSidebar, onSelectExplorer, explorerSelected = true, onToggleTheme, sidebarShortcut, themeShortcut }: ShellProps) {
   const root = useRef<HTMLDivElement>(null);
   const sidebarToggle = useRef<HTMLButtonElement>(null);
   const memory = useRef<FocusMemory>(new WeakMap());
@@ -91,11 +92,14 @@ export function Shell({ children, sidebar, status, headerActions, menus, railAct
           && window.matchMedia('(max-width: 1099px)').matches) onToggleSidebar();
       }}>
       <p id="shell-keyboard-help" className="visually-hidden">F6移到下一区域，Shift+F6移到上一区域。窄屏资源管理器内按Escape关闭。</p>
-      <header className="app-heading">
-        <img src="/favicon.svg" alt="" aria-hidden="true" className="brand-mark" />
-        <span className="brand-name">轻羽 <span className="brand-english">FeatherPad</span></span>
+      <header className="app-heading" data-tauri-drag-region>
+        <div className="app-brand" data-tauri-drag-region="deep">
+          <img src="/favicon.svg" alt="" aria-hidden="true" className="brand-mark" />
+          <span className="brand-name">轻羽 <span className="brand-english">FeatherPad</span></span>
+        </div>
         {menus}
         {headerActions && <div className="heading-actions">{headerActions}</div>}
+        {windowControls}
       </header>
       <div className="app-body">
         <nav className="activity-rail" aria-label="视图" aria-describedby="shell-keyboard-help">

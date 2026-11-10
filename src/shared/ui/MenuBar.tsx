@@ -5,6 +5,7 @@ export interface MenuAction {
   title: string;
   binding?: string | null;
   disabledReason?: string | null;
+  checked?: boolean;
   run?: () => void;
 }
 

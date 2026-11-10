@@ -17,14 +17,15 @@
         "width": 1200,
         "height": 800,
         "maximized": true,
+        "decorations": false,
         "minWidth": 800,
         "minHeight": 560,
         "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --disable-background-networking --disable-component-update --disable-domain-reliability --disable-sync --disable-gpu --no-first-run --no-default-browser-check"
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self' 'sha256-JBsNH6KklpZybsMeTtODN/kqaE7zUcHCjqjxjDkXwDQ='; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src ipc: http://ipc.localhost; object-src 'none'; frame-src 'self'; base-uri 'none'; form-action 'none'",
-      "devCsp": "default-src 'self'; script-src 'self' 'sha256-JBsNH6KklpZybsMeTtODN/kqaE7zUcHCjqjxjDkXwDQ='; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src ipc: http://ipc.localhost http://127.0.0.1:1420 ws://127.0.0.1:1420; object-src 'none'; frame-src 'self'; base-uri 'none'; form-action 'none'",
+      "csp": "default-src 'self'; script-src 'self' 'sha256-QvJ9IQ7/oi1ZHPJRSmlkT0Wyo8apIf/Sd6qRgpw3Qjg='; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src ipc: http://ipc.localhost; object-src 'none'; frame-src 'self'; base-uri 'none'; form-action 'none'",
+      "devCsp": "default-src 'self'; script-src 'self' 'sha256-QvJ9IQ7/oi1ZHPJRSmlkT0Wyo8apIf/Sd6qRgpw3Qjg='; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src ipc: http://ipc.localhost http://127.0.0.1:1420 ws://127.0.0.1:1420; object-src 'none'; frame-src 'self'; base-uri 'none'; form-action 'none'",
       "capabilities": [
         "main"
       ]

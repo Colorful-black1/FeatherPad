@@ -44,6 +44,7 @@ import { restoreRecoveryOnce } from '../features/desktop/recovery-startup';
 import { session } from '../features/desktop/session';
 import { hotExit } from '../features/desktop/hot-exit';
 import { HotExitDialog } from '../features/desktop/HotExitDialog';
+import { WindowControls } from '../features/desktop/WindowControls';
 import { fitSessionBounds } from '../features/desktop/window-restore';
 import { RecoveryPanel } from '../features/desktop/RecoveryPanel';
 import { settings } from '../features/desktop/settings';
@@ -1415,6 +1416,7 @@ export function App() {
         else showSidebarView('explorer');
       }}
       dark={dark}
+      windowControls={<WindowControls />}
       menus={<MenuBar groups={menuGroups} onPick={id => { void executeCommand(id); }} />}
       headerActions={<>
         {current && <div className="quick-actions" aria-label="常用文件操作">
@@ -1462,7 +1464,7 @@ export function App() {
           </div>
         </details>}
         <button type="button" className="plain-button command-center" {...commandProps('commands.open')}
-          onClick={() => void executeCommand('commands.open')}>
+          aria-label="命令面板" onClick={() => void executeCommand('commands.open')}>
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="6" /><path d="m15 15 5 5" /></svg>
           <span>命令面板</span><kbd>{commands.binding('commands.open') ?? ''}</kbd>
         </button>
@@ -1631,7 +1633,7 @@ export function App() {
             requestAnimationFrame(() => documents.focus(current.id));
           }} />;
       })()}
-      {outlineOpen && current && <OutlineDialog items={currentOutline} onSelect={item => {
+      {outlineOpen && current && <OutlineDialog items={currentOutline} activeOffset={documents.getDocument(current.id)?.state.selection.main.head ?? 0} onSelect={item => {
         const managed = documents.getDocument(current.id);
         if (managed) goToPosition(lineColumnAt(managed.state, item.offset));
       }} onClose={() => {

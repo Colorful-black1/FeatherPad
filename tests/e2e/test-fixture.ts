@@ -12,6 +12,8 @@ export const test = base.extend({
       if (window.top !== window) return;
       let native: Record<string, unknown> | undefined;
       let callbackId = 0;
+      const windowControlCalls: string[] = [];
+      Reflect.set(window, 'windowControlCalls', windowControlCalls);
       Reflect.set(window, '__TAURI_EVENT_PLUGIN_INTERNALS__', { unregisterListener: () => {} });
       Object.defineProperty(window, '__TAURI_INTERNALS__', {
         configurable: true,
@@ -27,6 +29,16 @@ export const test = base.extend({
               switch (command) {
                 case 'plugin:event|listen': return ++callbackId;
                 case 'plugin:event|unlisten': return null;
+                case 'plugin:window|is_maximized': return Reflect.get(window, 'windowMaximized') === true;
+                case 'plugin:window|toggle_maximize': {
+                  windowControlCalls.push('toggle-maximize');
+                  Reflect.set(window, 'windowMaximized', Reflect.get(window, 'windowMaximized') !== true);
+                  return null;
+                }
+                case 'plugin:window|minimize': windowControlCalls.push('minimize'); return null;
+                case 'plugin:window|close': windowControlCalls.push('close'); return null;
+                case 'plugin:window|start_dragging': windowControlCalls.push('start-dragging'); return null;
+                case 'plugin:window|internal_toggle_maximize': windowControlCalls.push('internal-toggle-maximize'); return null;
                 case 'set_global_shortcut': return { ok: true, value: { enabled: false } };
                 case 'load_session': return { ok: true, value: { session: null, warning: null, restoredGrantIds: [] } };
                 case 'list_recovery_entries': return { ok: true, value: {

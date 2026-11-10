@@ -13,6 +13,30 @@
   let userScrolled = false;
   const article = document.querySelector('article[aria-label="Markdown正文"]');
   const send = (kind, index) => parent.postMessage({ channel, kind, index }, '*');
+  const copyTimers = new Map();
+  const markCopied = (index, copied) => {
+    if (!article || !Number.isSafeInteger(index)) return;
+    const button = article.querySelector(`button[data-copy-id="${index}"]`);
+    if (!(button instanceof HTMLButtonElement)) return;
+    const existing = copyTimers.get(index);
+    if (existing) clearTimeout(existing);
+    if (!copied) {
+      delete button.dataset.copied;
+      button.title = '复制代码';
+      button.setAttribute('aria-label', '复制代码');
+      copyTimers.delete(index);
+      return;
+    }
+    button.dataset.copied = 'true';
+    button.title = '已复制';
+    button.setAttribute('aria-label', '已复制');
+    copyTimers.set(index, setTimeout(() => {
+      delete button.dataset.copied;
+      button.title = '复制代码';
+      button.setAttribute('aria-label', '复制代码');
+      copyTimers.delete(index);
+    }, 1500));
+  };
   const applyReadOnly = () => {
     for (const input of document.querySelectorAll('input[data-task-id]')) input.disabled = readOnly;
   };
@@ -45,6 +69,8 @@
     if (event.source !== parent || !data || data.channel !== channel) return;
     if (data.kind === 'render' && typeof data.html === 'string' && data.html.length <= 16 * 1024 * 1024 && article) {
       const retainedTop = document.scrollingElement?.scrollTop ?? 0;
+      for (const timer of copyTimers.values()) clearTimeout(timer);
+      copyTimers.clear();
       article.innerHTML = data.html;
       applyReadOnly();
       if (retainedTop > 0) window.scrollTo(0, retainedTop);
@@ -56,6 +82,8 @@
       userScrolled = false;
       if (scheduledScroll) { cancelAnimationFrame(scheduledScroll); scheduledScroll = 0; }
     }
+    if (data.kind === 'copied') markCopied(data.index, true);
+    if (data.kind === 'copyFailed') markCopied(data.index, false);
     let target = null;
     if (data.kind === 'anchor' && typeof data.fragment === 'string' && data.fragment.length <= 512) target = document.getElementById(data.fragment);
     if (data.kind === 'sourceScroll' && Number.isSafeInteger(data.from) && data.from >= 0) target = document.querySelector(`[data-source-from="${data.from}"]`);

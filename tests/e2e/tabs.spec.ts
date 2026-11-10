@@ -122,6 +122,40 @@ test('Web mock: file tree opens permanent tabs and tab keyboard navigation', asy
   await expect(editor(page)).toHaveText('c original');
 });
 
+test('tabs reorder by dragging and with Alt+Shift+Arrow keys', async ({ page }) => {
+  await installFiles(page);
+  await page.goto('/');
+  await folder(page);
+  await page.getByRole('treeitem', { name: 'a.txt', exact: true }).click();
+  await page.getByRole('treeitem', { name: 'b.txt', exact: true }).click();
+  await page.getByRole('treeitem', { name: 'c.txt', exact: true }).click();
+  const tabs = page.getByRole('tab');
+  await expect(tabs).toHaveCount(3);
+  const source = page.getByRole('tab', { name: 'c.txt', exact: true });
+  const target = page.getByRole('tab', { name: 'a.txt', exact: true });
+  const from = await source.boundingBox();
+  const to = await target.boundingBox();
+  if (!from || !to) throw new Error('Missing tab bounds');
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(to.x + 4, to.y + to.height / 2, { steps: 8 });
+  await expect(page.locator('.document-tab[data-drop="before"]')).toHaveCount(1);
+  await page.mouse.up();
+  await expect(tabs.nth(0)).toContainText('c.txt');
+  await expect(tabs.nth(1)).toContainText('a.txt');
+  await expect(tabs.nth(2)).toContainText('b.txt');
+  await expect(tabs.nth(0)).toHaveAttribute('aria-selected', 'true');
+  await tabs.nth(1).click();
+  await expect(tabs.nth(1)).toHaveAttribute('aria-selected', 'true');
+  const a = page.getByRole('tab', { name: 'a.txt', exact: true });
+  await a.focus();
+  await page.keyboard.press('Alt+Shift+ArrowRight');
+  await expect(tabs.nth(0)).toContainText('c.txt');
+  await expect(tabs.nth(1)).toContainText('b.txt');
+  await expect(tabs.nth(2)).toContainText('a.txt');
+  await expect(a).toBeFocused();
+});
+
 test('Web mock: dirty close defaults to cancel, restores focus and keeps a failed closing save', async ({ page }) => {
   await dirtyFile(page);
   await expect(dialog(page).getByRole('button', { name: '取消', exact: true })).toBeFocused();
