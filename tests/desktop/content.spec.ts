@@ -114,7 +114,7 @@ test('real Release isolates image and HTML views and compares independent disk s
     expect(await page.evaluate(() => Reflect.get(window, 'contentPwned'))).toBeUndefined(); expect(requests).toEqual([]);
     await page.screenshot({ path: path.join(evidence, 'html-isolated.png') });
     await modes.getByRole('button', { name: '源码', exact: true }).click(); await expect(page.locator('.cm-line')).toHaveText(lines);
-    await (await menuItem(page, '比较文件…')).click(); const diff = page.getByRole('dialog', { name: '双文件对比', exact: true });
+    await (await menuItem(page, '比较文件…')).click(); const diff = page.getByRole('region', { name: '双文件对比', exact: true });
     await diff.getByRole('button', { name: '选择左侧磁盘文件…', exact: true }).click(); await chooser.select('open', left);
     await diff.getByRole('button', { name: '选择右侧磁盘文件…', exact: true }).click(); await chooser.select('open', right);
     await diff.getByRole('button', { name: '生成对比', exact: true }).click();

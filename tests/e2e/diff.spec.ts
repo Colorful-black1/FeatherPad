@@ -8,7 +8,7 @@ test('two opened buffers compare in readonly worker snapshots with navigation an
   const source = 'same\nright\nsame2\nend ';
   await page.locator('.cm-content').focus(); await page.keyboard.insertText(source);
   await (await menuItem(page, '比较文件…')).click();
-  const dialog = page.getByRole('dialog', { name: '双文件对比', exact: true });
+  const dialog = page.getByRole('region', { name: '双文件对比', exact: true });
   await dialog.getByRole('combobox', { name: '左侧比较来源', exact: true }).selectOption({ label: '无标题 1（未保存）' });
   await dialog.getByRole('combobox', { name: '右侧比较来源', exact: true }).selectOption({ label: '无标题 2（未保存）' });
   await dialog.getByRole('button', { name: '生成对比', exact: true }).click();
@@ -51,7 +51,7 @@ test('Web mock: comparing two disk snapshots works from an empty editor and crea
     } });
   });
   await page.goto('/'); await (await menuItem(page, '比较文件…')).click();
-  const dialog = page.getByRole('dialog', { name: '双文件对比', exact: true });
+  const dialog = page.getByRole('region', { name: '双文件对比', exact: true });
   await dialog.getByRole('button', { name: '选择左侧磁盘文件…', exact: true }).click();
   await dialog.getByRole('button', { name: '选择右侧磁盘文件…', exact: true }).click();
   await dialog.getByRole('button', { name: '生成对比', exact: true }).click();

@@ -14,6 +14,7 @@ export interface AppCommandState {
   formatReason?: string | null;
   textViewReason?: string | null;
   hasDocument: boolean;
+  hasComparison: boolean;
   readOnlyReason: string | null;
   canSaveAs: boolean;
   hasDirty: boolean;
@@ -33,6 +34,7 @@ export interface AppCommandState {
 export type AppCommandActions = Record<AppCommandId, () => void | Promise<void>>;
 
 const hasDocument = (state: AppCommandState) => state.hasDocument ? null : '请先打开或新建文档。';
+const hasDocumentOrComparison = (state: AppCommandState) => state.hasDocument || state.hasComparison ? null : '请先打开或新建文档。';
 const saveBusy = (state: AppCommandState) => state.closing ? '正在关闭文档。' : state.saving || state.batchBusy ? '请等待当前保存结束。' : null;
 type CommandInfo = [AppCommandId, string, string, string | null, (state: AppCommandState) => string | null];
 const commandInfo: CommandInfo[] = [
@@ -44,7 +46,7 @@ const commandInfo: CommandInfo[] = [
   ['file.saveAs', '另存为', 'save as', 'Ctrl+Shift+S', state => hasDocument(state) ?? saveBusy(state) ?? (state.canSaveAs ? null : '此文档不能另存为。')],
   ['file.saveCopy', '保存副本', 'save copy', null, state => hasDocument(state) ?? saveBusy(state) ?? (state.canSaveAs ? null : '此文档不能保存副本。')],
   ['file.saveAll', '全部保存', 'save all', null, state => saveBusy(state) ?? (state.hasDirty ? null : '没有未保存修改。')],
-  ['file.close', '关闭当前标签', 'close tab', 'Ctrl+W', state => hasDocument(state) ?? (state.batchBusy || state.closing ? '请等待当前操作结束。' : null)],
+  ['file.close', '关闭当前标签', 'close tab', 'Ctrl+W', state => hasDocumentOrComparison(state) ?? (state.batchBusy || state.closing ? '请等待当前操作结束。' : null)],
   ['editor.find', '文件内查找与替换', 'find search replace 搜索', 'Ctrl+F', state => hasDocument(state) ?? state.textViewReason ?? (state.closing ? '正在关闭文档。' : null)],
   ['search.workspace', '在文件和工作区中查找', 'workspace search find in files 目录搜索', 'Ctrl+Shift+F', state => state.opening ? '请等待文件夹打开。' : null],
   ['tools.format', '格式化文档', 'format json xml html css javascript typescript yaml sql 格式', 'Shift+Alt+F', state => hasDocument(state) ?? state.readOnlyReason ?? state.formatReason ?? (state.closing ? '正在关闭文档。' : null)],

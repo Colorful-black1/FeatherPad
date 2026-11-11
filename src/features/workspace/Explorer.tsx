@@ -12,6 +12,7 @@ import { EntryIcon } from './FileIcon';
 interface ExplorerProps {
   currentReference: FileRef | undefined;
   onOpen: (reference: FileRef, intent?: 'preview' | 'pinned') => void;
+  onCompare?: ((entry: DirectoryEntry) => void) | undefined;
   onRenamed?: ((documents: readonly RenamedDocument[]) => void) | undefined;
   onTrash?: ((entry: DirectoryEntry) => void) | undefined;
   onReveal?: ((entry: DirectoryEntry) => void) | undefined;
@@ -255,7 +256,7 @@ function DirectoryContents({
   </div>;
 }
 
-export function Explorer({ currentReference, onOpen, onRenamed, onTrash, onReveal, onNewText, onChooseFile, onChooseFolder, onManageWorkspace, openEditors,
+export function Explorer({ currentReference, onOpen, onCompare, onRenamed, onTrash, onReveal, onNewText, onChooseFile, onChooseFolder, onManageWorkspace, openEditors,
   mutationBlocked = false, store = workspace }: ExplorerProps) {
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);
   const [editing, setEditing] = useState<EditingEntry | null>(null);
@@ -490,6 +491,8 @@ export function Explorer({ currentReference, onOpen, onRenamed, onTrash, onRevea
       target={menuTarget} onClose={() => setMenuTarget(null)} sections={[
         ...(menuEntry?.kind === 'file' ? [[
           { id: 'open', title: '打开文件', run: () => onOpen(menuEntry.ref, 'pinned') },
+          ...(onCompare ? [{ id: 'compare-with', title: '与文件比较…',
+            run: () => onCompare(menuEntry) }] : []),
           ...(onReveal ? [{ id: 'reveal', title: '在文件资源管理器中显示',
             disabledReason: ['junction', 'symlink'].includes(menuEntry.kind) ? '链接项不支持在资源管理器中定位。' : null,
             run: () => onReveal(menuEntry) }] : []),

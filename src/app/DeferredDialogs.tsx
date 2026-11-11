@@ -33,7 +33,25 @@ function DeferredDialog<P extends { onClose: () => void }>({ load, props }: {
   </dialog>;
 }
 
+function DeferredPanel<P extends { onClose: () => void }>({ load, props }: {
+  load: () => Promise<ComponentType<P>>; props: P;
+}) {
+  const [loaded, setLoaded] = useState<{ View: ComponentType<P> } | null>(null);
+  const [failed, setFailed] = useState(false), [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    let disposed = false;
+    void load().then(View => { if (!disposed) setLoaded({ View }); }, () => { if (!disposed) setFailed(true); });
+    return () => { disposed = true; };
+  }, [load, attempt]);
+  if (loaded) return <loaded.View {...props} />;
+  return <section className="comparison-loading" aria-label="双文件对比" aria-busy="true">
+    <p role={failed ? 'alert' : 'status'}>{failed ? '比较视图加载失败，请重试。' : '正在打开比较视图…'}</p>
+    {failed && <button type="button" className="plain-button" onClick={() => { setFailed(false); setAttempt(value => value + 1); }}>重试</button>}
+    <button type="button" className="plain-button" onClick={props.onClose}>关闭</button>
+  </section>;
+}
+
 export function SettingsDialog(props: ComponentProps<typeof SettingsView>) { return <DeferredDialog load={loadSettings} props={props} />; }
 export function FormatDialog(props: ComponentProps<typeof FormatView>) { return <DeferredDialog load={loadFormat} props={props} />; }
 export function TransformPreview(props: ComponentProps<typeof TransformView>) { return <DeferredDialog load={loadTransform} props={props} />; }
-export function DiffView(props: ComponentProps<typeof ComparisonView>) { return <DeferredDialog load={loadComparison} props={props} />; }
+export function DiffView(props: ComponentProps<typeof ComparisonView>) { return <DeferredPanel load={loadComparison} props={props} />; }

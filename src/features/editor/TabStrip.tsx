@@ -5,6 +5,14 @@ import type { DocumentSummary } from './documents';
 
 export type TabMenuAction = 'close' | 'closeOthers' | 'closeRight' | 'closeAll' | 'copyPath' | 'reveal';
 
+export interface ComparisonTabSummary {
+  id: string;
+  title: string;
+  active: boolean;
+  onSelect: () => void;
+  onClose: () => void;
+}
+
 interface PointerDrag {
   id: DocumentId;
   pointerId: number;
@@ -23,9 +31,10 @@ interface TabStripProps {
   onClose: (id: DocumentId) => void;
   onTabAction?: (action: TabMenuAction, id: DocumentId) => void;
   onReorder?: (ids: readonly DocumentId[]) => void;
+  comparisonTabs?: readonly ComparisonTabSummary[];
 }
 
-export function TabStrip({ documents, activeId, previewId, busy, onSelect, onPin, onClose, onTabAction, onReorder }: TabStripProps) {
+export function TabStrip({ documents, activeId, previewId, busy, onSelect, onPin, onClose, onTabAction, onReorder, comparisonTabs }: TabStripProps) {
   const names = new Map<string, number>();
   for (const document of documents) names.set(document.title, (names.get(document.title) ?? 0) + 1);
   const [menu, setMenu] = useState<{ id: DocumentId; x: number; y: number; origin: HTMLElement } | null>(null);
@@ -226,6 +235,19 @@ export function TabStrip({ documents, activeId, previewId, busy, onSelect, onPin
             title="关闭标签（Ctrl+W）" onClick={() => onClose(document.id)}>×</button>
         </div>;
       })}
+      {comparisonTabs?.map(tab => <div key={tab.id} className="document-tab comparison-tab" role="presentation" data-active={tab.active}>
+        <button id={`tab-${tab.id}`} role="tab" aria-selected={tab.active}
+          aria-controls={tab.active ? `panel-${tab.id}` : undefined}
+          aria-description="文件对比标签" tabIndex={tab.active ? 0 : -1} title={tab.title}
+          onClick={tab.onSelect}
+          onKeyDown={event => {
+            if (event.key === 'Delete') { event.preventDefault(); tab.onClose(); }
+          }}>
+          <span className="tab-label"><span><span className="tab-comparison-icon" aria-hidden="true">⇄</span>{tab.title}</span></span>
+        </button>
+        <button type="button" className="tab-close" aria-label={`关闭 ${tab.title}`}
+          tabIndex={tab.active ? 0 : -1} title="关闭标签（Ctrl+W）" onClick={tab.onClose}>×</button>
+      </div>)}
     </div>
     {menu && menuDocument && onTabAction && <ExplorerContextMenu
       target={{ x: menu.x, y: menu.y, path: menuDocument.displayPath, grantId: null, origin: menu.origin }}

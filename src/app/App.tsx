@@ -102,6 +102,13 @@ interface FindRequest {
   scope: SearchScope | null;
 }
 
+interface ComparisonTab {
+  id: string;
+  title: string;
+  left: FileRef | null;
+  right: FileRef | null;
+}
+
 export function App() {
   const [systemDark, setSystemDark] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches);
   const settingsState = useSyncExternalStore(settings.subscribe, settings.getSnapshot);
@@ -134,7 +141,9 @@ export function App() {
   const [goToOpen, setGoToOpen] = useState(false);
   const [formatDocumentId, setFormatDocumentId] = useState<DocumentId | null>(null);
   const [transformDocumentId, setTransformDocumentId] = useState<DocumentId | null>(null);
-  const [comparisonOpen, setComparisonOpen] = useState(false);
+  const [comparisonTabs, setComparisonTabs] = useState<ComparisonTab[]>([]);
+  const [activeComparisonId, setActiveComparisonId] = useState<string | null>(null);
+  const activeComparison = comparisonTabs.find(tab => tab.id === activeComparisonId) ?? null;
   const [outlineOpen, setOutlineOpen] = useState(false);
   const [startupPending, setStartupPending] = useState(() => !!Reflect.get(window, '__TAURI_INTERNALS__'));
   const [workspacePanelsReady, setWorkspacePanelsReady] = useState(() => !Reflect.get(window, '__TAURI_INTERNALS__'));
@@ -544,6 +553,7 @@ export function App() {
   ): Promise<string | null> => {
     const result = await tabs.open(reference, intent);
     if (result.ok) {
+      setActiveComparisonId(null);
       if (window.matchMedia('(max-width: 1099px)').matches && window.document.activeElement?.closest('.sidebar')) {
         setSidebarOpen(false);
         requestAnimationFrame(() => documents.focus(result.value.id));
@@ -555,7 +565,7 @@ export function App() {
     }
     setPreviewCandidates(candidates => offerReadOnlyOpen(candidates, reference, result.error));
     return result.error.message;
-  }, [rememberRecentFile, setSidebarOpen, setNotice]);
+  }, [rememberRecentFile, setSidebarOpen, setNotice, setActiveComparisonId]);
 
   const favorites = useFavorites(roots, openOne, rememberRecentWorkspace);
   const workspaceFile = useWorkspaceFile(roots, setNotice);
@@ -646,6 +656,7 @@ export function App() {
       const mode = encoding && candidate.mode === 'text-preview' ? undefined : candidate.mode;
       const result = await tabs.open(candidate.ref, 'pinned', mode, encoding);
       if (result.ok) {
+        setActiveComparisonId(null);
         await rememberRecentFile(result.value.id);
         setPreviewCandidates(candidates => candidates.filter(item => item !== candidate));
       } else {
@@ -653,13 +664,14 @@ export function App() {
         setPreviewCandidates(candidates => offerReadOnlyOpen(candidates, candidate.ref, result.error));
       }
     } finally { opening.current = false; setBusy(false); }
-  }, [rememberRecentFile, setBusy, setError, setAutoFocus]);
+  }, [rememberRecentFile, setBusy, setError, setAutoFocus, setActiveComparisonId]);
 
-  const newFile = useCallback(async () => { setAutoFocus(true); await tabs.createUntitled(); }, [setAutoFocus]);
+  const newFile = useCallback(async () => { setAutoFocus(true); setActiveComparisonId(null); await tabs.createUntitled(); }, [setAutoFocus, setActiveComparisonId]);
 
   const openTransactionCopy = useCallback(async (receiptId: string): Promise<string | null> => {
     const existing = transactionCopies.current.get(receiptId);
     if (existing && documents.getDocument(existing)) {
+      setActiveComparisonId(null);
       documents.activate(existing);
       documents.focus(existing);
       return null;
@@ -669,10 +681,11 @@ export function App() {
     if (documents.isHotExitFrozen()) return '正在退出，恢复副本尚未打开；原记录仍保留。';
     const id = documents.openTransactionDraft(loaded.value);
     transactionCopies.current.set(receiptId, id);
+    setActiveComparisonId(null);
     setAutoFocus(true);
     const protectedCopy = await recoveries.flush(id);
     return protectedCopy.ok ? null : `副本已在编辑器中打开，但恢复快照未更新：${protectedCopy.error.message} 原记录仍保留，请先另存。`;
-  }, []);
+  }, [setActiveComparisonId]);
 
   const focusAfterClose = useCallback(() => {
     setAutoFocus(true);
@@ -1058,7 +1071,8 @@ export function App() {
     const id = targetId ?? snapshot.activeId;
     const active = id ? documents.getDocument(id)?.summary : undefined;
     const batch = saveAll.getSnapshot();
-    return { hasDocument: !!active, readOnlyReason: active?.readOnlyReason ?? null, canSaveAs: active?.canSaveAs ?? false,
+    return { hasDocument: !!active, hasComparison: activeComparisonId !== null,
+      readOnlyReason: active?.readOnlyReason ?? null, canSaveAs: active?.canSaveAs ?? false,
       formatReason: active && !formatLanguage(active.languageId, active.displayPath) ? '当前语言没有格式化器，Java仅提供高亮。' : null,
       textViewReason: active?.format.encoding === 'binary' ? '图片视图没有文本位置。' : null,
       hasDirty: snapshot.documents.some(document => document.dirty), isPreview: !!active && tabs.getSnapshot().previewId === active.id,
@@ -1070,11 +1084,12 @@ export function App() {
       hasWorkspace: workspace.getSnapshot().roots.length > 0,
       opening: busy, saving: savingCount > 0, closing: closingCount > 0 || !!active?.closing,
       batchBusy: batch.phase === 'running' || batch.phase === 'cancelling' };
-  }, [busy, savingCount, closingCount, navigationAvailability]);
+  }, [busy, savingCount, closingCount, navigationAvailability, activeComparisonId]);
   const commandAvailability: AppCommandState = {
     textViewReason: current?.format.encoding === 'binary' ? '图片视图没有文本位置。' : null,
     formatReason: current && !formatLanguage(current.languageId, current.displayPath) ? '当前语言没有格式化器，Java仅提供高亮。' : null,
-    hasDocument: !!current, readOnlyReason: current?.readOnlyReason ?? null, canSaveAs: current?.canSaveAs ?? false,
+    hasDocument: !!current, hasComparison: activeComparisonId !== null,
+    readOnlyReason: current?.readOnlyReason ?? null, canSaveAs: current?.canSaveAs ?? false,
     hasDirty: snapshot.documents.some(document => document.dirty), isPreview: !!current && tabState.previewId === current.id,
     tabCount: snapshot.documents.length,
     cleanTabCount: snapshot.documents.filter(document => !document.dirty && !document.closing).length,
@@ -1255,6 +1270,33 @@ export function App() {
     setAutoFocus(true);
   }, [replacementBusy]);
 
+  const openComparison = useCallback((left: FileRef | null, right: FileRef | null, title: string) => {
+    const id = `comparison-${crypto.randomUUID()}`;
+    setComparisonTabs(tabs => [...tabs, { id, title, left, right }]);
+    setActiveComparisonId(id);
+    if (window.matchMedia('(max-width: 1099px)').matches) setSidebarOpen(false);
+  }, [setSidebarOpen]);
+
+  const closeComparison = useCallback((id: string) => {
+    setComparisonTabs(tabs => tabs.filter(tab => tab.id !== id));
+    setActiveComparisonId(current => current === id ? null : current);
+    if (activeComparisonId === id) {
+      requestAnimationFrame(() => { const active = documents.getSnapshot().activeId; if (active) documents.focus(active); });
+    }
+  }, [activeComparisonId]);
+
+  const compareWith = useCallback(async (entry: DirectoryEntry) => {
+    const selection = await files.chooseFiles(false);
+    if (!selection.ok) { setError(selection.error.message); return; }
+    const right = selection.value.grants[0];
+    if (!right) {
+      const failure = selection.value.failures[0];
+      if (failure) setError(failure.error.message);
+      return;
+    }
+    openComparison(entry.ref, right, `对比 ${entry.name}`);
+  }, [openComparison, setError]);
+
   const commandActions = useMemo<AppCommandActions>(() => ({
     'file.new': newFile, 'window.new': async () => {
       const result = await desktopBridge.createWindow();
@@ -1263,12 +1305,15 @@ export function App() {
     'file.open': openFile, 'workspace.open': openFolder, 'file.save': saveCurrent,
     'file.saveAs': () => saveDestination(), 'file.saveCopy': () => saveDestination('copy'),
     'file.saveAll': async () => { await saveAll.run(); },
-    'file.close': async () => { const id = documents.getSnapshot().activeId; if (id) await requestClose(id); },
+    'file.close': async () => {
+      if (activeComparisonId) { closeComparison(activeComparisonId); return; }
+      const id = documents.getSnapshot().activeId; if (id) await requestClose(id);
+    },
     'editor.find': openFind,
     'search.workspace': () => setWorkspaceSearchOpen(true),
     'tools.format': () => setFormatDocumentId(documents.getSnapshot().activeId),
     'tools.transform': () => setTransformDocumentId(documents.getSnapshot().activeId),
-    'tools.compare': () => setComparisonOpen(true),
+    'tools.compare': () => openComparison(null, null, '文件对比'),
     'editor.toggleComment': () => runEditingCommand('toggleComment'),
     'editor.toggleBlockComment': () => runEditingCommand('toggleBlockComment'),
     'editor.moveLineUp': () => runEditingCommand('moveLineUp'),
@@ -1312,7 +1357,8 @@ export function App() {
     'commands.open': () => openPalette('commands'), 'files.quickOpen': () => openPalette('files'),
   }), [newFile, openFile, openFolder, saveCurrent, saveDestination, requestClose, requestCloseBatch,
     openFind, runEditingCommand, navigateBack, navigateForward, openPalette, openSettings, dark, zoomEditor,
-    setGoToOpen, setOutlineOpen, setSidebarOpen, setWorkspaceSearchOpen, setFormatDocumentId, setTransformDocumentId, setComparisonOpen, setNotice]);
+    setGoToOpen, setOutlineOpen, setSidebarOpen, setWorkspaceSearchOpen, setFormatDocumentId, setTransformDocumentId,
+    activeComparisonId, closeComparison, openComparison, setNotice]);
 
   const executeCommand = useCallback(async (id: string, targetId?: DocumentId) => {
     const actions = targetId ? { ...commandActions, 'file.close': () => requestClose(targetId), 'tabs.pin': () => tabs.pin(targetId) } : commandActions;
@@ -1350,6 +1396,7 @@ export function App() {
 
   function selectTab(id: DocumentId) {
     setAutoFocus(false);
+    setActiveComparisonId(null);
     const groups = tabs.getSnapshot();
     if (groups.secondaryId && groups.focusedGroup === 'secondary') tabs.focusSecondary(id);
     else tabs.focusPrimary(id);
@@ -1477,6 +1524,7 @@ export function App() {
         {workspacePanelsReady ? <>
           <div id="sidebar-explorer" className="sidebar-view resource-view" hidden={sidebarView !== 'explorer'}>
           <Explorer currentReference={currentReference} onOpen={(reference, intent) => void openTreeFile(reference, intent ?? 'pinned')}
+            onCompare={entry => void compareWith(entry)}
             onManageWorkspace={() => showSidebarView('workspace')}
             onReveal={revealWorkspaceEntry}
             openEditors={<OpenEditors documents={snapshot.documents} activeId={snapshot.activeId}
@@ -1533,7 +1581,7 @@ export function App() {
           <p className="sidebar-empty">正在载入最近记录、收藏和目录树…</p>
         </section>}
       </div>}
-      status={<><span>{closingCount > 0 || current?.closing ? '正在关闭…' : batchBusy ? '正在全部保存…' : savingCount > 0 ? '正在保存…' : busy ? '正在打开…' : current ? current.readOnlyReason ? '只读' : current.dirty ? '未保存修改' : current.displayPath ? '未修改' : '未命名' : '就绪'}</span>{current && current.format.encoding !== 'binary' && <><span role="group" aria-label="光标与字数" aria-live="off"><EditorStatus registry={documents} id={current.id} summary={current} /></span><span aria-label="编辑字号">{settingsState.settings.fontSize}px</span></>}
+      status={<><span>{activeComparison ? '文件对比 · 只读' : closingCount > 0 || current?.closing ? '正在关闭…' : batchBusy ? '正在全部保存…' : savingCount > 0 ? '正在保存…' : busy ? '正在打开…' : current ? current.readOnlyReason ? '只读' : current.dirty ? '未保存修改' : current.displayPath ? '未修改' : '未命名' : '就绪'}</span>{!activeComparison && current && current.format.encoding !== 'binary' && <><span role="group" aria-label="光标与字数" aria-live="off"><EditorStatus registry={documents} id={current.id} summary={current} /></span><span aria-label="编辑字号">{settingsState.settings.fontSize}px</span></>}
         {(notice || tabState.warning || commandState.warning) && <StatusNotices>
           {notice && <NoticeBanner message={notice} tone={noticeTone} onClose={() => {
             setNotice(null);
@@ -1542,7 +1590,7 @@ export function App() {
           {tabState.warning && <p className="notice">{tabState.warning}</p>}
           {commandState.warning && <p className="notice">{commandState.warning}</p>}
         </StatusNotices>}
-        <span className="status-end">{current?.format.encoding === 'binary' ? '图片 · 只读' : current ? `${current.format.encoding.toUpperCase()}${current.format.bom === 'none' ? '' : ' BOM'} · ${current.format.lineEnding.toUpperCase()}` : '轻羽 FeatherPad'}</span></>}
+        <span className="status-end">{activeComparison ? '双文件 · 只读快照' : current?.format.encoding === 'binary' ? '图片 · 只读' : current ? `${current.format.encoding.toUpperCase()}${current.format.bom === 'none' ? '' : ' BOM'} · ${current.format.lineEnding.toUpperCase()}` : '轻羽 FeatherPad'}</span></>}
     >
       {error && <ErrorDialog message={error} onClose={() => setError(null)} />}
       {replacementPlan && <ReplacePreviewDialog plan={replacementPlan} busy={replacementBusy}
@@ -1555,12 +1603,22 @@ export function App() {
         onOpen={candidate => void openReadOnlyPreview(candidate)}
         onOpenEncoding={(candidate, encoding) => void openReadOnlyPreview(candidate, encoding)}
         onCancel={mode => setPreviewCandidates(candidates => candidates.filter(candidate => candidate.mode !== mode))} />
-      {current && snapshot.activeId ? <>
-        <TabStrip documents={snapshot.documents} activeId={snapshot.activeId} previewId={tabState.previewId}
-          busy={busy || savingCount > 0 || batchBusy || closingCount > 0} onSelect={selectTab}
-          onPin={id => { if (tabs.getSnapshot().previewId === id) void executeCommand('tabs.pin', id); }}
-          onClose={id => void executeCommand('file.close', id)} onReorder={ids => documents.reorder(ids)}
-          onTabAction={handleTabAction} />
+      {(comparisonTabs.length > 0 || (current && snapshot.activeId)) && <TabStrip documents={snapshot.documents}
+        activeId={activeComparison ? null : snapshot.activeId} previewId={tabState.previewId}
+        busy={busy || savingCount > 0 || batchBusy || closingCount > 0} onSelect={selectTab}
+        onPin={id => { if (tabs.getSnapshot().previewId === id) void executeCommand('tabs.pin', id); }}
+        onClose={id => void executeCommand('file.close', id)} onReorder={ids => documents.reorder(ids)}
+        onTabAction={handleTabAction}
+        comparisonTabs={comparisonTabs.map(tab => ({
+          id: tab.id, title: tab.title, active: tab.id === activeComparisonId,
+          onSelect: () => setActiveComparisonId(tab.id), onClose: () => closeComparison(tab.id),
+        }))} />}
+      {activeComparison ? <div id={`panel-${activeComparison.id}`} role="tabpanel" aria-labelledby={`tab-${activeComparison.id}`} className="comparison-panel">
+        <DiffView key={activeComparison.id} registry={documents}
+          initial={activeComparison.left && activeComparison.right
+            ? { left: activeComparison.left, right: activeComparison.right } : undefined}
+          onClose={() => closeComparison(activeComparison.id)} />
+      </div> : current && snapshot.activeId ? <>
         <Breadcrumbs displayPath={current.displayPath} language={languageLabel(current.languageId)} />
         <FindBar registry={documents} id={current.id} version={current.version} readOnlyReason={current.readOnlyReason}
           request={findRequest?.id === current.id ? findRequest : null} open={findOpen} onClose={() => setFindOpen(false)} />
@@ -1623,7 +1681,6 @@ export function App() {
       {transformDocumentId && documents.getDocument(transformDocumentId) && <TransformPreview key={transformDocumentId} registry={documents} id={transformDocumentId} onClose={() => {
         setTransformDocumentId(null); requestAnimationFrame(() => documents.focus(transformDocumentId));
       }} />}
-      {comparisonOpen && <DiffView registry={documents} onClose={() => { setComparisonOpen(false); requestAnimationFrame(() => { const id = documents.getSnapshot().activeId; if (id) documents.focus(id); }); }} />}
       {goToOpen && current && (() => {
         const managed = documents.getDocument(current.id);
         if (!managed) return null;

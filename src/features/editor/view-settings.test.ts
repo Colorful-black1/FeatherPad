@@ -12,7 +12,7 @@ it('font zoom respects 8–40px bounds and resets to 14px', () => {
 
 it('font commands share the registry, allow read-only views and honor remapping', () => {
   const commands = createAppCommands();
-  const state: AppCommandState = { hasDocument: true, readOnlyReason: '只读', canSaveAs: true,
+  const state: AppCommandState = { hasDocument: true, hasComparison: false, readOnlyReason: '只读', canSaveAs: true,
     hasDirty: false, isPreview: false, tabCount: 1, cleanTabCount: 1, isSplit: false, canReopen: false,
     canNavigateBack: false, canNavigateForward: false, hasWorkspace: false,
     opening: false, saving: false, closing: false, batchBusy: false };

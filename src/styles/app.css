@@ -883,6 +883,8 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round
 .document-tab[data-drop="before"]::before { left: 0; }
 .document-tab[data-drop="after"]::after { right: 0; }
 .document-tabs[data-dragging="true"] { cursor: grabbing; user-select: none; }
+.comparison-tab .tab-comparison-icon { margin-right: var(--space-1); color: var(--accent); }
+.comparison-panel { flex: 1; min-height: 0; min-width: 0; display: flex; }
 .document-tabs button { display: flex; align-items: center; gap: var(--space-2); min-height: 32px; padding: var(--space-1) var(--space-3); background: transparent; border: 0; color: var(--text-secondary); }
 .document-tabs [role="tab"] { min-width: 0; flex: 1 1 auto; }
 .document-tabs button[aria-selected="true"] { color: var(--text-primary); }
@@ -991,6 +993,38 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round
 .disk-comparison-pane > small { display: block; padding: var(--space-2); }
 .disk-comparison-pane .diff-changed-line { background: var(--accent-soft); border-inline-start: 2px solid var(--accent); }
 .diff-navigation { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-block: var(--space-2); }
+.comparison-view { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--bg-editor); }
+.comparison-view:focus-visible { outline-offset: -2px; }
+.comparison-view-header { flex: 0 0 auto; display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); padding: var(--space-2) var(--space-4); border-bottom: 1px solid var(--border); background: var(--bg-surface); }
+.comparison-view-title h2 { margin: 0; font-size: 13px; font-weight: 600; }
+.comparison-view-title p { margin: 2px 0 0; color: var(--text-secondary); font-size: 11px; }
+.comparison-view-actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2) var(--space-3); }
+.comparison-view-actions label { display: flex; align-items: center; gap: var(--space-1); color: var(--text-secondary); font-size: 11px; white-space: nowrap; }
+.comparison-view-actions .plain-button, .comparison-view-actions .primary-button { min-height: 26px; padding: 0 var(--space-2); font-size: 11px; white-space: nowrap; }
+.comparison-sources { flex: 0 0 auto; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-2); margin: 0; padding: var(--space-1) var(--space-4) var(--space-2); border: 0; border-bottom: 1px solid var(--border); }
+.comparison-sources > legend { padding: 0; color: var(--text-muted); font-size: 10px; }
+.comparison-sources > section { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-1) var(--space-2); min-width: 0; padding: var(--space-1) var(--space-2); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--bg-soft); }
+.comparison-sources label { display: flex; align-items: center; gap: var(--space-1); min-width: 0; color: var(--text-secondary); font-size: 11px; }
+.comparison-sources select { max-width: 100%; min-height: 24px; padding: 0 var(--space-1); font-size: 11px; }
+.comparison-sources .plain-button { min-height: 24px; padding: 0 var(--space-2); font-size: 11px; }
+.comparison-sources p[role="status"] { flex: 1 0 100%; margin: 0; color: var(--warning); font-size: 11px; }
+.comparison-notice { margin: var(--space-1) var(--space-4) 0; font-size: 11px; }
+.comparison-result { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0 var(--space-4) var(--space-2); overflow: hidden; }
+.comparison-empty { flex: 1; display: grid; place-content: center; color: var(--text-secondary); font-size: 12px; }
+.comparison-loading { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: var(--space-2); color: var(--text-secondary); font-size: 12px; }
+.comparison-loading p { margin: 0; }
+.comparison-view .disk-comparison-grid { flex: 1; min-height: 0; grid-template-rows: minmax(0, 1fr); }
+.comparison-view .disk-comparison-grid > div { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.comparison-view .disk-comparison-grid > div > p { margin: 0 0 var(--space-1); color: var(--text-secondary); font-size: 11px; }
+.comparison-view .disk-comparison-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.comparison-view .disk-comparison-pane > div { flex: 1; min-height: 0; height: auto; overflow: hidden; }
+.comparison-view .disk-comparison-pane .cm-editor { height: 100%; }
+.comparison-view .disk-comparison-pane .cm-scroller { overflow: auto; }
+@media (max-width: 700px) {
+  .comparison-view-header { flex-wrap: wrap; }
+  .comparison-sources { grid-template-columns: minmax(0, 1fr); }
+  .comparison-view .disk-comparison-grid { grid-template-columns: minmax(0, 1fr); grid-template-rows: repeat(2, minmax(0, 1fr)); }
+}
 .workspace-roots { padding: var(--space-2); border-bottom: 1px solid var(--border); }
 .workspace-roots ul { list-style: none; padding: 0; margin: 0; }
 .workspace-roots li { margin-block: var(--space-2); }
