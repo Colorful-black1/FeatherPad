@@ -1433,7 +1433,7 @@ export function App() {
   ];
 
   if (startupPending) return <main className="startup-screen" role="status" aria-live="polite">
-    <img src="/favicon.svg" alt="" aria-hidden="true" className="brand-mark" />
+    <img src="/favicon.png" alt="" aria-hidden="true" className="brand-mark" />
     <p>正在恢复本地会话…</p>
   </main>;
 

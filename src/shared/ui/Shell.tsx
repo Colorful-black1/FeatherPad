@@ -94,7 +94,7 @@ export function Shell({ children, sidebar, status, headerActions, windowControls
       <p id="shell-keyboard-help" className="visually-hidden">F6移到下一区域，Shift+F6移到上一区域。窄屏资源管理器内按Escape关闭。</p>
       <header className="app-heading" data-tauri-drag-region>
         <div className="app-brand" data-tauri-drag-region="deep">
-          <img src="/favicon.svg" alt="" aria-hidden="true" className="brand-mark" />
+          <img src="/favicon.png" alt="" aria-hidden="true" className="brand-mark" />
           <span className="brand-name">轻羽 <span className="brand-english">FeatherPad</span></span>
         </div>
         {menus}
