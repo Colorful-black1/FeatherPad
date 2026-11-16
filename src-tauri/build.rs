@@ -1,4 +1,8 @@
 fn main() {
+    // 图标会被打包进 Windows 资源；不声明依赖时改图标不会重跑 build script，exe 仍嵌旧图标
+    println!("cargo:rerun-if-changed=icons/icon.ico");
+    println!("cargo:rerun-if-changed=icons/icon.png");
+
     let attributes =
         tauri_build::Attributes::new().app_manifest(tauri_build::AppManifest::new().commands(&[
             "choose_files",

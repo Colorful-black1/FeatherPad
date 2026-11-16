@@ -78,7 +78,7 @@ pub(crate) fn create_window(
         focus(&existing)?;
         return Ok(window_id);
     }
-    let window = WebviewWindowBuilder::new(app, &window_id, WebviewUrl::App("index.html".into()))
+    let mut builder = WebviewWindowBuilder::new(app, &window_id, WebviewUrl::App("index.html".into()))
         .title("轻羽 FeatherPad")
         .decorations(false)
         .inner_size(1200.0, 800.0)
@@ -88,9 +88,18 @@ pub(crate) fn create_window(
              --disable-background-networking --disable-component-update \
              --disable-domain-reliability --disable-sync --disable-gpu --no-first-run \
              --no-default-browser-check",
-        )
+        );
+    if let Some(icon) = app.default_window_icon().cloned() {
+        builder = builder.icon(icon).map_err(|_| {
+            AppError::new(ErrorCode::Internal, "窗口图标设置失败")
+        })?;
+    }
+    let window = builder
         .build()
         .map_err(|_| AppError::new(ErrorCode::Internal, "无法创建新窗口，请重试"))?;
+    if let Some(icon) = app.default_window_icon().cloned() {
+        crate::platform::windows::apply_window_icon(&window, &icon);
+    }
     focus(&window)?;
     Ok(window_id)
 }

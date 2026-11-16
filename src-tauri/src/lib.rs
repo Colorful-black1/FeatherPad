@@ -152,6 +152,13 @@ pub fn run() {
         .manage(commands::export::PdfCoordinator::default())
         .manage(desktop)
         .setup(|app| {
+            // 自定义标题栏不走系统绘制，窗口图标需要显式设置，否则任务栏显示默认空白文档图标
+            if let Some(window) = app.get_webview_window("main") {
+                if let Some(icon) = app.default_window_icon().cloned() {
+                    let _ = window.set_icon(icon.clone());
+                    platform::windows::apply_window_icon(&window, &icon);
+                }
+            }
             commands::desktop::start_primary_scanner(app.handle().clone());
             Ok(())
         })
