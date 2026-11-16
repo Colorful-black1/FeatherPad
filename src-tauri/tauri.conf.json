@@ -39,7 +39,8 @@
       "../packaging/third-party-inventory.json": "packaging/third-party-inventory.json",
       "../docs/USER-GUIDE.md": "docs/USER-GUIDE.md",
       "../docs/RECOVERY.md": "docs/RECOVERY.md",
-      "../docs/RELEASE-NOTES.md": "docs/RELEASE-NOTES.md"
+      "../docs/RELEASE-NOTES.md": "docs/RELEASE-NOTES.md",
+      "icons/filetypes/*.ico": "icons/filetypes/"
     },
     "targets": [
       "nsis"

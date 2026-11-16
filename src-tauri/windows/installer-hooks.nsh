@@ -44,18 +44,6 @@
   ${EndIf}
 !macroend
 
-!macro FeatherPadRemoveExtension EXT
-  ${If} $R6 == 1
-    ClearErrors
-    ReadRegStr $0 HKCU "Software\Classes\${EXT}\OpenWithProgids" "FeatherPad.Text"
-    ${IfNot} ${Errors}
-    ${AndIf} $0 == ""
-      DeleteRegValue HKCU "Software\Classes\${EXT}\OpenWithProgids" "FeatherPad.Text"
-    ${EndIf}
-  ${EndIf}
-  !insertmacro FeatherPadRemoveMenu "Software\Classes\SystemFileAssociations\${EXT}\shell\FeatherPad"
-!macroend
-
 !macro FeatherPadRemoveMenu KEY
   ReadRegStr $0 HKCU "${KEY}" "FeatherPadManaged"
   ReadRegStr $1 HKCU "${KEY}\command" ""
@@ -82,23 +70,63 @@
   !insertmacro FeatherPadRequireClosed
   ${If} $UpdateMode <> 1
     StrCpy $R5 0
-    !insertmacro FeatherPadRemoveManagedKey "Software\Classes\FeatherPad.Text" "DefaultIcon"
-    StrCpy $R6 $R5
     !insertmacro FeatherPadRemoveManagedKey "Software\Classes\Applications\featherpad.exe" "DefaultIcon"
-    !insertmacro FeatherPadRemoveExtension ".txt"
-    !insertmacro FeatherPadRemoveExtension ".md"
-    !insertmacro FeatherPadRemoveExtension ".markdown"
-    !insertmacro FeatherPadRemoveExtension ".json"
-    !insertmacro FeatherPadRemoveExtension ".jsonc"
-    !insertmacro FeatherPadRemoveExtension ".yaml"
-    !insertmacro FeatherPadRemoveExtension ".yml"
-    !insertmacro FeatherPadRemoveExtension ".toml"
-    !insertmacro FeatherPadRemoveExtension ".xml"
-    !insertmacro FeatherPadRemoveExtension ".csv"
-    !insertmacro FeatherPadRemoveExtension ".log"
-    !insertmacro FeatherPadRemoveExtension ".ini"
-    !insertmacro FeatherPadRemoveExtension ".conf"
-    !insertmacro FeatherPadRemoveExtension ".sql"
+    ; Remove all per-type ProgId subtrees (FeatherPad.Text, FeatherPad.<shape>.<color>).
+    StrCpy $R8 0
+    featherpad_un_pid_loop:
+      ClearErrors
+      EnumRegKey $9 HKCU "Software\Classes" $R8
+      ${If} $9 == ""
+        Goto featherpad_un_pid_done
+      ${EndIf}
+      StrCpy $R7 $9 10
+      ${If} $R7 == "FeatherPad"
+        StrCpy $R5 0
+        !insertmacro FeatherPadRemoveManagedKey "Software\Classes\${9}" "DefaultIcon"
+        ${If} $R5 == 1
+          Goto featherpad_un_pid_loop
+        ${EndIf}
+      ${EndIf}
+      IntOp $R8 $R8 + 1
+      Goto featherpad_un_pid_loop
+    featherpad_un_pid_done:
+    ; Clear FeatherPad.* values from every extension's OpenWithProgids.
+    StrCpy $R8 0
+    featherpad_un_ext_loop:
+      ClearErrors
+      EnumRegKey $9 HKCU "Software\Classes" $R8
+      ${If} $9 == ""
+        Goto featherpad_un_ext_done
+      ${EndIf}
+      ; A class subkey starting with "." is an extension carrier.
+      StrCpy $R7 $9 1
+      ${If} $R7 == "."
+        ; Relinquish the extension default ProgId if it is one of ours.
+        ReadRegStr $2 HKCU "Software\Classes\${9}" ""
+        StrCpy $R7 $2 9
+        ${If} $R7 == "FeatherPa"
+          DeleteRegValue HKCU "Software\Classes\${9}" ""
+        ${EndIf}
+        StrCpy $R6 0
+        featherpad_un_val_loop:
+          ClearErrors
+          EnumRegValue $1 HKCU "Software\Classes\${9}\OpenWithProgids" $R6
+          ${If} ${Errors}
+          ${OrIf} $1 == ""
+            Goto featherpad_un_val_done
+          ${EndIf}
+          StrCpy $R7 $1 9
+          ${If} $R7 == "FeatherPa"
+            DeleteRegValue HKCU "Software\Classes\${9}\OpenWithProgids" "$1"
+            Goto featherpad_un_val_loop
+          ${EndIf}
+          IntOp $R6 $R6 + 1
+          Goto featherpad_un_val_loop
+        featherpad_un_val_done:
+      ${EndIf}
+      IntOp $R8 $R8 + 1
+      Goto featherpad_un_ext_loop
+    featherpad_un_ext_done:
     !insertmacro FeatherPadRemoveMenu "Software\Classes\Directory\shell\FeatherPad"
     System::Call 'shell32::SHChangeNotify(i 0x8000000, i 0, p 0, p 0)'
     ${If} $DeleteAppDataCheckboxState == 1

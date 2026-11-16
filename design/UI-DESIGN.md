@@ -6,6 +6,16 @@
 - `public/favicon.png`（256×256）成为唯一引用的图标源，标题栏、启动页和浏览器标签共用它；`src-tauri/icons/icon.png`（256）与 `icon.ico`（16/24/32/48/64/128/256，32 位 BMP 条目）按同一张图生成，供窗口、任务栏和安装器使用。原 `public/favicon.svg` 已删除，`index.html`、`src/app/App.tsx`、`src/shared/ui/Shell.tsx` 的引用改为 `/favicon.png`。
 - 这张图自带的青绿底属于图标本身的配色，不改动界面语义 token：界面仍是暖灰 + 苔绿，深色主题仍是 VS Code Dark+ 的中性灰。
 - 本次只更新图标资源与引用，未重建 EXE 或安装器。
+- 2026-11-14 修正任务栏图标：应用使用自定义标题栏，窗口图标需显式设置，否则任务栏回落为 Windows 默认空白文档图标。主窗口在 `setup` 中用 `default_window_icon()` 设置，新建窗口同样带上该图标；`build.rs` 声明 `icons/icon.ico`、`icons/icon.png` 为构建依赖，避免改图标后不重跑资源生成。
+
+## 2026-11-16 系统「打开方式」按文件类型显示不同图标
+
+- 需求：文件属性 → 打开方式里，不同文件类型应像 VS Code 一样各显示对应图标，而不是全部使用同一个 exe 默认图标。
+- 做法：把界面文件树用的 `shape`+`color` 组合（`src/features/workspace/file-icons.ts`，142 个扩展名 → 33 种唯一组合）用 Pillow 栅格化成多尺寸 `.ico`（16/24/32/48/64/128/256），落在 `src-tauri/icons/filetypes/<shape>-<color>.ico`，随安装包资源发布到 `<安装目录>\icons\filetypes\`。
+- 注册表：`src-tauri/src/platform/windows/associations.rs` 由「所有扩展名共用一个 `FeatherPad.Text`」改为「每个类型一个 `FeatherPad.<shape>.<color>` ProgId，`DefaultIcon` 指向同名 `.ico`」；`.txt` 保持 `FeatherPad.Text` 以向后兼容。所有 ProgId 仍带 `FeatherPadManaged` 标记，卸载按标记枚举删除，绝不误删他方键。
+- 界面设置仍展示原有 15 个核心扩展名（`supportedExtensions` 契约与 `<=64` 上限不变），实际注册覆盖全部 142 个扩展名。新增/修改仅涉及上述 Rust、NSIS 卸载脚本、`tauri.conf.json` 资源映射与图标资源，未改动前端组件逻辑。
+- 2026-11-16 补充：注册表实测确认，Windows 决定某个扩展名图标的真正依据是 `UserChoice`（用户在“默认应用”中选择的默认程序），其次才回落到 `Classes\.ext` 的默认 ProgId；带 `PerceivedType=text` 的文本类扩展名还会优先套用文本类通用图标。程序的注册表写入无法静默改写 `UserChoice`（微软以哈希签名保护）。因此按类型图标需在应用内开启集成后，由用户在系统“默认应用”中把对应扩展名的默认程序设为轻羽才会生效。可执行/二进制扩展名（exe/dll/so/dylib/bin/msi）不会设为默认打开程序，只登记“打开方式”。
+
 
 ## 2026-11-07 视觉收敛与提示策略
 

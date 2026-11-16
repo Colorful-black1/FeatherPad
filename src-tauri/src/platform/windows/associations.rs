@@ -4,6 +4,7 @@ use crate::{
 };
 use serde::Serialize;
 use std::{
+    collections::BTreeSet,
     ffi::c_void,
     path::{Path, PathBuf},
 };
@@ -21,10 +22,16 @@ use windows_sys::Win32::{
 
 const APP_ID: &str = "app.featherpad.desktop";
 const MARKER_NAME: &str = "FeatherPadManaged";
-const PROG_ID: &str = "FeatherPad.Text";
+/// Backward-compatible ProgId used for `.txt` (and any extension not in the
+/// per-type icon table). Its DefaultIcon still points at the feather file-type
+/// icon so the system shows a text-like glyph.
+const LEGACY_PROG_ID: &str = "FeatherPad.Text";
 const APPLICATION_KEY: &str = r"HKCU\Software\Classes\Applications\featherpad.exe";
-const PROG_ID_KEY: &str = r"HKCU\Software\Classes\FeatherPad.Text";
 const DIRECTORY_MENU_KEY: &str = r"HKCU\Software\Classes\Directory\shell\FeatherPad";
+
+/// Core text extensions shown in the UI status and always associated. Kept at
+/// the original set so the public `supportedExtensions` contract (and the
+/// settings UI, capped at 64) stays unchanged.
 const SUPPORTED_EXTENSIONS: &[&str] = &[
     ".txt",
     ".md",
@@ -42,6 +49,154 @@ const SUPPORTED_EXTENSIONS: &[&str] = &[
     ".sql",
 ];
 
+/// Every (extension, shape, color) that FeatherPad knows how to open, mirroring
+/// `src/features/workspace/file-icons.ts`. The shape/color pair selects the
+/// per-type `.ico` served under `icons/filetypes/<shape>-<color>.ico`.
+const EXTENSION_ICONS: &[(&str, &str, &str)] = &[
+    ("7z", "archive", "gold"),
+    ("aac", "audio", "purple"),
+    ("avi", "video", "purple"),
+    ("avif", "image", "purple"),
+    ("bash", "terminal", "green"),
+    ("bat", "terminal", "green"),
+    ("bin", "binary", "grey"),
+    ("bmp", "image", "purple"),
+    ("bz2", "archive", "gold"),
+    ("c", "code", "blue"),
+    ("cc", "code", "blue"),
+    ("cfg", "gear", "grey"),
+    ("cjs", "code", "yellow"),
+    ("cmd", "terminal", "green"),
+    ("conf", "gear", "grey"),
+    ("cpp", "code", "blue"),
+    ("cs", "code", "purple"),
+    ("csproj", "html", "orange"),
+    ("css", "hash", "blue"),
+    ("csv", "sheet", "green"),
+    ("cts", "code", "blue"),
+    ("cxx", "code", "blue"),
+    ("dart", "code", "teal"),
+    ("ddl", "database", "pink"),
+    ("diff", "git", "orange"),
+    ("dll", "binary", "grey"),
+    ("dml", "database", "pink"),
+    ("doc", "word", "blue"),
+    ("docx", "word", "blue"),
+    ("dylib", "binary", "grey"),
+    ("env", "gear", "yellow"),
+    ("eot", "font", "grey"),
+    ("erb", "code", "red"),
+    ("exe", "binary", "grey"),
+    ("fish", "terminal", "green"),
+    ("flac", "audio", "purple"),
+    ("flv", "video", "purple"),
+    ("geojson", "braces", "yellow"),
+    ("gif", "image", "purple"),
+    ("go", "code", "teal"),
+    ("gz", "archive", "gold"),
+    ("h", "code", "blue"),
+    ("hh", "code", "blue"),
+    ("hpp", "code", "blue"),
+    ("htm", "html", "orange"),
+    ("html", "html", "orange"),
+    ("hxx", "code", "blue"),
+    ("ico", "image", "purple"),
+    ("ini", "gear", "grey"),
+    ("iso", "archive", "gold"),
+    ("jar", "archive", "gold"),
+    ("java", "code", "red"),
+    ("jpeg", "image", "purple"),
+    ("jpg", "image", "purple"),
+    ("js", "code", "yellow"),
+    ("json", "braces", "yellow"),
+    ("json5", "braces", "yellow"),
+    ("jsonc", "braces", "yellow"),
+    ("jsx", "react", "sky"),
+    ("key", "slides", "orange"),
+    ("kt", "code", "purple"),
+    ("kts", "code", "purple"),
+    ("less", "hash", "pink"),
+    ("lock", "lock", "gold"),
+    ("log", "text", "grey"),
+    ("lua", "code", "blue"),
+    ("m4a", "audio", "purple"),
+    ("markdown", "markdown", "blue"),
+    ("md", "markdown", "blue"),
+    ("mdown", "markdown", "blue"),
+    ("mdx", "markdown", "blue"),
+    ("mjs", "code", "yellow"),
+    ("mkd", "markdown", "blue"),
+    ("mkv", "video", "purple"),
+    ("mov", "video", "purple"),
+    ("mp3", "audio", "purple"),
+    ("mp4", "video", "purple"),
+    ("msi", "binary", "grey"),
+    ("mts", "code", "blue"),
+    ("odp", "slides", "orange"),
+    ("ods", "sheet", "green"),
+    ("odt", "word", "blue"),
+    ("ogg", "audio", "purple"),
+    ("otf", "font", "grey"),
+    ("patch", "git", "orange"),
+    ("pdf", "pdf", "red"),
+    ("php", "code", "purple"),
+    ("plist", "html", "orange"),
+    ("png", "image", "purple"),
+    ("ppt", "slides", "orange"),
+    ("pptx", "slides", "orange"),
+    ("properties", "gear", "grey"),
+    ("props", "html", "orange"),
+    ("ps1", "terminal", "green"),
+    ("psm1", "terminal", "green"),
+    ("py", "code", "teal"),
+    ("pyi", "code", "teal"),
+    ("pyw", "code", "teal"),
+    ("r", "code", "blue"),
+    ("rar", "archive", "gold"),
+    ("rb", "code", "red"),
+    ("rs", "code", "brown"),
+    ("rtf", "word", "blue"),
+    ("sass", "hash", "pink"),
+    ("scala", "code", "red"),
+    ("scss", "hash", "pink"),
+    ("sh", "terminal", "green"),
+    ("so", "binary", "grey"),
+    ("sql", "database", "pink"),
+    ("styl", "hash", "pink"),
+    ("svg", "image", "purple"),
+    ("swift", "code", "orange"),
+    ("tar", "archive", "gold"),
+    ("text", "text", "grey"),
+    ("tgz", "archive", "gold"),
+    ("tif", "image", "purple"),
+    ("tiff", "image", "purple"),
+    ("toml", "gear", "brown"),
+    ("ts", "code", "blue"),
+    ("tsv", "sheet", "green"),
+    ("tsx", "react", "blue"),
+    ("ttf", "font", "grey"),
+    ("txt", "text", "grey"),
+    ("war", "archive", "gold"),
+    ("wav", "audio", "purple"),
+    ("webm", "video", "purple"),
+    ("webmanifest", "braces", "yellow"),
+    ("webp", "image", "purple"),
+    ("wmv", "video", "purple"),
+    ("woff", "font", "grey"),
+    ("woff2", "font", "grey"),
+    ("xhtml", "html", "orange"),
+    ("xls", "sheet", "green"),
+    ("xlsx", "sheet", "green"),
+    ("xml", "html", "orange"),
+    ("xsl", "html", "orange"),
+    ("xslt", "html", "orange"),
+    ("xz", "archive", "gold"),
+    ("yaml", "list", "purple"),
+    ("yml", "list", "purple"),
+    ("zip", "archive", "gold"),
+    ("zsh", "terminal", "green"),
+];
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IntegrationStatus {
@@ -52,6 +207,63 @@ pub struct IntegrationStatus {
     pub context_menu: bool,
     pub supported_extensions: Vec<String>,
     pub changes_default_app: bool,
+}
+
+/// Look up the (shape, color) pair for an extension (leading dot optional).
+fn icon_for_extension(extension: &str) -> Option<(&'static str, &'static str)> {
+    let bare = extension.strip_prefix('.').unwrap_or(extension);
+    EXTENSION_ICONS
+        .iter()
+        .find(|(ext, _, _)| ext.eq_ignore_ascii_case(bare))
+        .map(|(_, shape, color)| (*shape, *color))
+}
+
+/// ProgId for an extension. `.txt` (and unknown extensions) use the legacy
+/// `FeatherPad.Text`; everything else gets a type-specific `FeatherPad.<shape>.<color>`.
+fn prog_id_for(extension: &str) -> String {
+    let bare = extension.strip_prefix('.').unwrap_or(extension);
+    if bare.eq_ignore_ascii_case("txt") {
+        return LEGACY_PROG_ID.to_owned();
+    }
+    match icon_for_extension(bare) {
+        Some((shape, color)) => format!("FeatherPad.{shape}.{color}"),
+        None => LEGACY_PROG_ID.to_owned(),
+    }
+}
+
+/// Extension with a leading dot, as stored in registry keys.
+fn dotted(extension: &str) -> String {
+    if extension.starts_with('.') {
+        extension.to_owned()
+    } else {
+        format!(".{extension}")
+    }
+}
+
+/// `<exe_dir>\icons\filetypes\<shape>-<color>.ico`, or the exe itself if the
+/// specific icon file is unavailable at runtime.
+fn icon_path_for(extension: &str, executable: &Path) -> String {
+    if let Some((shape, color)) = icon_for_extension(extension) {
+        if let Some(dir) = executable.parent() {
+            let candidate = dir
+                .join("icons")
+                .join("filetypes")
+                .join(format!("{shape}-{color}.ico"));
+            if candidate.is_file() {
+                return candidate.to_string_lossy().into_owned();
+            }
+        }
+    }
+    executable.to_string_lossy().into_owned()
+}
+
+/// Distinct ProgIds required for the full extension set (ordered, deduped).
+fn all_prog_ids() -> Vec<String> {
+    let set: BTreeSet<String> = EXTENSION_ICONS
+        .iter()
+        .map(|(ext, _, _)| prog_id_for(ext))
+        .collect();
+    set.into_iter().collect()
 }
 
 pub fn status() -> Result<IntegrationStatus, AppError> {
@@ -126,35 +338,65 @@ fn executable_path() -> Result<PathBuf, AppError> {
     Ok(executable)
 }
 
+fn prog_id_key(prog_id: &str) -> String {
+    format!(r"HKCU\Software\Classes\{prog_id}")
+}
+
+/// Write one ProgId's keys: display name, DefaultIcon (per-type ico), marker and
+/// open command. Assumes the ProgId subtree is owned/absent (checked by caller).
+fn write_prog_id(prog_id: &str, display: &str, icon: &str, command: &str) -> Result<(), AppError> {
+    let key = prog_id_key(prog_id);
+    add(&key, None, display)?;
+    add(&format!(r"{key}\DefaultIcon"), None, icon)?;
+    add(&key, Some(MARKER_NAME), APP_ID)?;
+    add(&format!(r"{key}\shell\open\command"), None, command)?;
+    Ok(())
+}
+
 fn enable_file_association(executable: &Path) -> Result<(), AppError> {
-    ensure_exact_owned_or_absent(PROG_ID_KEY, || prog_id_owned(executable))?;
+    let command = format!("\"{}\" \"%1\"", executable.display());
+
+    // 1. Guard every ProgId we are about to write: only touch absent or
+    //    FeatherPad-owned subtrees, never hijack another app's ProgId.
+    for prog_id in all_prog_ids() {
+        ensure_exact_owned_or_absent(&prog_id_key(&prog_id), || prog_id_owned(&prog_id, executable))?;
+    }
     ensure_exact_owned_or_absent(APPLICATION_KEY, || application_owned(executable))?;
-    if !key_exists(PROG_ID_KEY)? {
-        for extension in SUPPORTED_EXTENSIONS {
-            if value_exists(
-                &format!(r"HKCU\Software\Classes\{extension}\OpenWithProgids"),
-                PROG_ID,
-            )? {
-                return Err(AppError::new(
-                    ErrorCode::Conflict,
-                    "已有其他程序使用相同的轻羽“打开方式”注册项；未覆盖现有设置。",
-                ));
-            }
+
+    // 2. Conflict guard: refuse if an extension's OpenWithProgids already lists
+    //    our ProgId name but we don't own the ProgId (someone else's mapping).
+    for (ext, _, _) in EXTENSION_ICONS {
+        let prog_id = prog_id_for(ext);
+        let key = format!(
+            r"HKCU\Software\Classes\{}\OpenWithProgids",
+            dotted(ext)
+        );
+        if value_exists(&key, &prog_id)? && !key_exists(&prog_id_key(&prog_id))? {
+            return Err(AppError::new(
+                ErrorCode::Conflict,
+                "已有其他程序使用相同的轻羽“打开方式”注册项；未覆盖现有设置。",
+            ));
         }
     }
-    let command = format!("\"{}\" \"%1\"", executable.display());
-    add(PROG_ID_KEY, None, "轻羽文本文档")?;
-    add(
-        &format!(r"{PROG_ID_KEY}\DefaultIcon"),
-        None,
-        &executable.to_string_lossy(),
-    )?;
-    add(PROG_ID_KEY, Some(MARKER_NAME), APP_ID)?;
-    add(
-        &format!(r"{PROG_ID_KEY}\shell\open\command"),
-        None,
-        &command,
-    )?;
+
+    // 3. Write each distinct ProgId once, with the per-type icon.
+    for prog_id in all_prog_ids() {
+        // Determine representative extension for icon lookup.
+        let ext = EXTENSION_ICONS
+            .iter()
+            .find(|(e, _, _)| prog_id_for(e) == prog_id)
+            .map(|(e, _, _)| *e)
+            .unwrap_or("txt");
+        let icon = icon_path_for(ext, executable);
+        let display = if prog_id == LEGACY_PROG_ID {
+            "轻羽文本文档"
+        } else {
+            "轻羽文档"
+        };
+        write_prog_id(&prog_id, display, &icon, &command)?;
+    }
+
+    // 4. Applications\featherpad.exe entry (pointer for "open with").
     add(APPLICATION_KEY, None, "轻羽 FeatherPad")?;
     add(APPLICATION_KEY, Some("FriendlyAppName"), "轻羽 FeatherPad")?;
     add(
@@ -168,37 +410,65 @@ fn enable_file_association(executable: &Path) -> Result<(), AppError> {
         None,
         &command,
     )?;
-    for extension in SUPPORTED_EXTENSIONS {
+
+    // 5. Per-extension OpenWithProgids + SupportedTypes + default ProgId.
+    // Setting the extension's (Default) value makes Explorer fall back to our
+    // per-type icon when the user has not chosen a default app. Binary and
+    // executable extensions are never made the default handler (that would
+    // break launching those files) nor offered in "open with"; they keep only a
+    // type icon association when relevant.
+    for (ext, _, _) in EXTENSION_ICONS {
+        let dotted_ext = dotted(ext);
+        let prog_id = prog_id_for(ext);
         add(
             &format!(r"{APPLICATION_KEY}\SupportedTypes"),
-            Some(extension),
+            Some(&dotted_ext),
             "",
         )?;
+        let ext_key = format!(r"HKCU\Software\Classes\{dotted_ext}");
         add(
-            &format!(r"HKCU\Software\Classes\{extension}\OpenWithProgids"),
-            Some(PROG_ID),
+            &format!(r"{ext_key}\OpenWithProgids"),
+            Some(&prog_id),
             "",
         )?;
+        if !is_binary_extension(ext) {
+            add(&ext_key, None, &prog_id)?;
+        }
     }
     Ok(())
 }
 
+/// Extensions that must never be claimed as FeatherPad's default handler.
+fn is_binary_extension(extension: &str) -> bool {
+    matches!(
+        extension,
+        "exe" | "dll" | "so" | "dylib" | "bin" | "msi"
+    )
+}
+
 fn disable_file_association() -> Result<(), AppError> {
     let executable = executable_path()?;
-    let prog_id_is_owned = prog_id_owned(&executable)?;
     let application_is_owned = application_owned(&executable)?;
-    if prog_id_is_owned {
-        delete_key(PROG_ID_KEY)?;
-    }
     if application_is_owned {
         delete_key(APPLICATION_KEY)?;
     }
-    if prog_id_is_owned {
-        for extension in SUPPORTED_EXTENSIONS {
-            let key = format!(r"HKCU\Software\Classes\{extension}\OpenWithProgids");
-            if value_matches(&key, Some(PROG_ID), "")? {
-                delete_value(&key, PROG_ID)?;
-            }
+    // Relinquish any extension default ProgId that still points at one of ours,
+    // so double-click no longer routes to (now removed) FeatherPad ProgIds.
+    for (ext, _, _) in EXTENSION_ICONS {
+        let dotted_ext = dotted(ext);
+        let prog_id = prog_id_for(ext);
+        let ext_key = format!(r"HKCU\Software\Classes\{dotted_ext}");
+        if !is_binary_extension(ext) && value_matches(&ext_key, None, &prog_id)? {
+            delete_value(&ext_key, "")?;
+        }
+        let owp = format!(r"{ext_key}\OpenWithProgids");
+        if value_matches(&owp, Some(&prog_id), "")? {
+            delete_value(&owp, &prog_id)?;
+        }
+    }
+    for prog_id in all_prog_ids() {
+        if prog_id_owned(&prog_id, &executable)? {
+            delete_key(&prog_id_key(&prog_id))?;
         }
     }
     Ok(())
@@ -239,15 +509,21 @@ fn context_menu_keys() -> Vec<String> {
 
 fn file_association_owned() -> Result<bool, AppError> {
     let executable = executable_path()?;
-    if !prog_id_owned(&executable)? || !application_owned(&executable)? {
+    if !application_owned(&executable)? {
         return Ok(false);
     }
-    for extension in SUPPORTED_EXTENSIONS {
-        if !value_exists(&format!(r"{APPLICATION_KEY}\SupportedTypes"), extension)?
-            || !value_exists(
-                &format!(r"HKCU\Software\Classes\{extension}\OpenWithProgids"),
-                PROG_ID,
-            )?
+    for prog_id in all_prog_ids() {
+        if !prog_id_owned(&prog_id, &executable)? {
+            return Ok(false);
+        }
+    }
+    for (ext, _, _) in EXTENSION_ICONS {
+        let dotted_ext = dotted(ext);
+        let prog_id = prog_id_for(ext);
+        let ext_key = format!(r"HKCU\Software\Classes\{dotted_ext}");
+        if !value_exists(&format!(r"{APPLICATION_KEY}\SupportedTypes"), &dotted_ext)?
+            || !value_exists(&format!(r"{ext_key}\OpenWithProgids"), &prog_id)?
+            || (!is_binary_extension(ext) && !value_matches(&ext_key, None, &prog_id)?)
         {
             return Ok(false);
         }
@@ -287,20 +563,31 @@ fn owned(key: &str) -> Result<bool, AppError> {
     value_matches(key, Some(MARKER_NAME), APP_ID)
 }
 
-fn prog_id_owned(executable: &Path) -> Result<bool, AppError> {
-    if !owned(PROG_ID_KEY)? {
+/// A specific ProgId is "owned" when the marker matches, the open command points
+/// at this executable, and the DefaultIcon is one of our file-type icons (or the
+/// executable itself, for the legacy fallback).
+fn prog_id_owned(prog_id: &str, executable: &Path) -> Result<bool, AppError> {
+    let key = prog_id_key(prog_id);
+    if !owned(&key)? {
         return Ok(false);
     }
     let command = format!("\"{}\" \"%1\"", executable.display());
-    Ok(value_matches(
-        &format!(r"{PROG_ID_KEY}\shell\open\command"),
-        None,
-        &command,
-    )? && value_matches(
-        &format!(r"{PROG_ID_KEY}\DefaultIcon"),
-        None,
-        &executable.to_string_lossy(),
-    )?)
+    if !value_matches(&format!(r"{key}\shell\open\command"), None, &command)? {
+        return Ok(false);
+    }
+    let icon = value_string(&format!(r"{key}\DefaultIcon"), None)?;
+    let owned_icon = match icon {
+        Some(value) => {
+            value == executable.to_string_lossy()
+                || (value.contains("filetypes")
+                    && value.ends_with(".ico")
+                    && executable
+                        .parent()
+                        .is_some_and(|dir| Path::new(&value).starts_with(dir)))
+        }
+        None => false,
+    };
+    Ok(owned_icon)
 }
 
 fn application_owned(executable: &Path) -> Result<bool, AppError> {
