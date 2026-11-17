@@ -1,8 +1,8 @@
 import { CommandRegistry, type CommandDefinition } from '../shared/commands/registry';
 
 export const appCommandIds = ['file.new', 'window.new', 'file.open', 'workspace.open', 'file.save', 'file.saveAs', 'file.saveCopy',
-  'file.saveAll', 'file.close', 'editor.find', 'editor.toggleComment', 'editor.toggleBlockComment',
-  'search.workspace', 'tools.format', 'tools.transform', 'tools.compare',
+  'file.saveAll', 'file.close', 'editor.find', 'editor.replace', 'editor.toggleComment', 'editor.toggleBlockComment',
+  'search.workspace', 'search.replace', 'tools.format', 'tools.transform', 'tools.compare',
   'editor.moveLineUp', 'editor.moveLineDown', 'editor.copyLineUp', 'editor.copyLineDown', 'editor.insertBlankLine',
   'editor.complete', 'editor.selectNextOccurrence', 'editor.selectAllOccurrences', 'editor.toggleFold',
   'navigation.goToLine', 'navigation.back', 'navigation.forward', 'navigation.outline',
@@ -48,7 +48,9 @@ const commandInfo: CommandInfo[] = [
   ['file.saveAll', '全部保存', 'save all', null, state => saveBusy(state) ?? (state.hasDirty ? null : '没有未保存修改。')],
   ['file.close', '关闭当前标签', 'close tab', 'Ctrl+W', state => hasDocumentOrComparison(state) ?? (state.batchBusy || state.closing ? '请等待当前操作结束。' : null)],
   ['editor.find', '文件内查找与替换', 'find search replace 搜索', 'Ctrl+F', state => hasDocument(state) ?? state.textViewReason ?? (state.closing ? '正在关闭文档。' : null)],
+  ['editor.replace', '单文件替换', 'replace current file find 文件内 替换', 'Ctrl+R', state => hasDocument(state) ?? state.textViewReason ?? (state.closing ? '正在关闭文档。' : null)],
   ['search.workspace', '在文件和工作区中查找', 'workspace search find in files 目录搜索', 'Ctrl+Shift+F', state => state.opening ? '请等待文件夹打开。' : null],
+  ['search.replace', '全局替换', 'replace workspace global 跨文件 全局 替换', 'Ctrl+Shift+R', state => state.opening ? '请等待文件夹打开。' : null],
   ['tools.format', '格式化文档', 'format json xml html css javascript typescript yaml sql 格式', 'Shift+Alt+F', state => hasDocument(state) ?? state.readOnlyReason ?? state.formatReason ?? (state.closing ? '正在关闭文档。' : null)],
   ['tools.transform', '文本工具', 'sort unique uppercase lowercase trim tab space 排序 去重 大小写 空白 缩进', null, state => hasDocument(state) ?? state.readOnlyReason ?? (state.closing ? '正在关闭文档。' : null)],
   ['tools.compare', '双文件对比', 'diff compare files buffers 比较 差异', null, state => state.opening || state.closing ? '请等待当前文件操作。' : null],

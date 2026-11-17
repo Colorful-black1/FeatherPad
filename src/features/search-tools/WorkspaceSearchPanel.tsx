@@ -20,9 +20,10 @@ function patterns(value: string) {
   return parsePatternLines(value.replace(/,/g, '\n'));
 }
 
-export function WorkspaceSearchPanel({ store, roots, onSearch, onPreviewReplace, onOpen, onClose, onChooseFolder, active = true }: {
+export function WorkspaceSearchPanel({ store, roots, request, onSearch, onPreviewReplace, onOpen, onClose, onChooseFolder, active = true }: {
   store: WorkspaceSearchStore;
   roots: readonly WorkspaceRoot[];
+  request: { token: number; mode: 'search' | 'replace' } | null;
   onSearch: (draft: WorkspaceSearchDraft) => void;
   onPreviewReplace: (draft: WorkspaceSearchDraft, replacement: string) => void;
   onOpen: (file: SearchFileResult, match: SearchMatch) => void;
@@ -32,7 +33,19 @@ export function WorkspaceSearchPanel({ store, roots, onSearch, onPreviewReplace,
 }) {
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);
   const input = useRef<HTMLInputElement>(null);
-  useEffect(() => { if (active) input.current?.focus(); }, [active]);
+  const replaceDetails = useRef<HTMLDetailsElement>(null);
+  const appliedRequest = useRef<number | null>(null);
+  useEffect(() => {
+    if (!active) return;
+    if (request && appliedRequest.current !== request.token) {
+      appliedRequest.current = request.token;
+      if (replaceDetails.current) replaceDetails.current.open = request.mode === 'replace';
+    }
+    queueMicrotask(() => {
+      input.current?.focus();
+      input.current?.select();
+    });
+  }, [active, request]);
   const [pattern, setPattern] = useState(snapshot.options?.query.pattern ?? '');
   const [replacement, setReplacement] = useState('');
   const [isRegex, setIsRegex] = useState(snapshot.options?.query.isRegex ?? false);
@@ -99,7 +112,7 @@ export function WorkspaceSearchPanel({ store, roots, onSearch, onPreviewReplace,
         <p>先打开文件夹才能搜索。</p>
         <button type="button" className="primary-button" onClick={onChooseFolder}>打开文件夹…</button>
       </div> : <p className="search-scope-summary">搜索位置：{roots.filter(root => selectedRoots.has(root.grant.grantId)).map(root => root.displayName).join('、') || '尚未选择文件夹'}</p>}
-      <details className="search-replace-details"><summary>跨文件替换</summary>
+      <details className="search-replace-details" ref={replaceDetails}><summary>跨文件替换</summary>
       <label className="workspace-search-replacement">替换为
         <input type="text" value={replacement} onChange={event => setReplacement(event.currentTarget.value)}
           placeholder="留空表示删除匹配内容" />

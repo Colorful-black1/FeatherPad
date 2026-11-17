@@ -1,6 +1,25 @@
 import { expect, test } from './test-fixture';
 import { writeFile } from 'node:fs/promises';
 
+test('replace shortcuts open the file and workspace replace sections', async ({ page }) => {
+  await page.goto('/');
+  await page.keyboard.press('Control+n');
+  await page.locator('.cm-content').focus();
+  await page.keyboard.insertText('alpha');
+
+  await page.keyboard.press('Control+r');
+  const findBar = page.getByRole('region', { name: '文件内查找替换', exact: true });
+  await expect(findBar).toBeVisible();
+  await expect(findBar.getByRole('textbox', { name: '替换内容', exact: true })).toBeVisible();
+  await expect(findBar.getByRole('textbox', { name: '查找内容', exact: true })).toBeFocused();
+
+  await page.keyboard.press('Control+Shift+r');
+  const search = page.locator('.workspace-search-panel');
+  await expect(search).toBeVisible();
+  await expect(search.getByLabel('替换为', { exact: true })).toBeVisible();
+  await expect(search.getByLabel('搜索内容', { exact: true })).toBeFocused();
+});
+
 test('Web search: Unicode-safe options, navigation, capture replacement and single undo', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: '新建文本', exact: true }).click();

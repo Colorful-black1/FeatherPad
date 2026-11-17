@@ -221,6 +221,8 @@ test('real Release cross-file replacement previews without writes, commits, roll
     await expect(dialog.locator('section[data-replace-state="ready"]')).toHaveCount(2);
     await expect(dialog.locator('section[data-replace-state="dirtySkipped"]')).toHaveCount(1);
     await expect(dialog).toContainText('未保存缓冲');
+    await expect(dialog).toContainText('替换行');
+    await expect(dialog).toContainText('第 1 行');
     expect(await readFile(ready, 'utf8')).toBe(original);
     expect(await readFile(dirty, 'utf8')).toBe(dirtyOriginal);
     expect(await readFile(utf16)).toEqual(utf16Original);

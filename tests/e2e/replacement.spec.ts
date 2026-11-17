@@ -24,8 +24,16 @@ test('workspace replacement shows only writable files, requires final confirmati
       afterHash: 'b'.repeat(64),
       encoding: 'utf-8',
       matches,
-      previewBefore: 'alpha\n',
-      previewAfter: 'omega\n',
+      previewBefore: snapshot ? 'alpha\nbeta\n' : 'alpha\n',
+      previewAfter: snapshot ? 'omega\nbeta\n' : 'omega\n',
+      matchLines: snapshot ? [1, 2] : [1],
+      previewHunks: snapshot ? [{
+        startLine: 1,
+        afterStartLine: 1,
+        before: ['alpha', 'beta'],
+        after: ['omega', 'beta'],
+        matchLines: [1, 2],
+      }] : [],
       beforeSnapshotRef: snapshot ? `before/${id}.bin` : null,
       afterSnapshotRef: snapshot ? `after/${id}.bin` : null,
     });
@@ -100,6 +108,13 @@ test('workspace replacement shows only writable files, requires final confirmati
   await expect(dialog.getByRole('checkbox').nth(2)).toBeDisabled();
   await expect(dialog).toContainText('文件有未保存缓冲');
   await expect(dialog).toContainText('文件为只读');
+  await expect(dialog.getByRole('list', { name: 'ready.txt 可替换行', exact: true }))
+    .toContainText('第 1 行');
+  const previewDetails = dialog.locator('section[data-replace-state="ready"] details');
+  await previewDetails.locator('summary').click();
+  await expect(previewDetails.locator('.replace-pane')).toHaveCount(2);
+  await expect(previewDetails.locator('.replace-line-number').first()).toHaveText('1');
+  await expect(previewDetails.locator('.replace-line[data-changed="true"]')).not.toHaveCount(0);
 
   const beforeCommit = await page.evaluate(() =>
     (Reflect.get(window, 'replacementCalls') as { command: string; args: Record<string, unknown> }[])

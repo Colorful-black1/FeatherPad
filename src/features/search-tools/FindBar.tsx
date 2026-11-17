@@ -20,7 +20,7 @@ interface FindBarProps {
   version: number;
   readOnlyReason: string | null;
   open: boolean;
-  request: { token: number; version: number; scope: SearchScope | null } | null;
+  request: { token: number; version: number; scope: SearchScope | null; mode: 'find' | 'replace' } | null;
   onClose(): void;
 }
 
@@ -46,6 +46,7 @@ function matchLabel(registry: DocumentRegistry, id: DocumentId, match: SearchMat
 
 export function FindBar({ registry, id, version, readOnlyReason, open, request, onClose }: FindBarProps) {
   const input = useRef<HTMLInputElement>(null);
+  const replaceDetails = useRef<HTMLDetailsElement>(null);
   const workerRequest = useRef(0);
   const pendingMatchOffset = useRef<number | null>(null);
   const [pattern, setPattern] = useState('');
@@ -78,6 +79,7 @@ export function FindBar({ registry, id, version, readOnlyReason, open, request, 
 
   useEffect(() => {
     if (!open || !request) return;
+    if (replaceDetails.current) replaceDetails.current.open = request.mode === 'replace';
     queueMicrotask(() => {
       input.current?.focus();
       input.current?.select();
@@ -275,7 +277,7 @@ export function FindBar({ registry, id, version, readOnlyReason, open, request, 
       <span className="find-hint">支持 Unicode 词边界；整词不进行中文分词</span>
     </div>
     </details>
-    <details className="find-extra"><summary>替换</summary>
+    <details className="find-extra" ref={replaceDetails}><summary>替换</summary>
     <div className="find-row find-replace-row">
       <label className="find-field"><span>替换为</span>
         <input aria-label="替换内容" value={replacement} disabled={!!readOnlyReason}

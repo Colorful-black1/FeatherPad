@@ -28,6 +28,14 @@ export interface CreateReplacePlanRequest {
   dirtyPaths: string[];
 }
 
+export interface ReplacePreviewHunk {
+  startLine: number;
+  afterStartLine: number;
+  before: string[];
+  after: string[];
+  matchLines: number[];
+}
+
 export interface ReplacePlanFile {
   id: string;
   ref: FileRef;
@@ -43,6 +51,8 @@ export interface ReplacePlanFile {
   matches: number;
   previewBefore: string;
   previewAfter: string;
+  matchLines?: number[];
+  previewHunks?: ReplacePreviewHunk[];
   beforeSnapshotRef: string | null;
   afterSnapshotRef: string | null;
 }
@@ -98,6 +108,16 @@ const boundedText = (value: unknown, maximum: number): value is string => typeof
   && value.length <= maximum;
 const pathList = (value: unknown): value is string[] => Array.isArray(value) && value.length <= 10_000
   && value.every(item => boundedText(item, 32_767));
+const lineNumbers = (value: unknown): value is number[] => Array.isArray(value) && value.length <= 1_000
+  && value.every(item => count(item) && item > 0 && item <= 100_000_000);
+const previewLines = (value: unknown): value is string[] => Array.isArray(value) && value.length <= 260
+  && value.every(item => boundedText(item, 1_000));
+const isPreviewHunk = (value: unknown): value is ReplacePreviewHunk =>
+  isRecord(value)
+  && count(value.startLine) && value.startLine > 0 && value.startLine <= 100_000_000
+  && count(value.afterStartLine) && value.afterStartLine > 0 && value.afterStartLine <= 100_000_000
+  && previewLines(value.before) && previewLines(value.after)
+  && lineNumbers(value.matchLines);
 const fileStates: readonly ReplaceFileState[] = [
   'ready', 'dirtySkipped', 'readOnly', 'conflict', 'unsupported', 'committed', 'rolledBack', 'rollbackConflict',
 ];
@@ -114,6 +134,9 @@ function isPlanFile(value: unknown): value is ReplacePlanFile {
     || !boundedText(value.encoding, 32) || value.encoding.length === 0
     || !count(value.matches) || value.matches > 1_000
     || !boundedText(value.previewBefore, 2_000) || !boundedText(value.previewAfter, 2_000)) return false;
+  if (value.matchLines !== undefined && !lineNumbers(value.matchLines)) return false;
+  if (value.previewHunks !== undefined && (!Array.isArray(value.previewHunks)
+    || value.previewHunks.length > 8 || !value.previewHunks.every(isPreviewHunk))) return false;
   const beforeSnapshot = value.beforeSnapshotRef;
   const afterSnapshot = value.afterSnapshotRef;
   if (beforeSnapshot !== null && !(boundedText(beforeSnapshot, 128) && beforeSnapshot.length > 0)) return false;

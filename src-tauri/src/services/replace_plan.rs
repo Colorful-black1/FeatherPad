@@ -23,6 +23,11 @@ const MAX_PLAN_FILE_BYTES: u64 = 20 * 1024 * 1024;
 const MAX_PLAN_MATCHES: usize = 10_000;
 const MAX_PLAN_TOTAL_BYTES: u64 = 256 * 1024 * 1024;
 const PLAN_TTL_MS: i64 = 10 * 60 * 1_000;
+const PREVIEW_CONTEXT_LINES: usize = 2;
+const MAX_PREVIEW_HUNKS: usize = 8;
+const MAX_PREVIEW_HUNK_LINES: usize = 60;
+const MAX_PREVIEW_LINE_CHARS: usize = 500;
+const MAX_PREVIEW_LINES: usize = 240;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -60,6 +65,16 @@ pub enum ReplaceFileState {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ReplacePreviewHunk {
+    pub start_line: u32,
+    pub after_start_line: u32,
+    pub before: Vec<String>,
+    pub after: Vec<String>,
+    pub match_lines: Vec<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ReplacePlanFile {
     pub id: String,
     #[serde(rename = "ref")]
@@ -76,6 +91,10 @@ pub struct ReplacePlanFile {
     pub matches: u32,
     pub preview_before: String,
     pub preview_after: String,
+    #[serde(default)]
+    pub match_lines: Vec<u32>,
+    #[serde(default)]
+    pub preview_hunks: Vec<ReplacePreviewHunk>,
     pub before_snapshot_ref: Option<String>,
     pub after_snapshot_ref: Option<String>,
 }
@@ -129,6 +148,184 @@ pub struct RollbackBatchOutcome {
     pub conflicts: Vec<String>,
     pub failed: Vec<String>,
     pub rollback_journal_ref: String,
+}
+
+struct MatchInfo {
+    start_line: usize,
+    end_line: usize,
+    delta_before: isize,
+}
+
+struct HunkRange {
+    start_line: usize,
+    end_line: usize,
+    delta_before: isize,
+}
+
+fn line_starts(text: &str) -> Vec<usize> {
+    let bytes = text.as_bytes();
+    let mut starts = vec![0];
+    for (index, byte) in bytes.iter().enumerate() {
+        match byte {
+            b'\n' => starts.push(index + 1),
+            b'\r' if bytes.get(index + 1) != Some(&b'\n') => starts.push(index + 1),
+            _ => {}
+        }
+    }
+    starts
+}
+
+fn line_index(starts: &[usize], offset: usize) -> usize {
+    match starts.binary_search(&offset) {
+        Ok(index) => index,
+        Err(index) => index.saturating_sub(1),
+    }
+}
+
+fn count_line_breaks(text: &str) -> isize {
+    let mut count = 0isize;
+    let mut chars = text.chars().peekable();
+    while let Some(character) = chars.next() {
+        match character {
+            '\r' => {
+                count = count.saturating_add(1);
+                if chars.peek() == Some(&'\n') {
+                    chars.next();
+                }
+            }
+            '\n' => count = count.saturating_add(1),
+            _ => {}
+        }
+    }
+    count
+}
+
+fn preview_line(line: &str) -> String {
+    let mut chars = line.chars();
+    let mut output: String = chars.by_ref().take(MAX_PREVIEW_LINE_CHARS).collect();
+    if chars.next().is_some() {
+        output.push('…');
+    }
+    output
+}
+
+fn preview_lines(text: &str) -> Vec<String> {
+    let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
+    let mut lines: Vec<String> = normalized.split('\n').map(preview_line).collect();
+    if normalized.ends_with('\n') {
+        lines.pop();
+    }
+    if lines.len() > MAX_PREVIEW_LINES {
+        lines.truncate(MAX_PREVIEW_LINES);
+        lines.push("…".into());
+    }
+    if lines.is_empty() {
+        lines.push(String::new());
+    }
+    lines
+}
+
+fn hunk_text(text: &str, starts: &[usize], start_line: usize, end_line: usize) -> String {
+    let Some(&start) = starts.get(start_line) else {
+        return String::new();
+    };
+    let end = starts
+        .get(end_line + 1)
+        .copied()
+        .unwrap_or(text.len())
+        .min(text.len());
+    if start >= end {
+        return String::new();
+    }
+    text[start..end].to_owned()
+}
+
+fn build_replace_preview(
+    before: &str,
+    matches: &[(usize, usize)],
+    regex: &Regex,
+    template: &str,
+) -> (Vec<u32>, Vec<ReplacePreviewHunk>) {
+    let starts = line_starts(before);
+    let line_count = starts.len();
+    let mut infos = Vec::with_capacity(matches.len());
+    let mut cumulative_delta = 0isize;
+    for &(start, end) in matches {
+        let start_line = line_index(&starts, start.min(before.len()));
+        let end_line = if end > start {
+            line_index(&starts, end.saturating_sub(1).min(before.len()))
+        } else {
+            start_line
+        };
+        let matched = before.get(start..end).unwrap_or("");
+        let replaced = regex.replace(matched, template);
+        let delta = count_line_breaks(&replaced).saturating_sub(count_line_breaks(matched));
+        infos.push(MatchInfo {
+            start_line,
+            end_line,
+            delta_before: cumulative_delta,
+        });
+        cumulative_delta = cumulative_delta.saturating_add(delta);
+    }
+
+    let mut match_lines = Vec::new();
+    for info in &infos {
+        let line = u32::try_from(info.start_line + 1).unwrap_or(u32::MAX);
+        if match_lines.last().copied() != Some(line) {
+            match_lines.push(line);
+        }
+    }
+
+    let mut ranges: Vec<HunkRange> = Vec::new();
+    for info in &infos {
+        let span = info.end_line.saturating_sub(info.start_line);
+        if span > MAX_PREVIEW_HUNK_LINES.saturating_sub(PREVIEW_CONTEXT_LINES * 2) {
+            continue;
+        }
+        let start_line = info.start_line.saturating_sub(PREVIEW_CONTEXT_LINES);
+        let end_line = info
+            .end_line
+            .saturating_add(PREVIEW_CONTEXT_LINES)
+            .min(line_count.saturating_sub(1));
+        if let Some(last) = ranges.last_mut() {
+            if start_line <= last.end_line.saturating_add(1)
+                && end_line.saturating_sub(last.start_line) < MAX_PREVIEW_HUNK_LINES
+            {
+                last.end_line = last.end_line.max(end_line);
+                continue;
+            }
+        }
+        if ranges.len() >= MAX_PREVIEW_HUNKS {
+            break;
+        }
+        ranges.push(HunkRange {
+            start_line,
+            end_line,
+            delta_before: info.delta_before,
+        });
+    }
+
+    let mut hunks = Vec::with_capacity(ranges.len());
+    for range in ranges {
+        let text = hunk_text(before, &starts, range.start_line, range.end_line);
+        let after = regex.replace_all(&text, template).into_owned();
+        let hunk_match_lines = match_lines
+            .iter()
+            .copied()
+            .filter(|line| {
+                *line as usize > range.start_line && *line as usize <= range.end_line + 1
+            })
+            .collect();
+        let after_start = (range.start_line as isize + 1 + range.delta_before).max(1);
+        hunks.push(ReplacePreviewHunk {
+            start_line: u32::try_from(range.start_line + 1).unwrap_or(u32::MAX),
+            after_start_line: u32::try_from(after_start).unwrap_or(1),
+            before: preview_lines(&text),
+            after: preview_lines(&after),
+            match_lines: hunk_match_lines,
+        });
+    }
+    (match_lines, hunks)
 }
 
 impl FileService {
@@ -216,10 +413,10 @@ impl FileService {
                 skipped.push(format!("{}：二进制文件", entry.display_path));
                 continue;
             }
-            let mut first_match = None;
+            let mut match_ranges = Vec::new();
             let mut file_matches = 0usize;
             for found in regex.find_iter(&before.text) {
-                first_match.get_or_insert((found.start(), found.end()));
+                match_ranges.push((found.start(), found.end()));
                 file_matches = file_matches.saturating_add(1);
                 // One extra match is enough to reject the file safely without
                 // collecting an unbounded match list for a 20MiB input.
@@ -227,7 +424,7 @@ impl FileService {
                     break;
                 }
             }
-            let Some((first_start, first_end)) = first_match else {
+            let Some(&(first_start, first_end)) = match_ranges.first() else {
                 continue;
             };
             if file_matches > 1_000 {
@@ -289,6 +486,8 @@ impl FileService {
             if let Some(relative) = &after_ref {
                 write_new_verified(&plan_dir.join(relative), &after_bytes)?;
             }
+            let (match_lines, preview_hunks) =
+                build_replace_preview(&before.text, &match_ranges, &regex, template.as_str());
             files.push(ReplacePlanFile {
                 id,
                 reference: entry.reference,
@@ -304,6 +503,8 @@ impl FileService {
                 matches: file_matches.try_into().unwrap_or(u32::MAX),
                 preview_before: before.text.chars().take(2_000).collect(),
                 preview_after: after_text.chars().take(2_000).collect(),
+                match_lines,
+                preview_hunks,
                 before_snapshot_ref: before_ref,
                 after_snapshot_ref: after_ref,
             });
@@ -325,7 +526,12 @@ impl FileService {
             truncated,
             skipped,
         };
-        persist_manifest(&plan_dir, &plan)?;
+        let mut manifest = plan.clone();
+        for file in &mut manifest.files {
+            file.match_lines.clear();
+            file.preview_hunks.clear();
+        }
+        persist_manifest(&plan_dir, &manifest)?;
         Ok(plan)
     }
 
@@ -771,6 +977,13 @@ mod tests {
                 Arc::new(WalkCoordinator::default()),
             )
             .unwrap();
+        assert_eq!(plan.files[0].match_lines, vec![1]);
+        assert_eq!(plan.files[0].preview_hunks.len(), 1);
+        assert_eq!(plan.files[0].preview_hunks[0].start_line, 1);
+        assert_eq!(plan.files[0].preview_hunks[0].after_start_line, 1);
+        assert_eq!(plan.files[0].preview_hunks[0].before, vec!["old value"]);
+        assert_eq!(plan.files[0].preview_hunks[0].after, vec!["new value"]);
+        assert_eq!(plan.files[0].preview_hunks[0].match_lines, vec![1]);
         assert_eq!(
             fs::read_to_string(root.join("workspace/a.txt")).unwrap(),
             "old value\n"
@@ -921,6 +1134,76 @@ mod tests {
         let saved = fs::read(path).unwrap();
         assert!(saved.starts_with(&[0xff, 0xfe]));
         assert_eq!(decode_basic(&saved).unwrap().text, "new value\r\n中文");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn preview_reports_match_lines_and_context() {
+        let (root, store, service, grant) = fixture();
+        fs::write(
+            root.join("workspace/a.txt"),
+            "first\nold one\nthird\nold two\nfifth\n",
+        )
+        .unwrap();
+        let plan = service
+            .create_replace_plan(request(grant), &store, Arc::new(WalkCoordinator::default()))
+            .unwrap();
+        let file = &plan.files[0];
+        assert_eq!(file.match_lines, vec![2, 4]);
+        assert_eq!(file.preview_hunks.len(), 1);
+        let hunk = &file.preview_hunks[0];
+        assert_eq!(hunk.start_line, 1);
+        assert_eq!(hunk.after_start_line, 1);
+        assert_eq!(
+            hunk.before,
+            vec!["first", "old one", "third", "old two", "fifth"]
+        );
+        assert_eq!(
+            hunk.after,
+            vec!["first", "new one", "third", "new two", "fifth"]
+        );
+        assert_eq!(hunk.match_lines, vec![2, 4]);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn preview_after_line_numbers_follow_inserted_lines() {
+        let (root, store, service, grant) = fixture();
+        fs::write(
+            root.join("workspace/a.txt"),
+            "old a\nx\nx\nx\nx\nx\nold b\n",
+        )
+        .unwrap();
+        let mut replace_request = request(grant);
+        replace_request.replacement = "new\nextra".into();
+        let plan = service
+            .create_replace_plan(
+                replace_request,
+                &store,
+                Arc::new(WalkCoordinator::default()),
+            )
+            .unwrap();
+        let file = &plan.files[0];
+        assert_eq!(file.match_lines, vec![1, 7]);
+        assert_eq!(file.preview_hunks.len(), 2);
+        assert_eq!(file.preview_hunks[0].after_start_line, 1);
+        assert_eq!(file.preview_hunks[1].start_line, 5);
+        assert_eq!(file.preview_hunks[1].after_start_line, 6);
+        assert_eq!(file.preview_hunks[1].after[0], "x");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn preview_handles_crlf_line_numbers() {
+        let (root, store, service, grant) = fixture();
+        fs::write(root.join("workspace/a.txt"), "first\r\nold\r\nthird\r\n").unwrap();
+        let plan = service
+            .create_replace_plan(request(grant), &store, Arc::new(WalkCoordinator::default()))
+            .unwrap();
+        let file = &plan.files[0];
+        assert_eq!(file.match_lines, vec![2]);
+        assert_eq!(file.preview_hunks[0].before, vec!["first", "old", "third"]);
+        assert_eq!(file.preview_hunks[0].after, vec!["first", "new", "third"]);
         fs::remove_dir_all(root).unwrap();
     }
 

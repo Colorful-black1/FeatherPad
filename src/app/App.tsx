@@ -100,6 +100,12 @@ interface FindRequest {
   id: DocumentId;
   version: number;
   scope: SearchScope | null;
+  mode: 'find' | 'replace';
+}
+
+interface WorkspaceSearchRequest {
+  token: number;
+  mode: 'search' | 'replace';
 }
 
 interface ComparisonTab {
@@ -187,6 +193,11 @@ export function App() {
     setSidebarView(open ? 'search' : 'explorer');
     if (open) setSidebarOpen(true);
   }, []);
+  const [workspaceSearchRequest, setWorkspaceSearchRequest] = useState<WorkspaceSearchRequest | null>(null);
+  const openWorkspaceSearch = useCallback((mode: WorkspaceSearchRequest['mode']) => {
+    setWorkspaceSearchOpen(true);
+    setWorkspaceSearchRequest(previous => ({ token: (previous?.token ?? 0) + 1, mode }));
+  }, [setWorkspaceSearchOpen]);
   const [workspaceSearch] = useState(() => new WorkspaceSearchStore(searchBridge.run, searchBridge.cancel));
   const [replacementPlan, setReplacementPlan] = useState<ReplacementPlan | null>(null);
   const [replacementBusy, setReplacementBusy] = useState(false);
@@ -946,7 +957,7 @@ export function App() {
     }
   }, [setSavingCount]);
 
-  const openFind = useCallback(() => {
+  const openFind = useCallback((mode: FindRequest['mode'] = 'find') => {
     const activeId = documents.getSnapshot().activeId;
     const document = activeId ? documents.getDocument(activeId) : undefined;
     if (!activeId || !document) return;
@@ -956,6 +967,7 @@ export function App() {
       id: activeId,
       version: document.summary.version,
       scope: selection.empty ? null : { from: selection.from, to: selection.to },
+      mode,
     }));
     setFindOpen(true);
   }, []);
@@ -1309,8 +1321,10 @@ export function App() {
       if (activeComparisonId) { closeComparison(activeComparisonId); return; }
       const id = documents.getSnapshot().activeId; if (id) await requestClose(id);
     },
-    'editor.find': openFind,
-    'search.workspace': () => setWorkspaceSearchOpen(true),
+    'editor.find': () => openFind('find'),
+    'editor.replace': () => openFind('replace'),
+    'search.workspace': () => openWorkspaceSearch('search'),
+    'search.replace': () => openWorkspaceSearch('replace'),
     'tools.format': () => setFormatDocumentId(documents.getSnapshot().activeId),
     'tools.transform': () => setTransformDocumentId(documents.getSnapshot().activeId),
     'tools.compare': () => openComparison(null, null, '文件对比'),
@@ -1356,8 +1370,8 @@ export function App() {
     'settings.open': openSettings,
     'commands.open': () => openPalette('commands'), 'files.quickOpen': () => openPalette('files'),
   }), [newFile, openFile, openFolder, saveCurrent, saveDestination, requestClose, requestCloseBatch,
-    openFind, runEditingCommand, navigateBack, navigateForward, openPalette, openSettings, dark, zoomEditor,
-    setGoToOpen, setOutlineOpen, setSidebarOpen, setWorkspaceSearchOpen, setFormatDocumentId, setTransformDocumentId,
+    openFind, openWorkspaceSearch, runEditingCommand, navigateBack, navigateForward, openPalette, openSettings, dark, zoomEditor,
+    setGoToOpen, setOutlineOpen, setSidebarOpen, setFormatDocumentId, setTransformDocumentId,
     activeComparisonId, closeComparison, openComparison, setNotice]);
 
   const executeCommand = useCallback(async (id: string, targetId?: DocumentId) => {
@@ -1428,7 +1442,7 @@ export function App() {
       (['editor.fontIncrease', 'editor.fontDecrease', 'editor.fontReset'] as const).map(menuAction)] },
     { title: '转到', sections: [(['files.quickOpen', 'navigation.goToLine', 'navigation.outline'] as const).map(menuAction),
       (['navigation.back', 'navigation.forward'] as const).map(menuAction)] },
-    { title: '工具', sections: [(['editor.find', 'search.workspace'] as const).map(menuAction),
+    { title: '工具', sections: [(['editor.find', 'editor.replace', 'search.workspace', 'search.replace'] as const).map(menuAction),
       (['tools.format', 'tools.transform', 'tools.compare'] as const).map(menuAction), [menuAction('settings.open')]] },
   ];
 
@@ -1571,6 +1585,7 @@ export function App() {
           </SidebarPanel>
           <div id="sidebar-search" className="sidebar-view search-view" hidden={sidebarView !== 'search'}>
             <WorkspaceSearchPanel store={workspaceSearch} roots={workspaceState.roots} active={sidebarView === 'search'}
+              request={workspaceSearchRequest}
               onChooseFolder={() => void openFolder()}
               onSearch={startWorkspaceSearch} onOpen={(file, match) => void openWorkspaceSearchResult(file, match)}
               onPreviewReplace={(draft, replacement) => void previewWorkspaceReplace(draft, replacement)}
