@@ -92,6 +92,38 @@ it('loads only the root then opens and pages an expanded directory lazily', asyn
   expect(store.getSnapshot().records.folder?.items).toEqual([nested]);
 });
 
+it('expands all folders and pages before collapsing them again', async () => {
+  const calls: ListDirectoryRequest[] = [];
+  const folder = entry('folder', 'folder', 'directory');
+  const nested = entry('nested', 'folder/nested', 'directory');
+  const extra = entry('extra', 'extra', 'directory');
+  const rootFile = entry('root.txt', 'root.txt');
+  const leaf = entry('leaf.txt', 'folder/nested/leaf.txt');
+  const store = new WorkspaceStore(async request => {
+    calls.push(request);
+    switch (request.ref.relativePath) {
+      case '':
+        return { ok: true, value: {
+          items: request.cursor ? [extra, rootFile] : [folder],
+          nextCursor: request.cursor ? null : 'root-next',
+        } };
+      case 'folder': return { ok: true, value: { items: [nested], nextCursor: null } };
+      case 'folder/nested': return { ok: true, value: { items: [leaf], nextCursor: null } };
+      case 'extra': return { ok: true, value: { items: [], nextCursor: null } };
+      default: return { ok: false, error: { code: 'PERMISSION_DENIED', message: 'unexpected', retryable: false } };
+    }
+  });
+  store.setRoot({ grant, displayName: 'fixture-root' });
+  await flush();
+  await store.expandAll();
+  const snapshot = store.getSnapshot();
+  expect(snapshot.expanded).toEqual({ folder: true, 'folder/nested': true, extra: true });
+  expect(snapshot.records['folder/nested']?.items).toEqual([leaf]);
+  expect(calls.some(call => call.ref.relativePath === '' && call.cursor === 'root-next')).toBe(true);
+  store.collapseAll();
+  expect(store.getSnapshot().expanded).toEqual({});
+});
+
 it('resets stale pages for hidden filtering and locates a nested current file', async () => {
   const calls: ListDirectoryRequest[] = [];
   const folder = entry('folder', 'folder', 'directory');

@@ -114,6 +114,7 @@ export class WorkspaceStore {
   private showHidden = false;
   private selectedPath: string | null = null;
   private locateVersion = 0;
+  private expandVersion = 0;
   private rootError: string | null = null;
   private filters: WorkspaceFilters = { ...defaultWorkspaceFilters };
   private sort: WorkspaceSort = { ...defaultWorkspaceSort };
@@ -275,6 +276,43 @@ export class WorkspaceStore {
 
   collapseDirectory(entry: DirectoryEntry) {
     if (this.expanded.delete(entry.ref.relativePath)) this.publish();
+  }
+
+  async expandAll(): Promise<void> {
+    const root = this.root;
+    if (!root) return;
+    const generation = this.generation;
+    const expandVersion = ++this.expandVersion;
+    const isCurrent = () => generation === this.generation && expandVersion === this.expandVersion
+      && this.root?.grant.grantId === root.grant.grantId;
+    const queue: FileRef[] = [root.grant];
+    const visited = new Set<string>();
+    while (queue.length > 0) {
+      const reference = queue.shift()!;
+      if (visited.has(reference.relativePath)) continue;
+      visited.add(reference.relativePath);
+      if (!isCurrent()) return;
+      const record = await this.ensureDirectory(reference);
+      if (!isCurrent() || !record) continue;
+      if (reference.relativePath) this.expanded.add(reference.relativePath);
+      this.publish();
+      let page = this.records.get(reference.relativePath);
+      while (page?.nextCursor && isCurrent()) {
+        const result = await this.load(reference, true);
+        if (!isCurrent() || !result?.ok) break;
+        page = this.records.get(reference.relativePath);
+      }
+      for (const entry of page?.items ?? []) {
+        if (entry.kind === 'directory') queue.push(entry.ref);
+      }
+    }
+  }
+
+  collapseAll() {
+    this.expandVersion++;
+    if (this.expanded.size === 0) return;
+    this.expanded.clear();
+    this.publish();
   }
 
   loadMore(reference: FileRef | null) {

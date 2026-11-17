@@ -265,6 +265,8 @@ export function Explorer({ currentReference, onOpen, onCompare, onRenamed, onTra
   const [filterOpen, setFilterOpen] = useState(false);
   const [sortMenu, setSortMenu] = useState<ExplorerMenuTarget | null>(null);
   const [rootCollapsed, setRootCollapsed] = useState(false);
+  const [expandingAll, setExpandingAll] = useState(false);
+  const [locateTick, setLocateTick] = useState(0);
   const transfer = useFileTransfer(store, onRenamed);
   const root = snapshot.root;
   const sortLabel = snapshot.sort.key === 'name'
@@ -308,7 +310,7 @@ export function Explorer({ currentReference, onOpen, onCompare, onRenamed, onTra
       row?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     });
     return () => cancelAnimationFrame(frame);
-  }, [snapshot.selectedPath, root?.grant.grantId]);
+  }, [snapshot.selectedPath, root?.grant.grantId, locateTick]);
 
   useEffect(() => {
     if (!focusPath) return;
@@ -329,6 +331,26 @@ export function Explorer({ currentReference, onOpen, onCompare, onRenamed, onTra
   function finishEditing(nextFocus?: string) {
     setEditing(null);
     if (nextFocus) setFocusPath(nextFocus);
+  }
+
+  function expandAll() {
+    setRootCollapsed(false);
+    setExpandingAll(true);
+    void store.expandAll().finally(() => setExpandingAll(false));
+  }
+
+  function collapseAll() {
+    setExpandingAll(false);
+    store.collapseAll();
+  }
+
+  function locateCurrent() {
+    if (!currentReference || !currentInRoot) return;
+    void store.locate(currentReference).then(located => {
+      if (!located) return;
+      setRootCollapsed(false);
+      setLocateTick(value => value + 1);
+    });
   }
 
   function beginCreate(mode: 'create-file' | 'create-directory', parent = createParent) {
@@ -430,15 +452,33 @@ export function Explorer({ currentReference, onOpen, onCompare, onRenamed, onTra
           {snapshot.roots.map(item => <option key={item.grant.grantId} value={item.grant.grantId}>{item.displayName}</option>)}
         </select>
       </label>}
-      <button type="button" className="tree-root-label" data-drop-target="true" aria-expanded={!rootCollapsed}
-        onClick={() => setRootCollapsed(value => !value)}
-        onDragOver={event => {
-          highlightDropTarget(event, root.grant);
-          event.preventDefault();
-          event.dataTransfer.dropEffect = event.ctrlKey ? 'copy' : 'move';
-        }}
-        onDragLeave={event => clearDropTarget(event.currentTarget)}
-        onDrop={event => void transferToRoot(event)} title={root.displayPath ?? root.displayName}><span aria-hidden="true">{rootCollapsed ? '▸' : '▾'}</span><span className="tree-root-name">{root.displayName}</span></button>
+      <div className="tree-root-row">
+        <button type="button" className="tree-root-label" data-drop-target="true" aria-expanded={!rootCollapsed}
+          onClick={() => setRootCollapsed(value => !value)}
+          onDragOver={event => {
+            highlightDropTarget(event, root.grant);
+            event.preventDefault();
+            event.dataTransfer.dropEffect = event.ctrlKey ? 'copy' : 'move';
+          }}
+          onDragLeave={event => clearDropTarget(event.currentTarget)}
+          onDrop={event => void transferToRoot(event)} title={root.displayPath ?? root.displayName}><span aria-hidden="true">{rootCollapsed ? '▸' : '▾'}</span><span className="tree-root-name">{root.displayName}</span></button>
+        <div className="tree-root-actions" role="group" aria-label="文件夹树操作">
+          <button type="button" className="icon-button compact" disabled={!!editing || expandingAll}
+            aria-busy={expandingAll || undefined} aria-label="展开所有文件夹"
+            title={expandingAll ? '正在展开所有文件夹…' : '展开所有文件夹'} onClick={expandAll}>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 7 6 5 6-5M6 13l6 5 6-5" /></svg>
+          </button>
+          <button type="button" className="icon-button compact"
+            disabled={!!editing || Object.keys(snapshot.expanded).length === 0}
+            aria-label="收起所有文件夹" title="收起所有文件夹" onClick={collapseAll}>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 11 6-5 6 5M6 17l6-5 6 5" /></svg>
+          </button>
+          <button type="button" className="icon-button compact" disabled={!!editing || !currentInRoot}
+            aria-label="定位当前文件" title={!currentInRoot ? '当前文件不属于工作区。' : '定位当前文件'} onClick={locateCurrent}>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3" /></svg>
+          </button>
+        </div>
+      </div>
       {snapshot.rootError ? <details className="explorer-problem">
         <summary>⚠ 文件夹暂不可用</summary><p>{snapshot.rootError}</p>
         <button type="button" className="plain-button" onClick={() => store.refresh()}>重新读取</button>
