@@ -707,6 +707,64 @@ export function App() {
     });
   }, []);
 
+  const openInNewWindow = useCallback(async (
+    reference: FileRef,
+    displayName: string,
+    moveId: DocumentId | null = null,
+  ) => {
+    if (!isDesktopRuntime()) {
+      setNotice('新窗口仅在桌面版可用。');
+      return;
+    }
+    if (opening.current) return;
+    opening.current = true;
+    setBusy(true);
+    setError(null);
+    let moved = false;
+    try {
+      if (moveId) {
+        const document = documents.getDocument(moveId);
+        if (!document?.source) {
+          setNotice('未保存的文档不能移动到新窗口。');
+          return;
+        }
+        if (document.summary.dirty) {
+          setNotice('请先保存文件，再移动到新窗口。');
+          return;
+        }
+        const closed = await tabs.close(moveId, document.summary.version, 'clean');
+        if (!closed.ok || !closed.value.closed) {
+          setError(closed.ok ? '文档没有关闭，未移动到新窗口。' : closed.error.message);
+          return;
+        }
+        moved = true;
+      }
+      const created = await desktopBridge.openInNewWindow(reference, displayName);
+      if (!created.ok) {
+        setError(created.error.message);
+        if (moved) {
+          const failure = await openOne(reference, 'pinned', false);
+          if (failure) setError(`${created.error.message}；原标签未能恢复：${failure}`);
+          else focusAfterClose();
+        }
+        return;
+      }
+    } finally {
+      opening.current = false;
+      setBusy(false);
+    }
+  }, [focusAfterClose, openOne, setBusy, setError, setNotice]);
+
+  const openTreeEntryInNewWindow = useCallback((entry: DirectoryEntry) => {
+    if (entry.kind !== 'file') return;
+    const openDocument = documents.getSnapshot().documents.find(summary => {
+      const source = documents.getDocument(summary.id)?.source;
+      return source?.ref.grantId === entry.ref.grantId
+        && source.ref.relativePath === entry.ref.relativePath;
+    });
+    void openInNewWindow(entry.ref, entry.name, openDocument?.id ?? null);
+  }, [openInNewWindow]);
+
   const focusNavigationTarget = useCallback((target: NavigationTarget) => {
     const document = documents.getDocument(target.documentId);
     if (!document) return false;
@@ -885,6 +943,15 @@ export function App() {
   const handleTabAction = useCallback((action: TabMenuAction, id: DocumentId) => {
     switch (action) {
       case 'close': void requestClose(id); break;
+      case 'newWindow': {
+        const document = documents.getDocument(id);
+        const reference = document?.source?.ref;
+        const summary = document?.summary;
+        if (!reference || !summary?.displayPath) { setNotice('未保存的文档不能移动到新窗口。'); return; }
+        if (summary.dirty) { setNotice('请先保存文件，再移动到新窗口。'); return; }
+        void openInNewWindow(reference, summary.title, id);
+        break;
+      }
       case 'closeOthers': void requestCloseBatch(tabs.closeCandidates('others', id)); break;
       case 'closeRight': void requestCloseBatch(tabs.closeCandidates('right', id)); break;
       case 'closeAll':
@@ -907,7 +974,7 @@ export function App() {
         });
         break;
     }
-  }, [requestClose, requestCloseBatch, setError, setNotice]);
+  }, [openInNewWindow, requestClose, requestCloseBatch, setError, setNotice]);
 
   const saveCurrent = useCallback(async () => {
     if (saveAll.getSnapshot().phase === 'running' || saveAll.getSnapshot().phase === 'cancelling') return;
@@ -1538,6 +1605,7 @@ export function App() {
         {workspacePanelsReady ? <>
           <div id="sidebar-explorer" className="sidebar-view resource-view" hidden={sidebarView !== 'explorer'}>
           <Explorer currentReference={currentReference} onOpen={(reference, intent) => void openTreeFile(reference, intent ?? 'pinned')}
+            onOpenInNewWindow={openTreeEntryInNewWindow}
             onCompare={entry => void compareWith(entry)}
             onManageWorkspace={() => showSidebarView('workspace')}
             onReveal={revealWorkspaceEntry}

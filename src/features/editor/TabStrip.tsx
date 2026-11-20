@@ -3,7 +3,7 @@ import type { DocumentId } from '../../shared/contracts/files';
 import { ExplorerContextMenu } from '../workspace/ExplorerContextMenu';
 import type { DocumentSummary } from './documents';
 
-export type TabMenuAction = 'close' | 'closeOthers' | 'closeRight' | 'closeAll' | 'copyPath' | 'reveal';
+export type TabMenuAction = 'close' | 'newWindow' | 'closeOthers' | 'closeRight' | 'closeAll' | 'copyPath' | 'reveal';
 
 export interface ComparisonTabSummary {
   id: string;
@@ -254,6 +254,12 @@ export function TabStrip({ documents, activeId, previewId, busy, onSelect, onPin
       label="标签操作" onClose={() => setMenu(null)} sections={[
         [{ id: 'close', title: '关闭', binding: 'Ctrl+W', disabledReason: blocked ? '当前有操作正在进行。' : null,
           run: () => onTabAction('close', menuDocument.id) }],
+        [{ id: 'new-window', title: '移动到新窗口',
+          disabledReason: blocked ? '当前有操作正在进行。'
+            : !menuDocument.displayPath ? '未保存的文档不能移动到新窗口。'
+              : menuDocument.dirty ? '请先保存文件，再移动到新窗口。'
+                : menuDocument.missing ? '原文件当前不可用。' : null,
+          run: () => onTabAction('newWindow', menuDocument.id) }],
         [
           { id: 'close-others', title: '关闭其他文件', disabledReason: blocked ? '当前有操作正在进行。'
             : documents.length > 1 ? null : '没有其他打开的文件。',

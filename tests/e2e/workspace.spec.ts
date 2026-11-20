@@ -142,6 +142,12 @@ test('Web mock lazily pages one root and keeps empty, denied, hidden and current
             },
           };
         }
+        if (command === 'release_document') {
+          return { ok: true, value: { released: true } };
+        }
+        if (command === 'open_in_new_window') {
+          return { ok: true, value: { windowId: 'window-55555555-5555-4555-8555-555555555555' } };
+        }
         if (command === 'open_document') {
           const ref = request.ref as { grantId: string; relativePath: string };
           const documentId = `workspace-${ref.relativePath.replaceAll('/', '-')}`;
@@ -230,6 +236,19 @@ test('Web mock lazily pages one root and keeps empty, denied, hidden and current
   await moveDialog.getByRole('button', { name: '取消移动', exact: true }).click();
   await expect(moveDialog).not.toBeVisible();
   await expect(sourceRow).toBeVisible();
+  await page.getByRole('button', { name: '文件筛选', exact: true }).click();
+  const filterDialog = page.getByRole('dialog', { name: '文件筛选', exact: true });
+  await filterDialog.getByRole('checkbox', { name: '显示隐藏项' }).uncheck();
+  await filterDialog.getByRole('button', { name: '完成', exact: true }).click();
+  await explorerAction(page, '定位当前文件');
+  await expect(sourceRow).toBeVisible();
+  const emptyRow = tree.getByRole('treeitem', { name: /empty/ });
+  await sourceRow.dragTo(emptyRow);
+  await expect(moveDialog).toBeVisible();
+  await expect(moveDialog).toContainText('目标文件夹');
+  await expect(moveDialog).toContainText('empty');
+  await moveDialog.getByRole('button', { name: '取消移动', exact: true }).click();
+  await expect(moveDialog).not.toBeVisible();
   expect(nativeDialogs).toEqual([]);
   await expect(targetRoot).not.toHaveAttribute('data-drag-over', 'true');
   await sourceRow.focus();
@@ -272,4 +291,22 @@ test('Web mock lazily pages one root and keeps empty, denied, hidden and current
   expect(calls.some(call => call.command === 'open_document'
     && call.request.ref?.relativePath === 'folder/树内新建.txt')).toBe(true);
   await expect(page.getByRole('tab', { name: '树内新建.txt', exact: true })).toHaveAttribute('aria-selected', 'true');
+
+  await page.getByRole('tab', { name: '树内新建.txt', exact: true }).click({ button: 'right' });
+  const tabMenu = page.getByRole('menu', { name: '标签操作', exact: true });
+  await tabMenu.getByRole('menuitem', { name: '移动到新窗口', exact: true }).click();
+  await expect(page.getByRole('tab', { name: '树内新建.txt', exact: true })).toHaveCount(0);
+  calls = await page.evaluate(() => Reflect.get(window, 'workspaceCalls') as typeof calls);
+  expect(calls.filter(call => call.command === 'release_document')).toHaveLength(1);
+  expect(calls.filter(call => call.command === 'open_in_new_window')).toHaveLength(1);
+  expect(calls.find(call => call.command === 'open_in_new_window')?.request)
+    .toMatchObject({ request: { ref: { grantId: 'workspace-grant', relativePath: 'folder/树内新建.txt' }, displayName: '树内新建.txt' } });
+
+  await tree.getByRole('treeitem', { name: '树内新建.txt', exact: true }).click({ button: 'right' });
+  const treeMenu = page.getByRole('menu', { name: '资源管理器操作', exact: true });
+  await expect(treeMenu.getByRole('menuitem', { name: '在新窗口打开', exact: true })).toBeVisible();
+  await treeMenu.getByRole('menuitem', { name: '在新窗口打开', exact: true }).click();
+  calls = await page.evaluate(() => Reflect.get(window, 'workspaceCalls') as typeof calls);
+  expect(calls.filter(call => call.command === 'open_in_new_window')).toHaveLength(2);
+  expect(calls.filter(call => call.command === 'release_document')).toHaveLength(1);
 });

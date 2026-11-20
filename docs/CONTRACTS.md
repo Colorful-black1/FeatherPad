@@ -356,7 +356,7 @@ T110缺失源占位（2026-11-02）：缺根/缺文件保留原会话引用并�
 
 - `OpenDocument` 增加 `writeOwnerWindowId:string|null`、`writable:boolean`；原生按 DocumentId 登记唯一可写窗口，调用方窗口来自 Tauri 注入，不接受前端自报所有者。重复窗口显示只读磁盘快照；保存、覆盖、自动保存、另存、恢复快照/放弃及编码重开复核所有权；镜像磁盘重读不adopt共享lease，释放不影响原窗口。该机制仅协调同一数据域内进程，不代替磁盘 revision 或外部冲突检查。
 - CLI 请求为 schemaVersion=1、规范 UUID、调用方绝对 cwd、解析后的 windowMode/wait/goto/paths；最多 64 个路径、64KiB 消息。相对路径基于调用方 cwd 解析，目标经过既有原生 grant 校验。数据域哈希命名的 Windows 本地 mutex 配合私有 coordination 文件通道，不使用公开 TCP 或 shell 执行用户路径。无参数二次启动激活已有窗口；显式新窗口可为空。`--wait` 在首次启动时分离 GUI 宿主和等待进程，在相关文档生命周期结束后退出；0/1/2 分别表示成功、路由/路径/生命周期失败、参数错误。
-- 窗口 ID 仅 `main` 或 `window-<canonical UUID>`。`save_session` 在原生串行锁内只合并调用方窗口，`clear_session` 只移除调用方清单；`remove_desktop_window_session` 在正常热退出时移除已关闭的非最终窗口，最后窗口清单保留供重启恢复。主宿主可接管上次最后一个非 main 窗口；新建窗口不套用主窗口标签。恢复只读取当前窗口的已分配草稿；无归属候选由主窗口展示，只读镜像不恢复为独立 dirty 正文。
+- 窗口 ID 仅 `main` 或 `window-<canonical UUID>`。`save_session` 在原生串行锁内只合并调用方窗口，`clear_session` 只移除调用方清单；`remove_desktop_window_session` 在正常热退出时移除已关闭的非最终窗口，最后窗口清单保留供重启恢复。主宿主可接管上次最后一个非 main 窗口；新建窗口不套用主窗口标签。恢复只读取当前窗口的已分配草稿；无归属候选由主窗口展示，只读镜像不恢复为独立 dirty 正文。`open_in_new_window`只接受已授权文件引用和显示名，原生重新核对grant后创建新窗口并通过既有投递队列打开；标签右键的“移动到新窗口”由前端在文件已保存且关闭当前标签、释放写所有权后调用，避免新窗口只得到只读镜像。
 - `portable.flag` 必须是程序同目录的普通非重解析点文件；存在则采用同级 `data/`。原生 `FEATHERPAD_USER_DATA_DIR` 绝对路径覆盖仍可用于受控运行。安装数据默认为 `%LOCALAPPDATA%/app.featherpad.desktop`。非法 marker、数据非目录/链接或写探针失败均显式终止，不静默切换存储。WebView2 缺失时原生显示官方依赖指引；不自动联网安装。
 - 系统关联默认关闭，仅 HKCU 的 14 个支持扩展名、打开方式候选与 Explorer 菜单。所有者要求 marker、完整命令和 icon 精确匹配；第三方改写即视为非自有。禁止 UserChoice/默认应用修改。升级保留集成，撤销/卸载仅移除仍完整指向当前可执行文件的项；卸载默认保留本地数据，显式清除须再次确认未保存恢复内容风险，逐项拒绝 reparse point，不运行模板的无限制递归删除。
 
@@ -365,7 +365,10 @@ T110缺失源占位（2026-11-02）：缺根/缺文件保留原会话引用并�
 | `take_desktop_requests` | `{}` | `DesktopDelivery[]`，最多128项，仅当前调用窗口 |
 | `complete_desktop_request` | `{request:{requestId,ok,message}}` | `{completed:true}`，请求须属于调用窗口 |
 | `create_desktop_window` | `{request:{windowId?:string}}` | `{windowId}` |
+| `open_in_new_window` | `{request:{ref:FileRef,displayName:string}}` | `{windowId}`；原生复核 grant 后创建窗口并投递打开请求 |
 | `focus_desktop_window` | `{request:{windowId:string}}` | `{focused:true}` |
 | `remove_desktop_window_session` | `{}` | `{removed:boolean}` |
 | `get_desktop_integration` | `{}` | `{runtimeMode,dataRoot,executablePath,fileAssociation,contextMenu,supportedExtensions,changesDefaultApp:false}` |
 | `set_desktop_integration` | `{request:{fileAssociation:boolean,contextMenu:boolean}}` | 同上；未知字段拒绝，冲突不覆盖第三方 |
+
+所有应用命令除在 `generate_handler!` 注册外，还必须在 `capabilities/main.json` 添加对应的 `allow-<kebab-case>` 权限；遗漏会被 Tauri ACL 拒绝，并在前端表现为 `IPC_UNAVAILABLE`（“无法连接本地文件服务”）。`src/bridge/tauri-capabilities.test.ts` 会检查命令注册、权限定义和 capability 白名单是否一致。

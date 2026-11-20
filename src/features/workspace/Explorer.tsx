@@ -1,10 +1,10 @@
-import { useEffect, useState, useSyncExternalStore, type CSSProperties, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
+import { useEffect, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import type { DirectoryEntry, FileRef, RenamedDocument } from '../../shared/contracts/files';
 import { EntryInput } from './EntryInput';
 import { creationParent, findDirectoryEntry } from './file-actions';
 import { workspace, type WorkspaceSnapshot, type WorkspaceStore } from './store';
 import { FilterRules } from './FilterRules';
-import { dragPayload, parseDragPayload, transferMode, workspaceDragType, startWorkspaceDrag, endWorkspaceDrag, highlightDropTarget, clearDropTarget } from './drag-drop';
+import { beginWorkspacePointerDrag, canTransferEntry, consumeWorkspaceDragClick } from './drag-drop';
 import { useFileTransfer } from './use-file-transfer';
 import { ExplorerContextMenu, type ExplorerMenuTarget } from './ExplorerContextMenu';
 import { EntryIcon } from './FileIcon';
@@ -12,6 +12,7 @@ import { EntryIcon } from './FileIcon';
 interface ExplorerProps {
   currentReference: FileRef | undefined;
   onOpen: (reference: FileRef, intent?: 'preview' | 'pinned') => void;
+  onOpenInNewWindow?: ((entry: DirectoryEntry) => void) | undefined;
   onCompare?: ((entry: DirectoryEntry) => void) | undefined;
   onRenamed?: ((documents: readonly RenamedDocument[]) => void) | undefined;
   onTrash?: ((entry: DirectoryEntry) => void) | undefined;
@@ -71,20 +72,8 @@ function EntryRow({
   const transferable = !['junction', 'symlink'].includes(entry.kind);
   const transfer = useFileTransfer(store, onRenamed);
 
-  async function transferTo(event: DragEvent<HTMLElement>) {
-    if (!expandable) return;
-    event.preventDefault();
-    event.stopPropagation();
-    clearDropTarget(event.currentTarget);
-    const payload = parseDragPayload(event.dataTransfer.getData(workspaceDragType));
-    if (!payload || payload.grantId !== entry.ref.grantId) return;
-    const source = findDirectoryEntry(snapshot, payload.relativePath);
-    if (!source || source.revision !== payload.revision || source.ref.relativePath === entry.ref.relativePath) return;
-    const mode = transferMode(event.ctrlKey);
-    transfer.request(source, entry.ref, snapshot.root?.displayPath ?? snapshot.root?.displayName ?? entry.name, mode);
-  }
-
   function activate() {
+    if (consumeWorkspaceDragClick()) return;
     store.select(entry);
     if (expandable) store.toggleDirectory(entry);
     else onOpen(entry.ref, 'pinned');
@@ -153,26 +142,21 @@ function EntryRow({
       aria-selected={selected}
       aria-current={current ? 'page' : undefined}
       title={entry.name}
+      draggable={false}
       data-tree-key={entry.ref.relativePath}
       data-tree-parent={parentKey ?? ''}
+      data-entry-drop-grant={expandable ? entry.ref.grantId : undefined}
+      data-entry-drop-path={expandable ? entry.ref.relativePath : undefined}
+      data-entry-drop-kind={expandable ? entry.kind : undefined}
+      data-entry-drop-name={expandable ? snapshot.root?.displayPath ?? snapshot.root?.displayName ?? entry.name : undefined}
       style={{ '--tree-depth': depth } as CSSProperties}
-      draggable={transferable && !renaming}
-      onDragStart={event => {
-        if (!transferable) return;
-        startWorkspaceDrag(entry);
-        event.dataTransfer.effectAllowed = 'copyMove';
-        event.dataTransfer.setData(workspaceDragType, JSON.stringify(dragPayload(entry)));
-        event.dataTransfer.setData('text/plain', entry.name);
+      onPointerDown={event => {
+        if (!transferable || renaming) return;
+        beginWorkspacePointerDrag(event, entry, {
+          canDrop: target => canTransferEntry(entry, target),
+          onDrop: (target, targetName, mode) => transfer.request(entry, target, targetName, mode),
+        });
       }}
-      onDragEnd={endWorkspaceDrag}
-      onDragOver={event => {
-        if (!expandable) return;
-        highlightDropTarget(event, entry.ref);
-        event.preventDefault();
-        event.dataTransfer.dropEffect = event.ctrlKey ? 'copy' : 'move';
-      }}
-      onDragLeave={event => clearDropTarget(event.currentTarget)}
-      onDrop={event => void transferTo(event)}
       data-drop-target={expandable ? true : undefined}
       onClick={activate}
       onDoubleClick={() => { if (!expandable && !['junction', 'symlink'].includes(entry.kind)) onOpen(entry.ref, 'pinned'); }}
@@ -256,7 +240,7 @@ function DirectoryContents({
   </div>;
 }
 
-export function Explorer({ currentReference, onOpen, onCompare, onRenamed, onTrash, onReveal, onNewText, onChooseFile, onChooseFolder, onManageWorkspace, openEditors,
+export function Explorer({ currentReference, onOpen, onOpenInNewWindow, onCompare, onRenamed, onTrash, onReveal, onNewText, onChooseFile, onChooseFolder, onManageWorkspace, openEditors,
   mutationBlocked = false, store = workspace }: ExplorerProps) {
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);
   const [editing, setEditing] = useState<EditingEntry | null>(null);
@@ -385,18 +369,6 @@ export function Explorer({ currentReference, onOpen, onCompare, onRenamed, onTra
       x, y });
   }
 
-  async function transferToRoot(event: DragEvent<HTMLElement>) {
-    event.preventDefault();
-    clearDropTarget(event.currentTarget);
-    if (!root) return;
-    const payload = parseDragPayload(event.dataTransfer.getData(workspaceDragType));
-    if (!payload || payload.grantId !== root.grant.grantId) return;
-    const source = findDirectoryEntry(snapshot, payload.relativePath);
-    if (!source || source.revision !== payload.revision) return;
-    const mode = transferMode(event.ctrlKey);
-    transfer.request(source, root.grant, root.displayPath ?? root.displayName, mode);
-  }
-
   return <section className="workspace-explorer" aria-label="文件树" tabIndex={-1} onContextMenu={showMenu} onKeyDown={event => {
     if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) { showMenu(event); return; }
     if (event.key !== 'Delete' || editing || mutationBlocked || !onTrash || !(event.target instanceof HTMLElement)) return;
@@ -454,14 +426,10 @@ export function Explorer({ currentReference, onOpen, onCompare, onRenamed, onTra
       </label>}
       <div className="tree-root-row">
         <button type="button" className="tree-root-label" data-drop-target="true" aria-expanded={!rootCollapsed}
-          onClick={() => setRootCollapsed(value => !value)}
-          onDragOver={event => {
-            highlightDropTarget(event, root.grant);
-            event.preventDefault();
-            event.dataTransfer.dropEffect = event.ctrlKey ? 'copy' : 'move';
-          }}
-          onDragLeave={event => clearDropTarget(event.currentTarget)}
-          onDrop={event => void transferToRoot(event)} title={root.displayPath ?? root.displayName}><span aria-hidden="true">{rootCollapsed ? '▸' : '▾'}</span><span className="tree-root-name">{root.displayName}</span></button>
+          data-entry-drop-grant={root.grant.grantId} data-entry-drop-path="" data-entry-drop-kind="directory"
+          data-entry-drop-name={root.displayPath ?? root.displayName}
+          onClick={() => { if (consumeWorkspaceDragClick()) return; setRootCollapsed(value => !value); }}
+          title={root.displayPath ?? root.displayName}><span aria-hidden="true">{rootCollapsed ? '▸' : '▾'}</span><span className="tree-root-name">{root.displayName}</span></button>
         <div className="tree-root-actions" role="group" aria-label="文件夹树操作">
           <button type="button" className="icon-button compact" disabled={!!editing || expandingAll}
             aria-busy={expandingAll || undefined} aria-label="展开所有文件夹"
@@ -531,6 +499,8 @@ export function Explorer({ currentReference, onOpen, onCompare, onRenamed, onTra
       target={menuTarget} onClose={() => setMenuTarget(null)} sections={[
         ...(menuEntry?.kind === 'file' ? [[
           { id: 'open', title: '打开文件', run: () => onOpen(menuEntry.ref, 'pinned') },
+          ...(onOpenInNewWindow ? [{ id: 'open-new-window', title: '在新窗口打开',
+            run: () => onOpenInNewWindow(menuEntry) }] : []),
           ...(onCompare ? [{ id: 'compare-with', title: '与文件比较…',
             run: () => onCompare(menuEntry) }] : []),
           ...(onReveal ? [{ id: 'reveal', title: '在文件资源管理器中显示',

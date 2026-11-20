@@ -1,7 +1,9 @@
 use super::SharedFiles;
 use crate::{
-    models::{AppError, ErrorCode, ResultEnvelope},
-    services::windows::{complete_request, DesktopCoordinator, DesktopDelivery},
+    models::{AppError, ErrorCode, FileRef, ResultEnvelope},
+    services::windows::{
+        complete_request, DesktopCoordinator, DesktopDelivery, RouteTargetKind, RoutedTarget,
+    },
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -33,6 +35,14 @@ pub(super) fn require_document_owner(
 pub struct CreateWindowRequest {
     #[serde(default)]
     pub window_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct OpenInNewWindowRequest {
+    #[serde(rename = "ref")]
+    pub reference: FileRef,
+    pub display_name: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -294,6 +304,50 @@ pub async fn create_desktop_window(
     create_window(&app, request.window_id)
         .map(|window_id| DesktopWindowResult { window_id })
         .into()
+}
+
+#[tauri::command]
+pub async fn open_in_new_window(
+    app: AppHandle,
+    request: OpenInNewWindowRequest,
+) -> ResultEnvelope<DesktopWindowResult> {
+    let result = (|| {
+        if request.display_name.is_empty()
+            || request.display_name.len() > 32_767
+            || request.display_name.contains('\0')
+        {
+            return Err(AppError::new(ErrorCode::InvalidInput, "文件名称无效"));
+        }
+        let files = app.state::<SharedFiles>().inner().clone();
+        let (_, path) = files
+            .lock()
+            .map_err(|_| AppError::new(ErrorCode::Internal, "本地文件服务暂时不可用，请重试"))?
+            .grants
+            .open_file(&request.reference)?;
+        let window_id = create_window(&app, None)?;
+        let delivery = DesktopDelivery {
+            request_id: uuid::Uuid::new_v4().to_string(),
+            window_id: window_id.clone(),
+            wait: false,
+            targets: vec![RoutedTarget {
+                path: path.to_string_lossy().into_owned(),
+                kind: RouteTargetKind::File,
+                reference: request.reference,
+                display_name: request.display_name,
+                goto: None,
+            }],
+            failures: Vec::new(),
+        };
+        let desktop = app.state::<SharedDesktop>().inner().clone();
+        if let Err(error) = deliver(&app, &desktop, delivery) {
+            if let Some(window) = app.get_webview_window(&window_id) {
+                let _ = window.close();
+            }
+            return Err(error);
+        }
+        Ok(DesktopWindowResult { window_id })
+    })();
+    result.into()
 }
 
 #[tauri::command]

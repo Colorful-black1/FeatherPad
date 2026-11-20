@@ -90,6 +90,10 @@ export const desktopBridge = {
     { request: { ...(windowId ? { windowId } : {}) } },
     (value): value is DesktopWindowResult => isRecord(value)
       && safeText(value.windowId, 128) && (value.windowId === 'main' || value.windowId.startsWith('window-'))),
+  openInNewWindow: (reference: FileRef, displayName: string) => callCommand('open_in_new_window',
+    { request: { ref: reference, displayName } },
+    (value): value is DesktopWindowResult => isRecord(value)
+      && safeText(value.windowId, 128) && (value.windowId === 'main' || value.windowId.startsWith('window-'))),
   focusWindow: (windowId: string) => callCommand('focus_desktop_window', { request: { windowId } },
     (value): value is FocusDesktopWindowResult => isRecord(value) && value.focused === true),
   removeCurrentWindowSession: () => callCommand('remove_desktop_window_session', {},

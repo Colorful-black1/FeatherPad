@@ -101,11 +101,13 @@ test('Web mock: file tree opens permanent tabs and tab keyboard navigation', asy
   await page.getByRole('treeitem', { name: 'b.txt', exact: true }).dblclick();
   await expect(page.getByRole('tab', { name: 'b.txt', exact: true })).toHaveAttribute('aria-description', '固定标签；没有未保存修改');
   await page.getByRole('treeitem', { name: 'a.txt', exact: true }).click();
-  const before = await page.evaluate(() => (Reflect.get(window, 'tabCalls') as unknown[]).length);
+  const before = await page.evaluate(() => (Reflect.get(window, 'tabCalls') as { command: string }[])
+    .filter(call => ['open_document', 'save_document', 'save_document_as', 'release_document', 'discard_recovery'].includes(call.command)).length);
   await editor(page).focus();
   await page.keyboard.press('Control+End');
   await page.keyboard.insertText(' dirty');
-  expect(await page.evaluate(() => (Reflect.get(window, 'tabCalls') as unknown[]).length)).toBe(before);
+  expect(await page.evaluate(() => (Reflect.get(window, 'tabCalls') as { command: string }[])
+    .filter(call => ['open_document', 'save_document', 'save_document_as', 'release_document', 'discard_recovery'].includes(call.command)).length)).toBe(before);
   await page.keyboard.press('Control+z');
   await expect(page.getByRole('tab', { name: 'a.txt', exact: true })).toHaveAttribute('aria-description', '固定标签；没有未保存修改');
   await page.getByRole('treeitem', { name: 'c.txt', exact: true }).click();

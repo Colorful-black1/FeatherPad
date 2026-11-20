@@ -16,6 +16,8 @@ M2：F-WORK-002、F-WORK-006、F-WORK-008、F-WORK-009、F-WORK-010、F-WORK-011
 
 **M2实施状态（2026-11-03，G2通过）：** 多根、收藏、便携工作区文件、排除/隐藏规则、受限链接遍历、监听/聚焦重扫、原生拖放移动及对应失败状态已接入。真实桌面场景验证多根移除时打开文档的独立授权和持久撤销、真实文件/目录复制移动与碰撞/旧revision拒绝、10k文件过滤遍历、实际junction越界和文件树同步失败可见；工作区文件相对路径迁移、收藏排序/修复/清空和坏数据保留由定向模型/Web证据覆盖。浏览器拖放模型不等同于Explorer原生拖放，物理网络盘/可移动盘拔插仍未验证。详细证据见[M2验收](../acceptance/M2.md)。
 
+**2026-11-19 文件树拖动实现：** Tauri在Windows上默认启用原生文件投放处理，会替代WebView2的HTML5拖放，导致页面内拖拽在真实窗口不触发。文件树内部移动因此改用指针事件：移动超过阈值才进入拖动，悬停文件夹行或根节点行高亮落点，松开后复用现有移动/复制确认与revision校验；Ctrl拖放为复制。系统文件拖入仍走Tauri原生事件，不关闭`dragDropEnabled`。
+
 ## 契约、项目结构与风格
 
 跨进程线协议唯一来源是 [CONTRACTS](../CONTRACTS.md)：snake_case命令、grant/FileRef、ResultEnvelope及规范AppError.code。本文camelCase方法/类型是模块内部语义示例；域错误名写入`details.reason`并映射至规范code（无效配置/限额→INVALID_INPUT，根不可达→NOT_FOUND或PERMISSION_DENIED，越根→OUT_OF_SCOPE，循环→INVALID_INPUT）。UI每页最多请求500条，不改变线协议最大1000的限制。

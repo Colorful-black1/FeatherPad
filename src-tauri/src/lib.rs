@@ -200,6 +200,7 @@ pub fn run() {
             commands::desktop::take_desktop_requests,
             commands::desktop::complete_desktop_request,
             commands::desktop::create_desktop_window,
+            commands::desktop::open_in_new_window,
             commands::desktop::focus_desktop_window,
             commands::desktop::remove_desktop_window_session,
             commands::integration::get_desktop_integration,
