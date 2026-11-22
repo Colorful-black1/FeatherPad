@@ -281,6 +281,7 @@ body.workspace-entry-dragging * { cursor: grabbing !important; }
 .search-view .welcome-eyebrow { display: none; }
 .search-view .workspace-search-panel h2 { font-size: 12px; font-weight: 500; margin: 0; }
 .search-view .workspace-search-panel > header button { min-height: 24px; padding: 0 var(--space-2); font-size: 11px; }
+.search-view .workspace-search-modes { padding: var(--space-1) var(--space-3); }
 .search-view .workspace-search-panel form { padding: var(--space-3); flex: 0 0 auto; max-height: none; overflow: visible; }
 .search-view .workspace-search-results { flex: none; min-height: 0; overflow: visible; }
 .search-view .workspace-search-options { flex-direction: column; gap: var(--space-2); }
@@ -651,6 +652,66 @@ body.workspace-entry-dragging * { cursor: grabbing !important; }
   align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
+}
+.workspace-search-panel [hidden] { display: none !important; }
+.workspace-search-modes {
+  display: flex;
+  gap: 2px;
+  padding: 0.35rem 1rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.workspace-search-modes button {
+  flex: 1;
+  min-height: 28px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: 6px;
+  font-size: 0.8rem;
+}
+.workspace-search-modes button[aria-pressed='true'] {
+  border-color: var(--border-subtle);
+  background: var(--bg-selected);
+  color: var(--text-primary);
+}
+.workspace-file-results ul { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.workspace-file-index-actions {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.workspace-file-index-actions .plain-button {
+  flex: 0 0 auto;
+  min-height: 26px;
+  padding: 0 0.55rem;
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+}
+.workspace-file-index-actions .plain-button:hover { background: var(--bg-hover); color: var(--text-primary); }
+.workspace-file-results li .plain-button {
+  display: grid;
+  width: 100%;
+  gap: 2px;
+  padding: 0.45rem 0.55rem;
+  text-align: start;
+}
+.workspace-file-results .file-search-name { overflow-wrap: anywhere; font-size: 0.85rem; }
+.workspace-file-results mark {
+  padding: 0 1px;
+  border-radius: 2px;
+  background: var(--accent-soft);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.workspace-file-results .file-search-path {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .workspace-search-panel h2 {
   margin: 0.15rem 0 0;

@@ -82,11 +82,25 @@ test('workspace search preserves dirty buffers, forwards filters and completes a
             }
             return ok(result(requestId, String(args.pattern)));
           }
+          case 'walk_workspace': return ok({
+            requestId: String(args.requestId),
+            entries: [
+              { ref: a, displayName: 'a.txt', displayPath: 'E:/controlled-project/a.txt', sizeBytes: 11, isSymlink: false },
+              { ref: b, displayName: 'b.txt', displayPath: 'E:/controlled-project/src/b.txt', sizeBytes: 17, isSymlink: false },
+              { ref: { grantId: root.grantId, relativePath: '202611修复复盘.sql' }, displayName: '202611修复复盘.sql',
+                displayPath: 'E:/controlled-project/202611修复复盘.sql', sizeBytes: 21, isSymlink: false },
+            ],
+            skipped: [],
+            truncated: false,
+            cancelled: false,
+            elapsedMs: 4,
+          });
           case 'cancel_workspace_search':
             if (args.requestId !== cancelRequestId) {
               return Promise.resolve({ ok: false, error: { code: 'INVALID_INPUT', message: 'stale request', retryable: false } });
             }
             return ok({ requestId: cancelRequestId });
+          case 'cancel_workspace_walk': return ok({ requestId: String(args.requestId) });
           default: throw new Error(`Unexpected business command ${command}`);
         }
       },
@@ -138,4 +152,19 @@ test('workspace search preserves dirty buffers, forwards filters and completes a
   calls = await page.evaluate(() =>
     Reflect.get(window, 'searchCalls') as { command: string; args: Record<string, unknown> }[]);
   expect(calls.some(call => call.command === 'cancel_workspace_search')).toBe(true);
+
+  await panel.getByRole('button', { name: '搜索文件', exact: true }).click();
+  const fileNameInput = panel.getByLabel('文件名', { exact: true });
+  await expect(fileNameInput).toBeVisible();
+  await fileNameInput.fill('btxt');
+  const fileResult = panel.getByRole('button', { name: /b\.txt/ });
+  await expect(fileResult).toBeVisible();
+  await fileResult.click();
+  await expect(panel).not.toBeVisible();
+  calls = await page.evaluate(() =>
+    Reflect.get(window, 'searchCalls') as { command: string; args: Record<string, unknown> }[]);
+  expect(calls.some(call => call.command === 'walk_workspace'
+    && call.args.respectGitignore === true && call.args.includeHidden === false && call.args.maxFiles === 20_000)).toBe(true);
+  expect(calls.some(call => call.command === 'open_document'
+    && (call.args.ref as { relativePath?: string } | undefined)?.relativePath === 'src/b.txt')).toBe(true);
 });

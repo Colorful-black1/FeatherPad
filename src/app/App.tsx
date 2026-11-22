@@ -1256,6 +1256,12 @@ export function App() {
     setWorkspaceSearchOpen(false);
   }, [goToPosition, openOne, setNotice, setWorkspaceSearchOpen]);
 
+  const openWorkspaceFilePath = useCallback(async (reference: FileRef) => {
+    const failure = await openOne(reference, 'pinned', false);
+    if (failure) { setError(failure); return; }
+    setWorkspaceSearchOpen(false);
+  }, [openOne, setError, setWorkspaceSearchOpen]);
+
   const previewWorkspaceReplace = useCallback(async (draft: WorkspaceSearchDraft, replacement: string) => {
     setAutoFocus(false);
     setReplacementBusy(true);
@@ -1656,6 +1662,7 @@ export function App() {
               request={workspaceSearchRequest}
               onChooseFolder={() => void openFolder()}
               onSearch={startWorkspaceSearch} onOpen={(file, match) => void openWorkspaceSearchResult(file, match)}
+              onOpenFile={reference => void openWorkspaceFilePath(reference)}
               onPreviewReplace={(draft, replacement) => void previewWorkspaceReplace(draft, replacement)}
               onClose={() => setWorkspaceSearchOpen(false)} />
           </div>
