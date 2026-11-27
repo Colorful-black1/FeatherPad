@@ -24,10 +24,6 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: read
-    env:
-      npm_config_store_dir: ${{ runner.temp }}/pnpm-store
-      npm_config_cache_dir: ${{ runner.temp }}/pnpm-cache
-      npm_config_state_dir: ${{ runner.temp }}/pnpm-state
     outputs:
       version: ${{ steps.meta.outputs.version }}
       artifact: ${{ steps.meta.outputs.artifact }}
@@ -37,6 +33,16 @@ jobs:
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
           fetch-depth: 0
+
+      - name: Configure pnpm cache directories
+        shell: pwsh
+        run: |
+          $lines = @(
+            "npm_config_store_dir=$($env:RUNNER_TEMP)\pnpm-store"
+            "npm_config_cache_dir=$($env:RUNNER_TEMP)\pnpm-cache"
+            "npm_config_state_dir=$($env:RUNNER_TEMP)\pnpm-state"
+          )
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value $lines -Encoding utf8
 
       - name: Resolve version and updater signing state
         id: meta
