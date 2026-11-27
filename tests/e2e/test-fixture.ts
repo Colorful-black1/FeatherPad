@@ -50,6 +50,7 @@ export const test = base.extend({
                   fileAssociation: false, contextMenu: false, supportedExtensions: ['.txt'],
                   changesDefaultApp: false,
                 } };
+                case 'plugin:updater|check': return null;
                 case 'take_desktop_requests': return { ok: true, value: [] };
                 case 'save_session': {
                   const manifest = args.manifest;

@@ -62,7 +62,7 @@ ls -lh src-tauri/target/release/bundle/nsis/*-setup.exe
 
 ## GitHub 发布与自动更新
 
-正式安装版从 GitHub Releases 的 `latest.json` 检查并安装签名更新。发布由 `.github/workflows/build.yml` 完成：
+正式安装版从 GitHub Releases 的 `latest.json` 检查并安装签名更新。完整的密钥生成、GitHub Secrets、本地签名构建和排障步骤见[更新签名密钥与发布流程](docs/RELEASE-UPDATER.md)。发布由 `.github/workflows/build.yml` 完成：
 
 - 推送 `v1.0.0` 这类 Tag 时自动构建、上传 Actions Artifacts，并在成功后创建同名 Release；Tag 的版本数值必须与 `src-tauri/tauri.conf.json` 一致（`v1.0` 会按 `1.0.0` 处理）。
 - 在 Actions 页面手动运行时可选择分支、Tag 或提交 SHA；手动构建只上传 Artifacts，不创建 Release。
