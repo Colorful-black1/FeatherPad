@@ -100,8 +100,10 @@ jobs:
           $PSNativeCommandUseErrorActionPreference = $false
           $tag = [string]$env:GITHUB_REF_NAME
           gh release view $tag --repo $env:GITHUB_REPOSITORY --json tagName 2>$null | Out-Null
-          if ($LASTEXITCODE -eq 0) { throw "Release '$tag' already exists; refusing to overwrite it." }
-          if ($LASTEXITCODE -ne 1) { throw "Unable to confirm release state for '$tag' (gh exit $LASTEXITCODE)." }
+          $status = $LASTEXITCODE
+          $global:LASTEXITCODE = 0
+          if ($status -eq 0) { throw "Release '$tag' already exists; refusing to overwrite it." }
+          if ($status -ne 1) { throw "Unable to confirm release state for '$tag' (gh exit $status)." }
 
       - name: Install pnpm
         uses: pnpm/action-setup@v6
@@ -208,8 +210,10 @@ jobs:
           $PSNativeCommandUseErrorActionPreference = $false
           $tag = [string]$env:GITHUB_REF_NAME
           gh release view $tag --repo $env:GITHUB_REPOSITORY --json tagName 2>$null | Out-Null
-          if ($LASTEXITCODE -eq 0) { throw "Release '$tag' already exists; refusing to overwrite it." }
-          if ($LASTEXITCODE -ne 1) { throw "Unable to confirm release state for '$tag' (gh exit $LASTEXITCODE)." }
+          $status = $LASTEXITCODE
+          $global:LASTEXITCODE = 0
+          if ($status -eq 0) { throw "Release '$tag' already exists; refusing to overwrite it." }
+          if ($status -ne 1) { throw "Unable to confirm release state for '$tag' (gh exit $status)." }
 
       - name: Create draft release and upload assets
         shell: pwsh
