@@ -60,11 +60,22 @@ ls -lh src-tauri/target/release/bundle/nsis/*-setup.exe
 
 目标电脑需要已有 **Microsoft Edge WebView2 Runtime**；当前安装器不内嵌或自动下载它，缺失时程序会显示安装指引。安装器为当前用户安装，尚未签名。Windows 10 及最低 Runtime 版本的目标机兼容性仍未实测，现有验证环境为 Windows 11。NSIS 工具使用项目本地缓存（`src-tauri/target/.tauri/`）。
 
+## GitHub 发布与自动更新
+
+正式安装版从 GitHub Releases 的 `latest.json` 检查并安装签名更新。发布由 `.github/workflows/build.yml` 完成：
+
+- 推送 `v1.0.0` 这类 Tag 时自动构建、上传 Actions Artifacts，并在成功后创建同名 Release；Tag 的版本数值必须与 `src-tauri/tauri.conf.json` 一致（`v1.0` 会按 `1.0.0` 处理）。
+- 在 Actions 页面手动运行时可选择分支、Tag 或提交 SHA；手动构建只上传 Artifacts，不创建 Release。
+- 普通分支 push 和同一 Tag 下的普通提交不会触发构建。
+- 已存在同名 Release 时工作流明确失败，不覆盖、不删除。
+
+启用自动更新前需要在仓库配置两个 Secrets：`TAURI_SIGNING_PRIVATE_KEY`（Tauri 更新签名私钥内容）和 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`（私钥口令）。私钥保存在仓库外，不能提交；公钥写入 `src-tauri/tauri.conf.json` 的 `plugins.updater.pubkey`。缺少密钥时 Tag 发布会被拒绝；手动构建仍会生成普通安装包并上传 Actions Artifacts，但不是可自动更新的发布包。`0.1.0` 没有更新器，首次升级到 `1.0.0` 需要手动安装一次。
+
 ## 产品会具备什么
 
 打开文件夹和多根工作区；文件树、最近与收藏；多标签、预览/固定、双分栏；常见代码文本高亮、多光标、列选择、注释/折叠/行操作；快速打开、命令面板、可配置快捷键；文件内/全文搜索和有预览/恢复记录的跨文件替换；Markdown源码/阅读/分屏、目录、相对图片、HTML/PDF导出；格式化、文本转换、两文件diff、图片查看；多编码与换行、外部冲突、可靠保存、草稿与崩溃恢复；亮暗主题、安装/便携、CLI与显式选择加入的Windows集成。
 
-产品范围为功能矩阵的86项必需功能（M0–M4），M1只是MVP。小地图明确可选。产品不需要项目索引、账号、网络或开发语言服务；不承担运行调试、数据库、终端、插件市场、云同步或AI聊天。
+产品范围为功能矩阵的86项必需功能（M0–M4），M1只是MVP。小地图明确可选。除安装版更新检查外，产品不需要项目索引、账号、网络或开发语言服务；不承担运行调试、数据库、终端、插件市场、云同步或AI聊天。
 
 当前版本未提供可选小地图，该项不可用，默认不启用。
 

@@ -26,8 +26,9 @@ Explorer 右键菜单；不会修改 Windows 默认应用或 UserChoice。
 安装指引，不自动联网下载：
 https://developer.microsoft.com/microsoft-edge/webview2/#download-section
 
-本包是未签名内部试用版。Windows SmartScreen 可能提示未知发布者。
+本包为轻羽 FeatherPad 便携包，未做 Windows Authenticode 代码签名；
+Windows SmartScreen 可能提示未知发布者。便携版请手动下载新版本，不执行自动安装。
 
-M5候选包附带 docs/USER-GUIDE.md、docs/RECOVERY.md、docs/RELEASE-NOTES.md、
-THIRD-PARTY-NOTICES.md、packaging/LICENSE-TEXTS.txt 与第三方源码归档。
-G5未通过前不称完整v1；Win10和4核/8GB目标环境尚未实测。
+包内附带 docs/USER-GUIDE.md、docs/RECOVERY.md、docs/RELEASE-NOTES.md、
+THIRD-PARTY-NOTICES.md、packaging/LICENSE-TEXTS.txt 与第三方许可证清单。
+Win10和4核/8GB目标环境尚未实测。

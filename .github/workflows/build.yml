@@ -1,0 +1,223 @@
+name: build
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: '分支、Tag 或提交 SHA'
+        required: true
+        default: 'main'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    env:
+      npm_config_store_dir: ${{ runner.temp }}/pnpm-store
+      npm_config_cache_dir: ${{ runner.temp }}/pnpm-cache
+      npm_config_state_dir: ${{ runner.temp }}/pnpm-state
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      artifact: ${{ steps.meta.outputs.artifact }}
+    steps:
+      - name: Check out the selected ref
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
+          fetch-depth: 0
+
+      - name: Resolve version and updater signing state
+        id: meta
+        shell: pwsh
+        env:
+          REQUESTED_REF: ${{ inputs.ref }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $config = Get-Content -Raw -LiteralPath 'src-tauri/tauri.conf.json' | ConvertFrom-Json
+          $version = [string]$config.version
+          if ($version -notmatch '^\d+\.\d+\.\d+([\-+][0-9A-Za-z.\-]+)?$') {
+            throw "tauri.conf.json version '$version' is not SemVer."
+          }
+          $tag = ''
+          if ($env:GITHUB_EVENT_NAME -eq 'push') {
+            $tag = [string]$env:GITHUB_REF_NAME
+            if ($tag -notmatch '^v\d+(\.\d+){0,2}([\-+][0-9A-Za-z.\-]+)?$') {
+              throw "Tag '$tag' is not a supported version tag. Use vMAJOR.MINOR[.PATCH]."
+            }
+            $tagVersion = $tag.Substring(1)
+            $tagCore = ($tagVersion -split '[-+]', 2)[0]
+            $tagSuffix = $tagVersion.Substring($tagCore.Length)
+            $parts = $tagCore.Split('.')
+            if ($parts.Count -eq 1) { $tagCore = "$($parts[0]).0.0" }
+            elseif ($parts.Count -eq 2) { $tagCore = "$($parts[0]).$($parts[1]).0" }
+            $normalized = "$tagCore$tagSuffix"
+            if ($normalized -ne $version) {
+              throw "Tag '$tag' resolves to '$normalized' but tauri.conf.json is '$version'. Refusing to build a mismatched release."
+            }
+          }
+          $pubkey = [string]$config.plugins.updater.pubkey
+          $key = [string]$env:TAURI_SIGNING_PRIVATE_KEY
+          $hasPubkey = -not [string]::IsNullOrWhiteSpace($pubkey) -and -not $pubkey.StartsWith('REPLACE_')
+          $signing = if ($hasPubkey -and -not [string]::IsNullOrWhiteSpace($key)) { '1' } else { '0' }
+          if ($env:GITHUB_EVENT_NAME -eq 'push' -and $signing -ne '1') {
+            throw "Tag releases require a real updater pubkey and TAURI_SIGNING_PRIVATE_KEY secret."
+          }
+          $ref = if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') { $env:REQUESTED_REF } else { $env:GITHUB_REF_NAME }
+          $artifact = "FeatherPad-$version-windows-x64-$env:GITHUB_RUN_NUMBER"
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "ref=$ref" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "signing=$signing" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "artifact=$artifact" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "Version: $version; tag: '$tag'; ref: '$ref'; updater signing: $signing"
+
+      - name: Refuse to overwrite an existing release
+        if: github.event_name == 'push'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $tag = [string]$env:GITHUB_REF_NAME
+          gh release view $tag --repo $env:GITHUB_REPOSITORY --json tagName 2>$null | Out-Null
+          if ($LASTEXITCODE -eq 0) { throw "Release '$tag' already exists; refusing to overwrite it." }
+          if ($LASTEXITCODE -ne 1) { throw "Unable to confirm release state for '$tag' (gh exit $LASTEXITCODE)." }
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.32.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22.13.0'
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build outputs
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build signed updater bundle
+        if: steps.meta.outputs.signing == '1'
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: pnpm tauri build --bundles nsis --ci --config "$env:GITHUB_WORKSPACE/src-tauri/tauri.updater.conf.json"
+
+      - name: Build manual bundle without updater signing
+        if: steps.meta.outputs.signing != '1'
+        shell: pwsh
+        run: pnpm tauri build --bundles nsis --ci
+
+      - name: Package release assets
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          BUILD_REF: ${{ steps.meta.outputs.ref }}
+          BUILD_TAG: ${{ steps.meta.outputs.tag }}
+          SIGNING: ${{ steps.meta.outputs.signing }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:SIGNING -eq '1') {
+            ./scripts/ci/package-release.ps1 -Version $env:VERSION -OutputDirectory release-assets `
+              -BuildRef $env:BUILD_REF -BuildTag $env:BUILD_TAG -RequireUpdater
+          } else {
+            ./scripts/ci/package-release.ps1 -Version $env:VERSION -OutputDirectory release-assets `
+              -BuildRef $env:BUILD_REF -BuildTag $env:BUILD_TAG
+          }
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.meta.outputs.artifact }}
+          path: release-assets
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: windows-latest
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Check out the release tag
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22.13.0'
+
+      - name: Download the built release assets
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.build.outputs.artifact }}
+          path: release-assets
+
+      - name: Generate updater manifest
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          node ./scripts/ci/updater-manifest.mjs --version $env:VERSION --tag $env:TAG `
+            --repo $env:GITHUB_REPOSITORY --assets release-assets --output release-assets/latest.json
+
+      - name: Refuse to overwrite an existing release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $tag = [string]$env:GITHUB_REF_NAME
+          gh release view $tag --repo $env:GITHUB_REPOSITORY --json tagName 2>$null | Out-Null
+          if ($LASTEXITCODE -eq 0) { throw "Release '$tag' already exists; refusing to overwrite it." }
+          if ($LASTEXITCODE -ne 1) { throw "Unable to confirm release state for '$tag' (gh exit $LASTEXITCODE)." }
+
+      - name: Create draft release and upload assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $tag = [string]$env:GITHUB_REF_NAME
+          gh release create $tag --repo $env:GITHUB_REPOSITORY --draft --verify-tag `
+            --title $tag --notes-file docs/RELEASE-NOTES.md
+          if ($LASTEXITCODE -ne 0) { throw "Failed to create draft release '$tag'." }
+          $assets = Get-ChildItem -LiteralPath release-assets -File | ForEach-Object { $_.FullName }
+          gh release upload $tag $assets --repo $env:GITHUB_REPOSITORY
+          if ($LASTEXITCODE -ne 0) { throw "Failed to upload release assets for '$tag'; the draft release was kept." }
+          gh release edit $tag --repo $env:GITHUB_REPOSITORY --draft=false
+          if ($LASTEXITCODE -ne 0) { throw "Failed to publish release '$tag'." }

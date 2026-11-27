@@ -3,6 +3,7 @@ node_modules/
 dist/
 src-tauri/target/
 .artifacts/
+release-assets/
 .cache/
 coverage/
 playwright-report/

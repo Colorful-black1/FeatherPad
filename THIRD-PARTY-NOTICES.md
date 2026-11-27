@@ -4,9 +4,9 @@ Generated from the locked installed dependency graphs by `scripts/generate-notic
 
 The inventory includes npm production dependencies and the Windows Cargo graph, including build tools. Inclusion does not imply that all code is linked. WebView2 is supplied by Microsoft separately and is not included in the application archive.
 
-The internal candidate distribution includes THIRD-PARTY-SOURCES.zip with the exact unmodified MPL-only crate sources and the modified Wry source, including original per-file notices. Wry patch details are in src-tauri/vendor/wry/PATCH.md. This file does not assign a license to FeatherPad itself.
+The corresponding source tag includes the unmodified MPL-only crate sources resolved by Cargo.lock and the modified Wry source, including original per-file notices. Wry patch details are in src-tauri/vendor/wry/PATCH.md. This file does not assign a license to FeatherPad itself.
 
-Components: 312; original text blocks: 192.
+Components: 357; original text blocks: 229.
 
 | Ecosystem | Component | Version | Declared license |
 |---|---|---|---|
@@ -15,6 +15,7 @@ Components: 312; original text blocks: 192.
 | cargo | alloc-no-stdlib | 3.0.0 | BSD-3-Clause |
 | cargo | alloc-stdlib | 0.3.0 | BSD-3-Clause |
 | cargo | anyhow | 1.0.104 | MIT OR Apache-2.0 |
+| cargo | atomic-waker | 1.1.2 | Apache-2.0 OR MIT |
 | cargo | autocfg | 1.5.1 | Apache-2.0 OR MIT |
 | cargo | base64 | 0.23.1 | MIT OR Apache-2.0 |
 | cargo | bit-set | 0.8.0 | Apache-2.0 OR MIT |
@@ -36,6 +37,7 @@ Components: 312; original text blocks: 192.
 | cargo | cfb | 0.14.0 | MIT |
 | cargo | cfg-if | 1.0.5 | MIT OR Apache-2.0 |
 | cargo | chrono | 0.4.45 | MIT OR Apache-2.0 |
+| cargo | constant_time_eq | 0.6.2 | CC0-1.0 OR MIT-0 OR Apache-2.0 |
 | cargo | cookie | 0.18.2 | MIT OR Apache-2.0 |
 | cargo | cpufeatures | 0.2.17 | MIT OR Apache-2.0 |
 | cargo | crc32fast | 1.5.3 | MIT OR Apache-2.0 |
@@ -76,7 +78,15 @@ Components: 312; original text blocks: 192.
 | cargo | fnv | 1.0.7 | Apache-2.0 / MIT |
 | cargo | foldhash | 0.2.0 | Zlib |
 | cargo | form_urlencoded | 1.2.2 | MIT OR Apache-2.0 |
+| cargo | futures-channel | 0.3.34 | MIT OR Apache-2.0 |
+| cargo | futures-core | 0.3.34 | MIT OR Apache-2.0 |
+| cargo | futures-io | 0.3.34 | MIT OR Apache-2.0 |
+| cargo | futures-macro | 0.3.34 | MIT OR Apache-2.0 |
+| cargo | futures-sink | 0.3.34 | MIT OR Apache-2.0 |
+| cargo | futures-task | 0.3.34 | MIT OR Apache-2.0 |
+| cargo | futures-util | 0.3.34 | MIT OR Apache-2.0 |
 | cargo | generic-array | 0.14.7 | MIT |
+| cargo | getrandom | 0.2.17 | MIT OR Apache-2.0 |
 | cargo | getrandom | 0.3.4 | MIT OR Apache-2.0 |
 | cargo | getrandom | 0.4.3 | MIT OR Apache-2.0 |
 | cargo | glob | 0.3.4 | MIT OR Apache-2.0 |
@@ -87,6 +97,12 @@ Components: 312; original text blocks: 192.
 | cargo | hex | 0.4.3 | MIT OR Apache-2.0 |
 | cargo | html5ever | 0.39.0 | MIT OR Apache-2.0 |
 | cargo | http | 1.5.0 | MIT OR Apache-2.0 |
+| cargo | http-body | 1.1.0 | MIT |
+| cargo | http-body-util | 0.1.5 | MIT |
+| cargo | httparse | 1.10.1 | MIT OR Apache-2.0 |
+| cargo | hyper | 1.12.0 | MIT |
+| cargo | hyper-rustls | 0.27.10 | Apache-2.0 OR ISC OR MIT |
+| cargo | hyper-util | 0.1.21 | MIT |
 | cargo | ico | 0.6.0 | MIT |
 | cargo | icu_collections | 2.4.0 | Unicode-3.0 |
 | cargo | icu_locale_core | 2.4.0 | Unicode-3.0 |
@@ -103,6 +119,7 @@ Components: 312; original text blocks: 192.
 | cargo | indexmap | 1.9.3 | Apache-2.0 OR MIT |
 | cargo | indexmap | 2.14.2 | Apache-2.0 OR MIT |
 | cargo | infer | 0.22.0 | MIT |
+| cargo | ipnet | 2.12.2 | MIT OR Apache-2.0 |
 | cargo | itoa | 1.0.18 | MIT OR Apache-2.0 |
 | cargo | jiff | 0.2.38 | Unlicense OR MIT |
 | cargo | jiff-core | 0.1.1 | Unlicense OR MIT |
@@ -118,6 +135,7 @@ Components: 312; original text blocks: 192.
 | cargo | markup5ever | 0.39.0 | MIT OR Apache-2.0 |
 | cargo | memchr | 2.8.3 | Unlicense OR MIT |
 | cargo | mime | 0.3.17 | MIT OR Apache-2.0 |
+| cargo | minisign-verify | 0.3.0 | MIT |
 | cargo | miniz_oxide | 0.8.9 | MIT OR Zlib OR Apache-2.0 |
 | cargo | miniz_oxide | 0.9.1 | MIT OR Zlib OR Apache-2.0 |
 | cargo | mio | 1.2.4 | MIT |
@@ -150,9 +168,16 @@ Components: 312; original text blocks: 192.
 | cargo | regex | 1.13.1 | MIT OR Apache-2.0 |
 | cargo | regex-automata | 0.4.18 | MIT OR Apache-2.0 |
 | cargo | regex-syntax | 0.8.11 | MIT OR Apache-2.0 |
+| cargo | reqwest | 0.13.5 | MIT OR Apache-2.0 |
 | cargo | rfd | 0.17.2 | MIT |
+| cargo | ring | 0.17.14 | Apache-2.0 AND ISC |
 | cargo | rustc_version | 0.4.1 | MIT OR Apache-2.0 |
 | cargo | rustc-hash | 2.1.3 | Apache-2.0 OR MIT |
+| cargo | rustls | 0.23.46 | Apache-2.0 OR ISC OR MIT |
+| cargo | rustls-pki-types | 1.16.0 | MIT OR Apache-2.0 |
+| cargo | rustls-platform-verifier | 0.7.1 | MIT OR Apache-2.0 |
+| cargo | rustls-webpki | 0.103.17 | ISC |
+| cargo | rustversion | 1.0.23 | MIT OR Apache-2.0 |
 | cargo | same-file | 1.0.6 | Unlicense/MIT |
 | cargo | schemars | 0.8.22 | MIT |
 | cargo | schemars | 0.9.0 | MIT |
@@ -178,6 +203,7 @@ Components: 312; original text blocks: 192.
 | cargo | shlex | 2.0.1 | MIT OR Apache-2.0 |
 | cargo | simd-adler32 | 0.3.10 | MIT |
 | cargo | siphasher | 1.0.4 | MIT OR Apache-2.0 |
+| cargo | slab | 0.4.12 | MIT |
 | cargo | smallvec | 1.16.4 | MIT OR Apache-2.0 |
 | cargo | socket2 | 0.6.5 | MIT OR Apache-2.0 |
 | cargo | softbuffer | 0.4.8 | MIT OR Apache-2.0 |
@@ -186,8 +212,10 @@ Components: 312; original text blocks: 192.
 | cargo | string_cache | 0.9.0 | MIT OR Apache-2.0 |
 | cargo | string_cache_codegen | 0.6.1 | MIT OR Apache-2.0 |
 | cargo | strsim | 0.11.1 | MIT |
+| cargo | subtle | 2.6.1 | BSD-3-Clause |
 | cargo | syn | 2.0.119 | MIT OR Apache-2.0 |
 | cargo | syn | 3.0.9 | MIT OR Apache-2.0 |
+| cargo | sync_wrapper | 1.0.2 | Apache-2.0 |
 | cargo | synstructure | 0.14.0 | MIT |
 | cargo | tao | 0.37.2 | Apache-2.0 |
 | cargo | tauri | 2.12.5 | Apache-2.0 OR MIT |
@@ -197,10 +225,12 @@ Components: 312; original text blocks: 192.
 | cargo | tauri-plugin | 2.7.2 | Apache-2.0 OR MIT |
 | cargo | tauri-plugin-dialog | 2.8.4 | Apache-2.0 OR MIT |
 | cargo | tauri-plugin-fs | 2.7.1 | Apache-2.0 OR MIT |
+| cargo | tauri-plugin-updater | 2.14.1 | Apache-2.0 OR MIT |
 | cargo | tauri-runtime | 2.12.2 | Apache-2.0 OR MIT |
 | cargo | tauri-runtime-wry | 2.12.3 | Apache-2.0 OR MIT |
 | cargo | tauri-utils | 2.10.2 | Apache-2.0 OR MIT |
 | cargo | tauri-winres | 0.3.7 | MIT |
+| cargo | tempfile | 3.27.0 | MIT OR Apache-2.0 |
 | cargo | tendril | 0.5.1 | MIT OR Apache-2.0 |
 | cargo | thiserror | 2.0.21 | MIT OR Apache-2.0 |
 | cargo | thiserror-impl | 2.0.21 | MIT OR Apache-2.0 |
@@ -210,17 +240,26 @@ Components: 312; original text blocks: 192.
 | cargo | tinystr | 0.8.5 | Unicode-3.0 |
 | cargo | tinyvec | 1.13.3 | Zlib OR Apache-2.0 OR MIT |
 | cargo | tokio | 1.54.1 | MIT |
+| cargo | tokio-rustls | 0.26.6 | MIT OR Apache-2.0 |
+| cargo | tokio-util | 0.7.20 | MIT |
 | cargo | toml | 1.1.8+spec-1.1.0 | MIT OR Apache-2.0 |
 | cargo | toml_datetime | 1.1.2+spec-1.1.0 | MIT OR Apache-2.0 |
 | cargo | toml_parser | 1.1.5+spec-1.1.0 | MIT OR Apache-2.0 |
 | cargo | toml_writer | 1.1.3+spec-1.1.0 | MIT OR Apache-2.0 |
+| cargo | tower | 0.5.3 | MIT |
+| cargo | tower-http | 0.6.11 | MIT |
+| cargo | tower-layer | 0.3.3 | MIT |
+| cargo | tower-service | 0.3.3 | MIT |
 | cargo | tracing | 0.1.44 | MIT |
 | cargo | tracing-core | 0.1.36 | MIT |
 | cargo | tray-icon | 0.25.1 | MIT OR Apache-2.0 |
+| cargo | try-lock | 0.2.5 | MIT |
+| cargo | typed-path | 0.13.0 | MIT OR Apache-2.0 |
 | cargo | typeid | 1.0.3 | MIT OR Apache-2.0 |
 | cargo | typenum | 1.20.1 | MIT OR Apache-2.0 |
 | cargo | unicode-ident | 1.0.27 | (MIT OR Apache-2.0) AND Unicode-3.0 |
 | cargo | unicode-segmentation | 1.13.3 | MIT OR Apache-2.0 |
+| cargo | untrusted | 0.9.0 | ISC |
 | cargo | url | 2.5.8 | MIT OR Apache-2.0 |
 | cargo | urlpattern | 0.6.0 | MIT |
 | cargo | utf_types | 1.0.0 | Apache-2.0 OR MIT |
@@ -230,6 +269,7 @@ Components: 312; original text blocks: 192.
 | cargo | vswhom | 0.1.0 | MIT |
 | cargo | vswhom-sys | 0.1.3 | MIT |
 | cargo | walkdir | 2.5.0 | Unlicense/MIT |
+| cargo | want | 0.3.2 | MIT |
 | cargo | web_atoms | 0.2.6 | MIT OR Apache-2.0 |
 | cargo | web-time | 1.1.0 | MIT OR Apache-2.0 |
 | cargo | webview2-com | 0.39.1 | MIT |
@@ -245,6 +285,7 @@ Components: 312; original text blocks: 192.
 | cargo | windows-interface | 0.59.3 | MIT OR Apache-2.0 |
 | cargo | windows-link | 0.2.1 | MIT OR Apache-2.0 |
 | cargo | windows-numerics | 0.3.1 | MIT OR Apache-2.0 |
+| cargo | windows-registry | 0.6.1 | MIT OR Apache-2.0 |
 | cargo | windows-result | 0.4.1 | MIT OR Apache-2.0 |
 | cargo | windows-strings | 0.5.1 | MIT OR Apache-2.0 |
 | cargo | windows-sys | 0.61.2 | MIT OR Apache-2.0 |
@@ -258,9 +299,12 @@ Components: 312; original text blocks: 192.
 | cargo | yoke-derive | 0.8.4 | Unicode-3.0 |
 | cargo | zerofrom | 0.1.8 | Unicode-3.0 |
 | cargo | zerofrom-derive | 0.1.8 | Unicode-3.0 |
+| cargo | zeroize | 1.9.2 | Apache-2.0 OR MIT |
+| cargo | zeroize_derive | 1.5.0 | Apache-2.0 OR MIT |
 | cargo | zerotrie | 0.2.5 | Unicode-3.0 |
 | cargo | zerovec | 0.11.9 | Unicode-3.0 |
 | cargo | zerovec-derive | 0.11.7 | Unicode-3.0 |
+| cargo | zip | 9.8.2 | MIT |
 | cargo | zlib-rs | 0.6.8 | Zlib |
 | cargo | zmij | 1.0.23 | MIT |
 | npm | @codemirror/autocomplete | 6.20.4 | MIT |
@@ -298,6 +342,7 @@ Components: 312; original text blocks: 192.
 | npm | @marijn/find-cluster-break | 1.0.4 | MIT |
 | npm | @prettier/plugin-xml | 3.4.2 | MIT |
 | npm | @tauri-apps/api | 2.12.4 | Apache-2.0 OR MIT |
+| npm | @tauri-apps/plugin-updater | 2.14.1 | MIT OR Apache-2.0 |
 | npm | @types/trusted-types | 2.0.7 | MIT |
 | npm | @xml-tools/parser | 1.0.12 | Apache-2.0 |
 | npm | argparse | 2.0.1 | Python-2.0 |

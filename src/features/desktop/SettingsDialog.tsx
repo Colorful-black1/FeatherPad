@@ -4,6 +4,7 @@ import { defaultSettings, mergeSettings, parseSettingsImport, settingDefinitions
   type SettingDefinition, type SettingGroup, type SettingKey, type Settings, type SettingSource } from './settings-schema';
 import type { SettingsCoordinator } from './settings';
 import { IntegrationSettings } from './IntegrationSettings';
+import { AboutSettings } from './AboutSettings';
 import { SettingsFontPicker, SettingsSelect } from './SettingsControls';
 
 const sourceNames: Record<SettingSource, string> = { default: '内置默认', user: '用户设置', workspace: '工作区设置', session: '本次预览 / 会话' };
@@ -176,7 +177,10 @@ export function SettingsDialog({ coordinator, onClose, onShortcuts, suspended = 
           {definitions.length === 0 && <p>没有匹配设置。</p>}
         </fieldset>
         <pre className="settings-font-preview" aria-label="字体预览">轻羽 FeatherPad{`\n`}Aa 0123456789 中文标点，等宽缩进。</pre>
-        {!searching && (group === 'all' || group === 'system') && <IntegrationSettings />}
+        {!searching && (group === 'all' || group === 'system') && <>
+          <AboutSettings />
+          <IntegrationSettings />
+        </>}
         {snapshot.fontWarning && <p className="notice" role="note">{snapshot.fontWarning}</p>}
         {snapshot.warning && <p className="notice" role="note">{snapshot.warning}</p>}
         {snapshot.workspaceWarning && <p className="notice" role="note">{snapshot.workspaceWarning}</p>}

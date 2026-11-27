@@ -22,4 +22,24 @@ describe('Tauri command capabilities', () => {
         `missing permission definition for ${command}`).toBe(true);
     }
   });
+
+  it('registers the updater plugin and grants its runtime commands', () => {
+    const source = readFileSync(new URL('src-tauri/src/lib.rs', root), 'utf8');
+    expect(source).toContain('tauri_plugin_updater::Builder::new().build()');
+
+    const capability = JSON.parse(readFileSync(new URL('src-tauri/capabilities/main.json', root), 'utf8')) as {
+      permissions: string[];
+    };
+    expect(capability.permissions).toContain('updater:default');
+    expect(capability.permissions).toContain('core:window:allow-get-all-windows');
+
+    const config = JSON.parse(readFileSync(new URL('src-tauri/tauri.conf.json', root), 'utf8')) as {
+      plugins?: { updater?: { endpoints?: string[]; pubkey?: string; windows?: { installMode?: string } } };
+    };
+    expect(config.plugins?.updater?.endpoints).toEqual([
+      'https://github.com/Colorful-black1/FeatherPad/releases/latest/download/latest.json',
+    ]);
+    expect(config.plugins?.updater?.pubkey?.length).toBeGreaterThan(0);
+    expect(config.plugins?.updater?.windows?.installMode).toBe('passive');
+  });
 });

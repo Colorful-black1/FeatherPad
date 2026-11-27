@@ -1,11 +1,11 @@
 {
   "scope": "npm production graph and Windows Cargo resolved graph (includes build/proc-macro tools); no claim that every listed component is linked",
   "lockHashes": {
-    "pnpm": "387637516f832fc8246aba9a8005fe528bdf7588769e17cfd3ec2ecd7815a3b2",
-    "cargo": "8fd4b187e2a20b14d9974f4db3f1ffee5a5d40f0ae2e133ad6de2714827edbbc"
+    "pnpm": "5cb04787917f41dd2760f577d53d8286da619941747af55424c8cd6aa04be29a",
+    "cargo": "ce617850c41834738964a0689e774f3cd85b7a9eff2ba5b45ff76b5f52fb8ef3"
   },
-  "componentCount": 312,
-  "licenseTextCount": 192,
+  "componentCount": 357,
+  "licenseTextCount": 229,
   "components": [
     {
       "ecosystem": "cargo",
@@ -89,6 +89,27 @@
         {
           "origin": "cargo:anyhow@1.0.104/LICENSE-MIT",
           "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "atomic-waker",
+      "version": "1.1.2",
+      "license": "Apache-2.0 OR MIT",
+      "repository": "https://github.com/smol-rs/atomic-waker",
+      "notices": [
+        {
+          "origin": "cargo:atomic-waker@1.1.2/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "origin": "cargo:atomic-waker@1.1.2/LICENSE-MIT",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        },
+        {
+          "origin": "cargo:atomic-waker@1.1.2/LICENSE-THIRD-PARTY",
+          "sha256": "6226d0632e2e1a80c23597e964da9812ae193c535fe058154afb034e94167aa5"
         }
       ]
     },
@@ -430,6 +451,27 @@
         {
           "origin": "cargo:chrono@0.4.45/LICENSE.txt",
           "sha256": "946c9835d8034d24404f8cfec5f4654cee5dad17e944afc3d06d742cf2882831"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "constant_time_eq",
+      "version": "0.6.2",
+      "license": "CC0-1.0 OR MIT-0 OR Apache-2.0",
+      "repository": "https://codeberg.org/cesarb/constant_time_eq",
+      "notices": [
+        {
+          "origin": "cargo:constant_time_eq@0.6.2/LICENSE-APACHE",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+        },
+        {
+          "origin": "cargo:constant_time_eq@0.6.2/LICENSE-CC0",
+          "sha256": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499"
+        },
+        {
+          "origin": "cargo:constant_time_eq@0.6.2/LICENSE-MIT0",
+          "sha256": "9a3aeb3f63659c4c6302d315e1d98784d1e8559858a47ff9562e091bb922d28d"
         }
       ]
     },
@@ -1071,6 +1113,125 @@
     },
     {
       "ecosystem": "cargo",
+      "name": "futures-channel",
+      "version": "0.3.34",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/rust-lang/futures-rs",
+      "notices": [
+        {
+          "origin": "cargo:futures-channel@0.3.34/LICENSE-APACHE",
+          "sha256": "275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427"
+        },
+        {
+          "origin": "cargo:futures-channel@0.3.34/LICENSE-MIT",
+          "sha256": "6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "futures-core",
+      "version": "0.3.34",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/rust-lang/futures-rs",
+      "notices": [
+        {
+          "origin": "cargo:futures-core@0.3.34/LICENSE-APACHE",
+          "sha256": "275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427"
+        },
+        {
+          "origin": "cargo:futures-core@0.3.34/LICENSE-MIT",
+          "sha256": "6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "futures-io",
+      "version": "0.3.34",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/rust-lang/futures-rs",
+      "notices": [
+        {
+          "origin": "cargo:futures-io@0.3.34/LICENSE-APACHE",
+          "sha256": "275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427"
+        },
+        {
+          "origin": "cargo:futures-io@0.3.34/LICENSE-MIT",
+          "sha256": "6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "futures-macro",
+      "version": "0.3.34",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/rust-lang/futures-rs",
+      "notices": [
+        {
+          "origin": "cargo:futures-macro@0.3.34/LICENSE-APACHE",
+          "sha256": "275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427"
+        },
+        {
+          "origin": "cargo:futures-macro@0.3.34/LICENSE-MIT",
+          "sha256": "6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "futures-sink",
+      "version": "0.3.34",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/rust-lang/futures-rs",
+      "notices": [
+        {
+          "origin": "cargo:futures-sink@0.3.34/LICENSE-APACHE",
+          "sha256": "275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427"
+        },
+        {
+          "origin": "cargo:futures-sink@0.3.34/LICENSE-MIT",
+          "sha256": "6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "futures-task",
+      "version": "0.3.34",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/rust-lang/futures-rs",
+      "notices": [
+        {
+          "origin": "cargo:futures-task@0.3.34/LICENSE-APACHE",
+          "sha256": "275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427"
+        },
+        {
+          "origin": "cargo:futures-task@0.3.34/LICENSE-MIT",
+          "sha256": "6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "futures-util",
+      "version": "0.3.34",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/rust-lang/futures-rs",
+      "notices": [
+        {
+          "origin": "cargo:futures-util@0.3.34/LICENSE-APACHE",
+          "sha256": "275c491d6d1160553c32fd6127061d7f9606c3ea25abfad6ca3f6ed088785427"
+        },
+        {
+          "origin": "cargo:futures-util@0.3.34/LICENSE-MIT",
+          "sha256": "6652c868f35dfe5e8ef636810a4e576b9d663f3a17fb0f5613ad73583e1b88fd"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
       "name": "generic-array",
       "version": "0.14.7",
       "license": "MIT",
@@ -1079,6 +1240,23 @@
         {
           "origin": "cargo:generic-array@0.14.7/LICENSE",
           "sha256": "c09aae9d3c77b531f56351a9947bc7446511d6b025b3255312d3e3442a9a7583"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "getrandom",
+      "version": "0.2.17",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/rust-random/getrandom",
+      "notices": [
+        {
+          "origin": "cargo:getrandom@0.2.17/LICENSE-APACHE",
+          "sha256": "aaff376532ea30a0cd5330b9502ad4a4c8bf769c539c87ffe78819d188a18ebf"
+        },
+        {
+          "origin": "cargo:getrandom@0.2.17/LICENSE-MIT",
+          "sha256": "42fa16951ce7f24b5a467a40e5b449a1d41e662f97ca779864f053f39e097737"
         }
       ]
     },
@@ -1253,6 +1431,96 @@
         {
           "origin": "cargo:http@1.5.0/LICENSE-MIT",
           "sha256": "dc91f8200e4b2a1f9261035d4c18c33c246911a6c0f7b543d75347e61b249cff"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "http-body",
+      "version": "1.1.0",
+      "license": "MIT",
+      "repository": "https://github.com/hyperium/http-body",
+      "notices": [
+        {
+          "origin": "cargo:http-body@1.1.0/LICENSE",
+          "sha256": "248378d0a3383c173fb925f17141b88e71580b3ba17ddc6ac3d2a344683232ab"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "http-body-util",
+      "version": "0.1.5",
+      "license": "MIT",
+      "repository": "https://github.com/hyperium/http-body",
+      "notices": [
+        {
+          "origin": "cargo:http-body-util@0.1.5/LICENSE",
+          "sha256": "248378d0a3383c173fb925f17141b88e71580b3ba17ddc6ac3d2a344683232ab"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "httparse",
+      "version": "1.10.1",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/seanmonstar/httparse",
+      "notices": [
+        {
+          "origin": "cargo:httparse@1.10.1/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "origin": "cargo:httparse@1.10.1/LICENSE-MIT",
+          "sha256": "391a5396cec6230bfabd4ef4eb2350eb895bc5efce377a2218f5702ed020d3e3"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "hyper",
+      "version": "1.12.0",
+      "license": "MIT",
+      "repository": "https://github.com/hyperium/hyper",
+      "notices": [
+        {
+          "origin": "cargo:hyper@1.12.0/LICENSE",
+          "sha256": "2d01890414494742ba4a509fcec8efa40f6d8be22cbd72be7cff08d6fda4ec89"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "hyper-rustls",
+      "version": "0.27.10",
+      "license": "Apache-2.0 OR ISC OR MIT",
+      "repository": "https://github.com/rustls/hyper-rustls",
+      "notices": [
+        {
+          "origin": "cargo:hyper-rustls@0.27.10/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "origin": "cargo:hyper-rustls@0.27.10/LICENSE-ISC",
+          "sha256": "7cfafc877eccc46c0e346ccbaa5c51bb6b894d2b818e617d970211e232785ad4"
+        },
+        {
+          "origin": "cargo:hyper-rustls@0.27.10/LICENSE-MIT",
+          "sha256": "709e3175b4212f7b13aa93971c9f62ff8c69ec45ad8c6532a7e0c41d7a7d6f8c"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "hyper-util",
+      "version": "0.1.21",
+      "license": "MIT",
+      "repository": "https://github.com/hyperium/hyper-util",
+      "notices": [
+        {
+          "origin": "cargo:hyper-util@0.1.21/LICENSE",
+          "sha256": "9e0a97848ea543aef745c98e84fde696a9a3e0735538f6daefdd3cb1942effc1"
         }
       ]
     },
@@ -1485,6 +1753,23 @@
         {
           "origin": "cargo:infer@0.22.0/LICENSE",
           "sha256": "270b0d81891aa44c7e8726cf9432dade9556a01c848bacd2f3ef839c9c1a1859"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "ipnet",
+      "version": "2.12.2",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/krisprice/ipnet",
+      "notices": [
+        {
+          "origin": "cargo:ipnet@2.12.2/LICENSE-APACHE",
+          "sha256": "87d9feb9238c6bd8e0024fc4733b06cff036f89f36d93b7df1c8a0549bbb7a5b"
+        },
+        {
+          "origin": "cargo:ipnet@2.12.2/LICENSE-MIT",
+          "sha256": "47dc9ff29128ddfb4d6a0435383c9f89120bc374dbcc1dd00b933a0b28aa7865"
         }
       ]
     },
@@ -1756,6 +2041,19 @@
         {
           "origin": "cargo:mime@0.3.17/LICENSE-MIT",
           "sha256": "df9cfd06d8a44d9a671eadd39ffd97f166481da015a30f45dfd27886209c5922"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "minisign-verify",
+      "version": "0.3.0",
+      "license": "MIT",
+      "repository": "https://github.com/jedisct1/rust-minisign-verify",
+      "notices": [
+        {
+          "origin": "cargo:minisign-verify@0.3.0/LICENSE",
+          "sha256": "42c8695fbc468866d9756be99af0ba4e37d733f8daa3c8827c8d80b8bec1b2f9"
         }
       ]
     },
@@ -2281,6 +2579,23 @@
     },
     {
       "ecosystem": "cargo",
+      "name": "reqwest",
+      "version": "0.13.5",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/seanmonstar/reqwest",
+      "notices": [
+        {
+          "origin": "cargo:reqwest@0.13.5/LICENSE-APACHE",
+          "sha256": "751963a8b88c0e3a9f27e98933079fbcf09b9998b2c13ac49c2e4d58444520d6"
+        },
+        {
+          "origin": "cargo:reqwest@0.13.5/LICENSE-MIT",
+          "sha256": "dd87e27dfbaa888cb77ea34592648a7743636b8dce07e49543bddda0fcfc73bc"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
       "name": "rfd",
       "version": "0.17.2",
       "license": "MIT",
@@ -2289,6 +2604,27 @@
         {
           "origin": "cargo:rfd@0.17.2/LICENSE",
           "sha256": "65fc947f4bac882a2cd104ef73c246b1b037059df9f2b3a58b7f77f0b9e56071"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "ring",
+      "version": "0.17.14",
+      "license": "Apache-2.0 AND ISC",
+      "repository": "https://github.com/briansmith/ring",
+      "notices": [
+        {
+          "origin": "cargo:ring@0.17.14/LICENSE",
+          "sha256": "b3d734001a94efff3579978d953391aa7115f877657d25eb54037a43875d078a"
+        },
+        {
+          "origin": "cargo:ring@0.17.14/LICENSE-BoringSSL",
+          "sha256": "005fc765ddc5115da796cca915baa9557abae13ff35e0a47c47affc56f6c414d"
+        },
+        {
+          "origin": "cargo:ring@0.17.14/LICENSE-other-bits",
+          "sha256": "f025ccfb7dfb6bdfedc75ca0f67acc69e6fb4998143d834f7c2f38a29989680f"
         }
       ]
     },
@@ -2323,6 +2659,91 @@
         {
           "origin": "cargo:rustc-hash@2.1.3/LICENSE-MIT",
           "sha256": "30fefc3a7d6a0041541858293bcbea2dde4caa4c0a5802f996a7f7e8c0085652"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "rustls",
+      "version": "0.23.46",
+      "license": "Apache-2.0 OR ISC OR MIT",
+      "repository": "https://github.com/rustls/rustls",
+      "notices": [
+        {
+          "origin": "cargo:rustls@0.23.46/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "origin": "cargo:rustls@0.23.46/LICENSE-ISC",
+          "sha256": "7cfafc877eccc46c0e346ccbaa5c51bb6b894d2b818e617d970211e232785ad4"
+        },
+        {
+          "origin": "cargo:rustls@0.23.46/LICENSE-MIT",
+          "sha256": "709e3175b4212f7b13aa93971c9f62ff8c69ec45ad8c6532a7e0c41d7a7d6f8c"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "rustls-pki-types",
+      "version": "1.16.0",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/rustls/pki-types",
+      "notices": [
+        {
+          "origin": "cargo:rustls-pki-types@1.16.0/LICENSE-APACHE",
+          "sha256": "45fd05c4865e7c350b98ad7ac50e1b15462d49af4a91e9b0c9dd933dc9a69742"
+        },
+        {
+          "origin": "cargo:rustls-pki-types@1.16.0/LICENSE-MIT",
+          "sha256": "9117d922e667125508dde62b02c1f57ed22f5ad21eb536aa2e2d99e1c796e639"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "rustls-platform-verifier",
+      "version": "0.7.1",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/rustls/rustls-platform-verifier",
+      "notices": [
+        {
+          "origin": "cargo:rustls-platform-verifier@0.7.1/LICENSE-APACHE",
+          "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+        },
+        {
+          "origin": "cargo:rustls-platform-verifier@0.7.1/LICENSE-MIT",
+          "sha256": "1c7cf76689c837a68ed8d704994e52a0f2940c087958f860d17f3186afbdcc0c"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "rustls-webpki",
+      "version": "0.103.17",
+      "license": "ISC",
+      "repository": "https://github.com/rustls/webpki",
+      "notices": [
+        {
+          "origin": "cargo:rustls-webpki@0.103.17/LICENSE",
+          "sha256": "5b698ca13897be3afdb7174256fa1574f8c6892b8bea1a66dd6469d3fe27885a"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "rustversion",
+      "version": "1.0.23",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/dtolnay/rustversion",
+      "notices": [
+        {
+          "origin": "cargo:rustversion@1.0.23/LICENSE-APACHE",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+        },
+        {
+          "origin": "cargo:rustversion@1.0.23/LICENSE-MIT",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
         }
       ]
     },
@@ -2737,6 +3158,19 @@
     },
     {
       "ecosystem": "cargo",
+      "name": "slab",
+      "version": "0.4.12",
+      "license": "MIT",
+      "repository": "https://github.com/tokio-rs/slab",
+      "notices": [
+        {
+          "origin": "cargo:slab@0.4.12/LICENSE",
+          "sha256": "8ce0830173fdac609dfb4ea603fdc002c2f4af0dc9b1a005653f5da9cf534b18"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
       "name": "smallvec",
       "version": "1.16.4",
       "license": "MIT OR Apache-2.0",
@@ -2877,6 +3311,19 @@
     },
     {
       "ecosystem": "cargo",
+      "name": "subtle",
+      "version": "2.6.1",
+      "license": "BSD-3-Clause",
+      "repository": "https://github.com/dalek-cryptography/subtle",
+      "notices": [
+        {
+          "origin": "cargo:subtle@2.6.1/LICENSE",
+          "sha256": "d1fc1bc0d155df60b2e7705b6b2ae02a05c96f948e1cec6e2fb86360b09f346b"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
       "name": "syn",
       "version": "2.0.119",
       "license": "MIT OR Apache-2.0",
@@ -2906,6 +3353,19 @@
         {
           "origin": "cargo:syn@3.0.9/LICENSE-MIT",
           "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "sync_wrapper",
+      "version": "1.0.2",
+      "license": "Apache-2.0",
+      "repository": "https://github.com/Actyx/sync_wrapper",
+      "notices": [
+        {
+          "origin": "cargo:sync_wrapper@1.0.2/LICENSE",
+          "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
         }
       ]
     },
@@ -3064,6 +3524,27 @@
     },
     {
       "ecosystem": "cargo",
+      "name": "tauri-plugin-updater",
+      "version": "2.14.1",
+      "license": "Apache-2.0 OR MIT",
+      "repository": "https://github.com/tauri-apps/plugins-workspace",
+      "notices": [
+        {
+          "origin": "cargo:tauri-plugin-updater@2.14.1/LICENSE.spdx",
+          "sha256": "eb8a6c84630461b352badcab1dbe5d0168c56d377358b2b8c86b51003272d5ef"
+        },
+        {
+          "origin": "cargo:tauri-plugin-updater@2.14.1/LICENSE_APACHE-2.0",
+          "sha256": "0cec06e0e55fbc3dc5cee4fca9b607f66cb8f4e4dbcf3b3c013594dd156732e9"
+        },
+        {
+          "origin": "cargo:tauri-plugin-updater@2.14.1/LICENSE_MIT",
+          "sha256": "89ff9689dcf9dd53968785d05a26f7898bb169dbfcada8d032b3e68cf0d55607"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
       "name": "tauri-runtime",
       "version": "2.12.2",
       "license": "Apache-2.0 OR MIT",
@@ -3123,6 +3604,23 @@
         {
           "origin": "cargo:tauri-winres@0.3.7/LICENSE",
           "sha256": "d9fa6b0e6fed50d4961b9c931587af6bd127df13e9473418d3e324f427db4f06"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "tempfile",
+      "version": "3.27.0",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/Stebalien/tempfile",
+      "notices": [
+        {
+          "origin": "cargo:tempfile@3.27.0/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "origin": "cargo:tempfile@3.27.0/LICENSE-MIT",
+          "sha256": "8b427f5bc501764575e52ba4f9d95673cf8f6d80a86d0d06599852e1a9a20a36"
         }
       ]
     },
@@ -3277,6 +3775,36 @@
     },
     {
       "ecosystem": "cargo",
+      "name": "tokio-rustls",
+      "version": "0.26.6",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/rustls/tokio-rustls",
+      "notices": [
+        {
+          "origin": "cargo:tokio-rustls@0.26.6/LICENSE-APACHE",
+          "sha256": "cc117d90b498b32b11a886f279b359da16a73c3b01efbb2f5cc004b20262334e"
+        },
+        {
+          "origin": "cargo:tokio-rustls@0.26.6/LICENSE-MIT",
+          "sha256": "e20fa2b8e0a2565f24a792b94b4bf4b6c2b9d36f781d8a9516e218a036e6677a"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "tokio-util",
+      "version": "0.7.20",
+      "license": "MIT",
+      "repository": "https://github.com/tokio-rs/tokio",
+      "notices": [
+        {
+          "origin": "cargo:tokio-util@0.7.20/LICENSE",
+          "sha256": "253cd04c6714889df2d32f3f64d669179a1c95c76ac43c40882c52eb06bc3552"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
       "name": "toml",
       "version": "1.1.8+spec-1.1.0",
       "license": "MIT OR Apache-2.0",
@@ -3345,6 +3873,58 @@
     },
     {
       "ecosystem": "cargo",
+      "name": "tower",
+      "version": "0.5.3",
+      "license": "MIT",
+      "repository": "https://github.com/tower-rs/tower",
+      "notices": [
+        {
+          "origin": "cargo:tower@0.5.3/LICENSE",
+          "sha256": "4249c8e6c5ebb85f97c77e6457c6fafc1066406eb8f1ef61e796fbdc5ff18482"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "tower-http",
+      "version": "0.6.11",
+      "license": "MIT",
+      "repository": "https://github.com/tower-rs/tower-http",
+      "notices": [
+        {
+          "origin": "cargo:tower-http@0.6.11/LICENSE",
+          "sha256": "5049cf464977eff4b4fcfa7988d84e74116956a3eb9d5f1d451b3f828f945233"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "tower-layer",
+      "version": "0.3.3",
+      "license": "MIT",
+      "repository": "https://github.com/tower-rs/tower",
+      "notices": [
+        {
+          "origin": "cargo:tower-layer@0.3.3/LICENSE",
+          "sha256": "4249c8e6c5ebb85f97c77e6457c6fafc1066406eb8f1ef61e796fbdc5ff18482"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "tower-service",
+      "version": "0.3.3",
+      "license": "MIT",
+      "repository": "https://github.com/tower-rs/tower",
+      "notices": [
+        {
+          "origin": "cargo:tower-service@0.3.3/LICENSE",
+          "sha256": "4249c8e6c5ebb85f97c77e6457c6fafc1066406eb8f1ef61e796fbdc5ff18482"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
       "name": "tracing",
       "version": "0.1.44",
       "license": "MIT",
@@ -3387,6 +3967,36 @@
         {
           "origin": "cargo:tray-icon@0.25.1/LICENSE.spdx",
           "sha256": "6c1e5d0ccf5e8951401cb964036ae664d52fc8d1148173b53bc54fc534f5d404"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "try-lock",
+      "version": "0.2.5",
+      "license": "MIT",
+      "repository": "https://github.com/seanmonstar/try-lock",
+      "notices": [
+        {
+          "origin": "cargo:try-lock@0.2.5/LICENSE",
+          "sha256": "c816a0749cdc6bf062a5111c159723de51b2bfac66a1dac2655abd9e6b1583eb"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "typed-path",
+      "version": "0.13.0",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/chipsenkbeil/typed-path",
+      "notices": [
+        {
+          "origin": "cargo:typed-path@0.13.0/LICENSE-APACHE",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+        },
+        {
+          "origin": "cargo:typed-path@0.13.0/LICENSE-MIT",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
         }
       ]
     },
@@ -3463,6 +4073,19 @@
         {
           "origin": "cargo:unicode-segmentation@1.13.3/LICENSE-MIT",
           "sha256": "7b63ecd5f1902af1b63729947373683c32745c16a10e8e6292e2e2dcd7e90ae0"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "untrusted",
+      "version": "0.9.0",
+      "license": "ISC",
+      "repository": "https://github.com/briansmith/untrusted",
+      "notices": [
+        {
+          "origin": "cargo:untrusted@0.9.0/LICENSE.txt",
+          "sha256": "7abd9b6960dcf7d4d0a48606a5b71bfe37d472db68d70637f3a58a56785f1621"
         }
       ]
     },
@@ -3608,6 +4231,19 @@
         {
           "origin": "cargo:walkdir@2.5.0/UNLICENSE",
           "sha256": "7e12e5df4bae12cb21581ba157ced20e1986a0508dd10d0e8a4ab9a4cf94e85c"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "want",
+      "version": "0.3.2",
+      "license": "MIT",
+      "repository": "https://github.com/seanmonstar/want",
+      "notices": [
+        {
+          "origin": "cargo:want@0.3.2/LICENSE",
+          "sha256": "a65f5d0a945d267751344c95665945b90c030ea107faf5c85d518929886187da"
         }
       ]
     },
@@ -3864,6 +4500,23 @@
     },
     {
       "ecosystem": "cargo",
+      "name": "windows-registry",
+      "version": "0.6.1",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/microsoft/windows-rs",
+      "notices": [
+        {
+          "origin": "cargo:windows-registry@0.6.1/license-apache-2.0",
+          "sha256": "c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b"
+        },
+        {
+          "origin": "cargo:windows-registry@0.6.1/license-mit",
+          "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
       "name": "windows-result",
       "version": "0.4.1",
       "license": "MIT OR Apache-2.0",
@@ -3995,15 +4648,15 @@
       "notices": [
         {
           "origin": "cargo:wry@0.57.1/LICENSE-APACHE",
-          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+          "sha256": "7cfd738c53d61c79f07e348f622bf7707c9084237054d37fbe07788a75f5881c"
         },
         {
           "origin": "cargo:wry@0.57.1/LICENSE-MIT",
-          "sha256": "ef88893533af22ffbb68ceef0724ba1389518df26165a34f3c99ad30b884df4f"
+          "sha256": "3c6636955a06790d4d4bad1874662b57aacfa57c2982b336a3911c997591fbeb"
         },
         {
           "origin": "cargo:wry@0.57.1/LICENSE.spdx",
-          "sha256": "26235c41e314fb0da35b33b2bb5bcbc4dd523839f8eeca52efcd43586f441fb5"
+          "sha256": "b2a7e69436553ce99df55650b118cb7c097c1c0a44157173edce8ea8f989cfee"
         }
       ]
     },
@@ -4061,6 +4714,40 @@
     },
     {
       "ecosystem": "cargo",
+      "name": "zeroize",
+      "version": "1.9.2",
+      "license": "Apache-2.0 OR MIT",
+      "repository": "https://github.com/RustCrypto/utils",
+      "notices": [
+        {
+          "origin": "cargo:zeroize@1.9.2/LICENSE-APACHE",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        },
+        {
+          "origin": "cargo:zeroize@1.9.2/LICENSE-MIT",
+          "sha256": "8c7516d4b27b1e495be5e38b612298b63de48d05f49cdac94f70f3cd70f8864b"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "zeroize_derive",
+      "version": "1.5.0",
+      "license": "Apache-2.0 OR MIT",
+      "repository": "https://github.com/RustCrypto/utils",
+      "notices": [
+        {
+          "origin": "cargo:zeroize_derive@1.5.0/LICENSE-APACHE",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        },
+        {
+          "origin": "cargo:zeroize_derive@1.5.0/LICENSE-MIT",
+          "sha256": "b8c6939380a400f53e11923d50fcc4dd2fa1ba8339fd9d04cda38a0251b6c9b0"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
       "name": "zerotrie",
       "version": "0.2.5",
       "license": "Unicode-3.0",
@@ -4095,6 +4782,19 @@
         {
           "origin": "cargo:zerovec-derive@0.11.7/LICENSE",
           "sha256": "f367c1b8e1aa262435251e442901da4607b4650e0e63a026f5044473ecfb90f2"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "zip",
+      "version": "9.8.2",
+      "license": "MIT",
+      "repository": "https://github.com/zip-rs/zip2",
+      "notices": [
+        {
+          "origin": "cargo:zip@9.8.2/LICENSE",
+          "sha256": "58545fed1565e42d687aecec6897d35c6d37ccb71479a137c0deb2203e125c79"
         }
       ]
     },
@@ -4584,6 +5284,19 @@
         {
           "origin": "npm:@tauri-apps/api@2.12.4/LICENSE.spdx",
           "sha256": "5e834fe9788c524210deda859c46a550ffa5aa0cba9ea0572f0d81120e97c008"
+        }
+      ]
+    },
+    {
+      "ecosystem": "npm",
+      "name": "@tauri-apps/plugin-updater",
+      "version": "2.14.1",
+      "license": "MIT OR Apache-2.0",
+      "repository": "https://github.com/tauri-apps/plugins-workspace",
+      "notices": [
+        {
+          "origin": "npm:@tauri-apps/plugin-updater@2.14.1/LICENSE.spdx",
+          "sha256": "eb8a6c84630461b352badcab1dbe5d0168c56d377358b2b8c86b51003272d5ef"
         }
       ]
     },

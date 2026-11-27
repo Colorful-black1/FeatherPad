@@ -29,7 +29,13 @@
 !macroend
 
 !macro NSIS_HOOK_PREINSTALL
-  !insertmacro FeatherPadRequireClosed
+  ; The Tauri updater launches the NSIS package with /UPDATE after the app has
+  ; flushed recovery state and is exiting. The stock template's
+  ; CheckIfAppIsRunning handles that pass; only manual installs must keep the
+  ; stricter "user closed the app" guard.
+  ${If} $UpdateMode <> 1
+    !insertmacro FeatherPadRequireClosed
+  ${EndIf}
 !macroend
 
 !macro FeatherPadRemoveManagedKey KEY ICON

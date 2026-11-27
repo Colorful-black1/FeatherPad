@@ -57,6 +57,30 @@ export class HotExitCoordinator {
     return operation;
   }
 
+  /**
+   * Freezes editing and captures the latest recovery/session state without
+   * destroying the window. The update installer owns the process exit and
+   * restart; the window session must stay in place so the new version can
+   * restore the same tabs.
+   */
+  async prepareForUpdate(): Promise<ResultEnvelope<{ ready: true }>> {
+    if (this.active) return failed('另一个退出操作正在进行。', false) as ResultEnvelope<{ ready: true }>;
+    this.freeze();
+    const { failedIds, errors } = await this.flushDirty();
+    if (failedIds.length > 0) {
+      this.resume();
+      const message = errors.length > 0
+        ? `无法准备更新：${[...new Set(errors)].join('；')}` : '无法准备更新。';
+      return failed(message) as ResultEnvelope<{ ready: true }>;
+    }
+    const savedSession = await this.session.flush();
+    if (!savedSession.ok) {
+      this.resume();
+      return failed(`无法准备更新：${savedSession.error.message}`) as ResultEnvelope<{ ready: true }>;
+    }
+    return { ok: true, value: { ready: true } };
+  }
+
   async discardAndExit(): Promise<ResultEnvelope<{ ready: true }>> {
     if (this.active) return this.active;
     const operation = this.discardAndExitNow().finally(() => {
@@ -75,13 +99,10 @@ export class HotExitCoordinator {
     this.publish({ phase: 'idle', error: null, failedDocumentIds: [] });
   }
 
-  private async prepareNow(): Promise<ResultEnvelope<{ ready: true }>> {
-    this.freeze();
-    this.publish({ phase: 'preparing', error: null, failedDocumentIds: [] });
-    const dirty = this.dirtyIds();
+  private async flushDirty(): Promise<{ failedIds: DocumentId[]; errors: string[] }> {
     const failedIds: DocumentId[] = [];
     const errors: string[] = [];
-    for (const id of dirty) {
+    for (const id of this.dirtyIds()) {
       const result = await this.recovery.flush(id, 'hot-exit');
       if (!result.ok) {
         failedIds.push(id);
@@ -92,6 +113,13 @@ export class HotExitCoordinator {
         errors.push('最新未保存版本尚无已核对的恢复副本。');
       }
     }
+    return { failedIds, errors };
+  }
+
+  private async prepareNow(): Promise<ResultEnvelope<{ ready: true }>> {
+    this.freeze();
+    this.publish({ phase: 'preparing', error: null, failedDocumentIds: [] });
+    const { failedIds, errors } = await this.flushDirty();
     if (failedIds.length > 0) return this.fail(failedIds, errors);
     const savedSession = await this.session.flush();
     if (!savedSession.ok) return this.fail([], [savedSession.error.message]);

@@ -3,11 +3,13 @@ import type { SettingsDialog as SettingsView } from '../features/desktop/Setting
 import type { FormatDialog as FormatView } from '../features/search-tools/FormatDialog';
 import type { TransformPreview as TransformView } from '../features/search-tools/TransformPreview';
 import type { DiffView as ComparisonView } from '../features/editor/DiffView';
+import type { UpdateDialog as UpdateView } from '../features/desktop/UpdateDialog';
 
 const loadSettings = () => import('../features/desktop/SettingsDialog').then(module => module.SettingsDialog);
 const loadFormat = () => import('../features/search-tools/FormatDialog').then(module => module.FormatDialog);
 const loadTransform = () => import('../features/search-tools/TransformPreview').then(module => module.TransformPreview);
 const loadComparison = () => import('../features/editor/DiffView').then(module => module.DiffView);
+const loadUpdate = () => import('../features/desktop/UpdateDialog').then(module => module.UpdateDialog);
 
 function DeferredDialog<P extends { onClose: () => void }>({ load, props }: {
   load: () => Promise<ComponentType<P>>; props: P;
@@ -55,3 +57,4 @@ export function SettingsDialog(props: ComponentProps<typeof SettingsView>) { ret
 export function FormatDialog(props: ComponentProps<typeof FormatView>) { return <DeferredDialog load={loadFormat} props={props} />; }
 export function TransformPreview(props: ComponentProps<typeof TransformView>) { return <DeferredDialog load={loadTransform} props={props} />; }
 export function DiffView(props: ComponentProps<typeof ComparisonView>) { return <DeferredPanel load={loadComparison} props={props} />; }
+export function UpdateDialog(props: ComponentProps<typeof UpdateView>) { return <DeferredDialog load={loadUpdate} props={props} />; }

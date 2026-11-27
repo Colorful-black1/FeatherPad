@@ -87,6 +87,37 @@ describe('HotExitCoordinator', () => {
     expect(h.registry.getDocument(first)?.state.facet(EditorState.readOnly)).toBe(true);
   });
 
+  it('flushes recovery and session for an update without removing the window session or destroying the window', async () => {
+    const h = fixture();
+    const id = crypto.randomUUID() as DocumentId;
+    h.registry.openRecovered(recovered(id));
+
+    expect((await h.coordinator.prepareForUpdate()).ok).toBe(true);
+    expect(h.flushRecovery).toHaveBeenCalledWith(id, 'hot-exit');
+    expect(h.session.flush).toHaveBeenCalledTimes(1);
+    expect(h.removeWindowSession).not.toHaveBeenCalled();
+    expect(h.destroy).not.toHaveBeenCalled();
+    expect(h.coordinator.getSnapshot().phase).toBe('idle');
+    expect(h.registry.getDocument(id)?.state.facet(EditorState.readOnly)).toBe(true);
+  });
+
+  it('resumes editing when an update snapshot cannot be protected', async () => {
+    const h = fixture();
+    const id = crypto.randomUUID() as DocumentId;
+    h.registry.openRecovered(recovered(id));
+    h.flushRecovery.mockResolvedValueOnce({
+      ok: false,
+      error: { code: 'DISK_FULL', message: 'controlled recovery full', retryable: false },
+    });
+
+    expect((await h.coordinator.prepareForUpdate()).ok).toBe(false);
+    expect(h.session.flush).not.toHaveBeenCalled();
+    expect(h.removeWindowSession).not.toHaveBeenCalled();
+    expect(h.destroy).not.toHaveBeenCalled();
+    expect(h.registry.getDocument(id)?.state.facet(EditorState.readOnly)).toBe(false);
+    expect(h.coordinator.getSnapshot().phase).toBe('idle');
+  });
+
   it('stays open and frozen when a snapshot fails, then retries without discarding content', async () => {
     const h = fixture();
     const id = crypto.randomUUID() as DocumentId;

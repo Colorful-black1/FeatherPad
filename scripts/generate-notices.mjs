@@ -73,7 +73,7 @@ await writeFile(path.join(root, 'packaging/LICENSE-TEXTS.txt'), [...texts].sort(
 const lines = ['# Third-party notices', '',
   'Generated from the locked installed dependency graphs by `scripts/generate-notices.mjs`. Original copyright and license texts are preserved in [LICENSE-TEXTS](packaging/LICENSE-TEXTS.txt); look up each SHA256 text ID in the [inventory](packaging/third-party-inventory.json).', '',
   'The inventory includes npm production dependencies and the Windows Cargo graph, including build tools. Inclusion does not imply that all code is linked. WebView2 is supplied by Microsoft separately and is not included in the application archive.', '',
-  'The internal candidate distribution includes THIRD-PARTY-SOURCES.zip with the exact unmodified MPL-only crate sources and the modified Wry source, including original per-file notices. Wry patch details are in src-tauri/vendor/wry/PATCH.md. This file does not assign a license to FeatherPad itself.', '',
+  'The corresponding source tag includes the unmodified MPL-only crate sources resolved by Cargo.lock and the modified Wry source, including original per-file notices. Wry patch details are in src-tauri/vendor/wry/PATCH.md. This file does not assign a license to FeatherPad itself.', '',
   `Components: ${components.length}; original text blocks: ${texts.size}.`, '',
   '| Ecosystem | Component | Version | Declared license |', '|---|---|---|---|',
   ...components.map(item => `| ${item.ecosystem} | ${item.name} | ${item.version} | ${item.license} |`), ''];

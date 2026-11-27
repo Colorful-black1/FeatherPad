@@ -24,6 +24,7 @@ if (-not $SkipBuild) {
   }
 }
 
+$version = (Get-Content -Raw -LiteralPath (Join-Path $repo "src-tauri/tauri.conf.json") | ConvertFrom-Json).version
 $exe = Join-Path $repo "src-tauri/target/release/featherpad.exe"
 $installer = Get-ChildItem (Join-Path $repo "src-tauri/target/release/bundle/nsis") -Filter "*-setup.exe" |
   Sort-Object LastWriteTime -Descending | Select-Object -First 1
@@ -38,7 +39,7 @@ $hash = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash
 $short = $hash.Substring(0, 8)
 New-Item -ItemType Directory -Path $output -Force | Out-Null
 
-$portableDirectory = Join-Path $output "FeatherPad-M4-portable-$short"
+$portableDirectory = Join-Path $output "FeatherPad-$version-portable-$short"
 if (Test-Path -LiteralPath $portableDirectory) {
   throw "Refusing to overwrite existing portable directory: $portableDirectory"
 }
@@ -54,13 +55,13 @@ foreach ($relative in @('THIRD-PARTY-NOTICES.md', 'packaging/LICENSE-TEXTS.txt',
   Copy-Item -LiteralPath (Join-Path $repo $relative) -Destination $destination
 }
 
-$portableZip = Join-Path $output "FeatherPad-M4-portable-$short.zip"
+$portableZip = Join-Path $output "FeatherPad-$version-portable-$short.zip"
 if (Test-Path -LiteralPath $portableZip) {
   throw "Refusing to overwrite existing portable archive: $portableZip"
 }
 Compress-Archive -LiteralPath (Get-ChildItem -LiteralPath $portableDirectory).FullName -DestinationPath $portableZip -CompressionLevel Optimal
 
-$installerCopy = Join-Path $output "FeatherPad-M4-installer-$short.exe"
+$installerCopy = Join-Path $output "FeatherPad-$version-installer-$short.exe"
 if (Test-Path -LiteralPath $installerCopy) {
   throw "Refusing to overwrite existing installer: $installerCopy"
 }
@@ -70,9 +71,9 @@ Copy-Item -LiteralPath (Join-Path $repo "packaging/README-installer.txt") -Desti
 $installerHash = (Get-FileHash -LiteralPath $installerCopy -Algorithm SHA256).Hash
 $zipHash = (Get-FileHash -LiteralPath $portableZip -Algorithm SHA256).Hash
 @(
-  "$hash  featherpad.exe / FeatherPad-M4-portable-$short.zip payload",
-  "$installerHash  FeatherPad-M4-installer-$short.exe",
-  "$zipHash  FeatherPad-M4-portable-$short.zip"
+  "$hash  featherpad.exe / FeatherPad-$version-portable-$short.zip payload",
+  "$installerHash  FeatherPad-$version-installer-$short.exe",
+  "$zipHash  FeatherPad-$version-portable-$short.zip"
 ) | Set-Content -LiteralPath (Join-Path $output "SHA256SUMS.txt") -Encoding UTF8
 
 [pscustomobject]@{

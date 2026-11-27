@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type SetStateAction } from 'react';
 import { availableMonitors, getCurrentWindow, LogicalPosition, LogicalSize } from '@tauri-apps/api/window';
+import { getAllWebviewWindows } from '@tauri-apps/api/webviewWindow';
 import { listen } from '@tauri-apps/api/event';
 import { currentWindowId, desktopBridge, isDesktopRuntime, type DesktopDelivery } from '../bridge/desktop';
 import { Shell } from '../shared/ui/Shell';
@@ -52,12 +53,13 @@ import { mergeSettings } from '../features/desktop/settings-schema';
 import { applySettingsToEditors } from '../features/desktop/settings-effects';
 import { languagePreferences } from '../features/desktop/language-preferences';
 import { inactiveRecoveryGroups } from '../features/desktop/privacy';
+import { updates, updateAvailable, updatePercent } from '../features/desktop/updates';
 import { saveAll } from '../features/editor/save-all';
 import { SaveAllResults } from '../features/editor/SaveAllResults';
 import { autoSaves } from '../features/editor/autosave';
 import { AutoSaveStatus } from '../features/editor/AutoSaveStatus';
 import { FindBar } from '../features/search-tools/FindBar';
-import { SettingsDialog, FormatDialog, TransformPreview, DiffView } from './DeferredDialogs';
+import { SettingsDialog, FormatDialog, TransformPreview, DiffView, UpdateDialog } from './DeferredDialogs';
 import { formatLanguage } from '../features/search-tools/formatters';
 import type { SearchScope } from '../features/search-tools/search-query';
 import { Explorer } from '../features/workspace/Explorer';
@@ -132,12 +134,17 @@ export function App() {
   const workspaceState = useSyncExternalStore(workspace.subscribe, workspace.getSnapshot);
   const exitState = useSyncExternalStore(hotExit.subscribe, hotExit.getSnapshot);
   const sessionState = useSyncExternalStore(session.subscribe, session.getSnapshot);
+  const updateState = useSyncExternalStore(updates.subscribe, updates.getSnapshot);
+  const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
+  const updateOrigin = useRef<HTMLElement | null>(null);
   const recentEntries = readRecentHistory(settingsState.user[recentHistoryItemsSetting]);
   const persistedGlobalSettings = mergeSettings(settingsState.user).settings;
   const globalLaunchEnabled = persistedGlobalSettings.globalLaunchEnabled;
   const globalLaunchShortcut = persistedGlobalSettings.globalLaunchShortcut;
   const batchBusy = batch.phase === 'running' || batch.phase === 'cancelling';
   const current = snapshot.documents.find(document => document.id === snapshot.activeId);
+  const updateShown = updateAvailable(updateState);
+  const updateDownloadPercent = updatePercent(updateState.progress);
   const primaryEditorId = tabState.primaryId ?? snapshot.activeId;
   const secondaryEditorId = tabState.secondaryId;
   const currentSource = current ? documents.getDocument(current.id)?.source : undefined;
@@ -285,6 +292,10 @@ export function App() {
   }, []);
 
   useEffect(() => applySettingsToEditors(settings, documents), []);
+  useEffect(() => {
+    if (startupPending) return;
+    void updates.check({ automatic: true });
+  }, [startupPending]);
   useEffect(() => {
     const all = commands.bindings();
     documents.applyCommandBindings(Object.fromEntries(appCommandIds.map(id => [id, all[id] ?? null])));
@@ -696,7 +707,7 @@ export function App() {
     setAutoFocus(true);
     const protectedCopy = await recoveries.flush(id);
     return protectedCopy.ok ? null : `副本已在编辑器中打开，但恢复快照未更新：${protectedCopy.error.message} 原记录仍保留，请先另存。`;
-  }, [setActiveComparisonId]);
+  }, [setActiveComparisonId, setAutoFocus]);
 
   const focusAfterClose = useCallback(() => {
     setAutoFocus(true);
@@ -705,7 +716,7 @@ export function App() {
       if (id) { if (!documents.focus(id)) window.document.getElementById(`panel-${id}`)?.focus(); }
       else window.document.querySelector<HTMLButtonElement>('.welcome-actions button')?.focus();
     });
-  }, []);
+  }, [setAutoFocus]);
 
   const openInNewWindow = useCallback(async (
     reference: FileRef,
@@ -774,7 +785,7 @@ export function App() {
       documents.focusOffset(target.documentId, target.offset);
     });
     return true;
-  }, []);
+  }, [setAutoFocus]);
 
   const currentNavigationTarget = useCallback((): NavigationTarget | null => {
     const id = documents.getSnapshot().activeId;
@@ -1182,11 +1193,32 @@ export function App() {
     paletteOrigin.current = window.document.activeElement instanceof HTMLElement ? window.document.activeElement : null;
     setAutoFocus(false);
     setPaletteMode(mode);
-  }, []);
+  }, [setAutoFocus, setPaletteMode]);
   const openSettings = useCallback(() => {
     settingsOrigin.current = window.document.activeElement instanceof HTMLElement ? window.document.activeElement : null;
     setAutoFocus(false); setSettingsOpen(true);
-  }, []);
+  }, [setAutoFocus, setSettingsOpen]);
+  const openUpdateDialog = useCallback(() => {
+    updateOrigin.current = window.document.activeElement instanceof HTMLElement ? window.document.activeElement : null;
+    setAutoFocus(false); setUpdateDialogOpen(true);
+  }, [setAutoFocus, setUpdateDialogOpen]);
+  const prepareForUpdate = useCallback(async (): Promise<string | null> => {
+    if (!isDesktopRuntime()) return '仅桌面安装版支持自动更新。';
+    if (busy || savingCount > 0 || batchBusy || closingCount > 0 || replacementBusy
+      || exitState.phase !== 'idle') {
+      return '请等待当前文件操作或跨文件替换完成后再安装更新。';
+    }
+    try {
+      const windows = await getAllWebviewWindows();
+      if (windows.length > 1) return '请先关闭其他轻羽窗口再安装更新；关闭窗口时会先保护未保存内容。';
+    } catch {
+      return '无法确认其他窗口状态，更新未安装。';
+    }
+    await settings.flushFontSize();
+    await languagePreferences.flush();
+    const result = await hotExit.prepareForUpdate();
+    return result.ok ? null : result.error.message;
+  }, [batchBusy, busy, closingCount, exitState.phase, replacementBusy, savingCount]);
   const restorePaletteFocus = useCallback(() => {
     if (paletteOrigin.current?.isConnected) paletteOrigin.current.focus();
     else { const id = documents.getSnapshot().activeId; if (id) documents.focus(id); }
@@ -1353,7 +1385,7 @@ export function App() {
     setRollbackOutcome(null);
     setReplacementCommitUnknown(false);
     setAutoFocus(true);
-  }, [replacementBusy]);
+  }, [replacementBusy, setAutoFocus]);
 
   const openComparison = useCallback((left: FileRef | null, right: FileRef | null, title: string) => {
     const id = `comparison-${crypto.randomUUID()}`;
@@ -1597,6 +1629,13 @@ export function App() {
               blocked={busy || savingCount > 0 || batchBusy || closingCount > 0 || exitState.phase !== 'idle'} onMessage={setNotice} />}
           </div>
         </details>}
+        {updateShown && updateState.update && <button type="button" className="plain-button update-available"
+          aria-label={`发现新版本 v${updateState.update.version}，打开更新详情`} onClick={openUpdateDialog}>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 17v3h14v-3" /></svg>
+          <span>{updateState.phase === 'downloading' && updateDownloadPercent !== null
+            ? `更新 ${updateDownloadPercent}%`
+            : updateState.phase === 'ready' ? '更新已就绪' : `更新 v${updateState.update.version}`}</span>
+        </button>}
         <button type="button" className="plain-button command-center" {...commandProps('commands.open')}
           aria-label="命令面板" onClick={() => void executeCommand('commands.open')}>
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="6" /><path d="m15 15 5 5" /></svg>
@@ -1834,6 +1873,17 @@ export function App() {
           else { const id = documents.getSnapshot().activeId; if (id) documents.focus(id); }
         });
       }} onShortcuts={() => { openPalette('commands'); }} />}
+      {updateDialogOpen && updateState.update && <UpdateDialog snapshot={updateState}
+        onDownload={() => { void updates.download(); }}
+        onInstall={() => { void updates.install(prepareForUpdate, () => hotExit.resume()).then(() => hotExit.resume()); }}
+        onClose={() => {
+          setUpdateDialogOpen(false);
+          setAutoFocus(true);
+          requestAnimationFrame(() => {
+            if (updateOrigin.current?.isConnected) updateOrigin.current.focus();
+            else { const id = documents.getSnapshot().activeId; if (id) documents.focus(id); }
+          });
+        }} />}
       {exitState.phase !== 'idle' && <HotExitDialog snapshot={exitState}
         onRetry={async () => { await hotExit.prepare(); }}
         onSaveAs={saveExitDrafts}
